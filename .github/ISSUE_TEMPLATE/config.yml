@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/Magicapple-Coder/ResumeForge/security/advisories/new
+    about: 请私密报告安全问题，不要在公开 Issue 中粘贴密钥、真实简历或可利用细节。
+  - name: 使用与升级文档
+    url: https://github.com/Magicapple-Coder/ResumeForge#readme
+    about: 提交问题前请先查看安装、配置、升级与常见问题说明。

@@ -1,0 +1,11 @@
+{
+  "categories": {
+    "编程语言": ["Python", "Java", "Go", "C++", "C", "JavaScript", "TypeScript", "Rust", "PHP", "Swift", "Kotlin", "Scala", "Shell"],
+    "前端技术": ["React", "Vue", "Angular", "Webpack", "Vite", "HTML5", "CSS3", "小程序", "Flutter", "Electron", "Node.js", "Uni-app"],
+    "后端技术": ["Spring Boot", "Spring Cloud", "MyBatis", "FastAPI", "Django", "Flask", "gRPC", "微服务", "分布式", "高并发", "消息队列", "RESTful", "WebSocket"],
+    "数据库与中间件": ["MySQL", "PostgreSQL", "Redis", "MongoDB", "Elasticsearch", "Kafka", "RabbitMQ", "RocketMQ", "HBase", "ClickHouse", "TiDB", "Neo4j"],
+    "人工智能": ["机器学习", "深度学习", "自然语言处理", "NLP", "计算机视觉", "CV", "大模型", "LLM", "PyTorch", "TensorFlow", "Transformer", "RAG", "Agent", "微调", "LoRA", "AIGC", "推荐系统", "强化学习", "多模态", "Embedding", "LangChain"],
+    "云原生与大数据": ["Docker", "Kubernetes", "K8s", "Linux", "Git", "CI/CD", "Hadoop", "Spark", "Flink", "Hive", "数据仓库", "AWS", "阿里云", "腾讯云", "DevOps", "Nginx"],
+    "通用能力": ["数据结构", "算法", "操作系统", "计算机网络", "数据库原理", "设计模式", "英语六级", "英语四级", "ACM", "软考"]
+  }
+}

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+<title>{{ resume.name }} - {{ resume.job_intent }} - 简历</title>
+<style>
+  :root {
+    --text: #1f2937;
+    --muted: #6b7280;
+    --line: #d9dee7;
+    --accent: #16365c;
+    --bg: #ffffff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.7;
+    width: 210mm;
+    height: 297mm;
+    overflow: hidden;
+    padding: 14mm;
+    margin: 0;
+  }
+  /* 页头 */
+  .header { display: flex; align-items: flex-start; gap: 24px; border-bottom: 2px solid var(--accent); padding-bottom: 16px; margin-bottom: 20px; }
+  .header-main { flex: 1; min-width: 0; }
+  .header .name { font-size: 26px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+  .header .intent { font-size: 15px; color: var(--muted); margin-top: 4px; }
+  .header .contact { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .header .contact span { margin-right: 16px; }
+  .profile-photo { width: 88px; height: 112px; flex: 0 0 auto; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
+  /* 区块 */
+  .section { margin-bottom: 18px; }
+  .section-title {
+    font-size: 16px; font-weight: 700; color: var(--accent);
+    border-left: 4px solid var(--accent); padding-left: 10px; margin-bottom: 10px;
+  }
+  /* 条目 */
+  .entry { margin-bottom: 12px; }
+  .entry-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .entry-head .title { font-size: 15px; font-weight: 600; }
+  .entry-head .meta { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .entry .sub { font-size: 13px; color: var(--muted); margin: 2px 0 4px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  .summary-text { font-size: 14px; }
+  /* 技能 */
+  .skill-list li { list-style: none; display: inline-block; background: #eef2f7; border-radius: 4px; padding: 1px 10px; margin: 0 8px 8px 0; font-size: 13px; }
+  .skill-list { padding-left: 0; }
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { width: 210mm; height: 297mm; padding: 14mm; overflow: hidden; }
+    .section, .entry { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-main">
+    <div class="name">{{ resume.name }}{% if resume.gender %} <span style="font-size:14px;font-weight:400;color:var(--muted)">{{ resume.gender }}</span>{% endif %}</div>
+    {% if resume.job_intent %}<div class="intent">求职意向：{{ resume.job_intent }}</div>{% endif %}
+    <div class="contact">
+      {%- for item in [resume.phone, resume.email, resume.city, resume.birth_year] if item -%}
+      <span>{{ item }}</span>
+      {%- endfor -%}
+    </div>
+  </div>
+  {% if resume.photo %}<img class="profile-photo" src="{{ resume.photo }}" alt="个人照片" />{% endif %}
+</div>
+
+{% if resume.summary %}
+<div class="section">
+  <div class="section-title">个人总结</div>
+  <p class="summary-text">{{ resume.summary }}</p>
+</div>
+{% endif %}
+
+{% if resume.education %}
+<div class="section">
+  <div class="section-title">教育经历</div>
+  {% for edu in resume.education %}
+  <div class="entry">
+    <div class="entry-head">
+      <span class="title">{{ edu.school }}{% if edu.major %} · {{ edu.major }}{% endif %}</span>
+      <span class="meta">{% if edu.degree %}{{ edu.degree }} · {% endif %}{{ edu.start_date }} - {{ edu.end_date }}</span>
+    </div>
+    {% if edu.gpa %}<div class="sub">绩点/排名：{{ edu.gpa }}</div>{% endif %}
+    {% if edu.courses %}<div class="sub">核心课程：{{ edu.courses | join("、") }}</div>{% endif %}
+    {% if edu.achievements %}<ul>{% for item in edu.achievements %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if resume.experience %}
+<div class="section">
+  <div class="section-title">实习/工作经历</div>
+  {% for exp in resume.experience %}
+  <div class="entry">
+    <div class="entry-head">
+      <span class="title">{{ exp.company }}{% if exp.role %} · {{ exp.role }}{% endif %}</span>
+      <span class="meta">{{ exp.start_date }} - {{ exp.end_date }}</span>
+    </div>
+    {% if exp.description %}<ul>{% for item in exp.description %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if resume.campus_experience %}
+<div class="section">
+  <div class="section-title">校园经历</div>
+  {% for item in resume.campus_experience %}
+  <div class="entry">
+    <div class="entry-head">
+      <span class="title">{{ item.organization }}{% if item.role %} · {{ item.role }}{% endif %}</span>
+      <span class="meta">{{ item.start_date }} - {{ item.end_date }}</span>
+    </div>
+    {% if item.description %}<ul>{% for detail in item.description %}<li>{{ detail }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if resume.projects %}
+<div class="section">
+  <div class="section-title">项目经历</div>
+  {% for project in resume.projects %}
+  <div class="entry">
+    <div class="entry-head">
+      <span class="title">{{ project.name }}</span>
+      <span class="meta">{% if project.role %}{{ project.role }} · {% endif %}{{ project.start_date }} - {{ project.end_date }}</span>
+    </div>
+    {% if project.tech_stack %}<div class="sub">技术栈：{{ project.tech_stack | join("、") }}</div>{% endif %}
+    {% if project.description %}<ul>{% for item in project.description %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+    {% if project.highlights %}<ul>{% for item in project.highlights %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if resume.skills %}
+<div class="section">
+  <div class="section-title">专业技能</div>
+  <ul class="skill-list">
+    {% for skill in resume.skills %}<li>{{ skill.name }}{% if skill.level %}（{{ skill.level }}）{% endif %}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if resume.awards %}
+<div class="section">
+  <div class="section-title">荣誉奖项</div>
+  <ul>
+    {% for award in resume.awards %}
+    <li>{{ award.name }}{% if award.date %} · {{ award.date }}{% endif %}{% if award.description %} · {{ award.description }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<script>
+  // 内容超过一页时整体缩放，保证导出的打印文档仍是一张 A4。
+  (() => {
+    const fitToA4 = () => {
+      const page = document.body;
+      if (!page) return;
+      page.style.transform = "none";
+      page.style.transformOrigin = "top left";
+      page.style.width = "210mm";
+      page.style.height = "297mm";
+      const scale = Math.min(1, 793.7 / Math.max(page.scrollWidth, 793.7), 1122.5 / Math.max(page.scrollHeight, 1122.5));
+      if (scale < 1) {
+        page.style.width = `${210 / scale}mm`;
+        page.style.height = `${297 / scale}mm`;
+        page.style.transform = `scale(${scale})`;
+      }
+    };
+    window.addEventListener("load", fitToA4);
+    if (document.fonts?.ready) document.fonts.ready.then(fitToA4);
+  })();
+</script>
+
+</body>
+</html>

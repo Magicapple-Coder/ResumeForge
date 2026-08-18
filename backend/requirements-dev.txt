@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Repository quality checks used locally and in CI.
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+ruff==0.16.3
+pip-audit==2.10.1

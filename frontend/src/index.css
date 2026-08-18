@@ -1,0 +1,746 @@
+/* 全局基础样式（组件样式由 antd 管理，这里只做布局兜底） */
+body {
+  margin: 0;
+  font-family:
+    -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100vh;
+  overflow: hidden;
+  background: #f6f8fb;
+}
+
+.app-sider {
+  position: fixed !important;
+  z-index: 20;
+  inset: 0 auto 0 0;
+  height: 100vh !important;
+  overflow: hidden;
+  background: #fff !important;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 2px 0 12px rgb(15 23 42 / 4%);
+}
+
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.app-main {
+  height: 100vh;
+  min-height: 0;
+  min-width: 0;
+  margin-left: 200px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  background: #f6f8fb;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 0 18px;
+  border-bottom: 1px solid #eef0f3;
+  color: #16365c;
+  white-space: nowrap;
+}
+
+.app-brand-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eaf1f8;
+}
+
+.app-brand-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.app-brand-name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.app-brand-caption {
+  color: #8a94a3;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.app-nav-menu {
+  flex: 1;
+  padding: 12px 10px;
+  border-inline-end: 0 !important;
+  background: transparent !important;
+}
+
+.app-nav-menu .ant-menu-item {
+  height: 44px;
+  margin: 4px 0;
+  border-radius: 8px;
+  color: #5f6b7a;
+  font-weight: 500;
+}
+
+.app-nav-menu .ant-menu-item .anticon {
+  color: #8b96a5;
+  font-size: 17px;
+}
+
+.app-nav-menu .ant-menu-item-selected {
+  background: #eaf1f8;
+  color: #16365c;
+  font-weight: 600;
+}
+
+.app-nav-menu .ant-menu-item-selected .anticon {
+  color: #16365c;
+}
+
+.app-nav-menu .ant-menu-item::after {
+  display: none;
+}
+
+.app-sider-footer {
+  padding: 10px 10px 16px;
+  border-top: 1px solid #eef0f3;
+}
+
+.app-guide-button {
+  width: 100%;
+  height: 40px;
+  justify-content: flex-start;
+  color: #5f6b7a;
+  font-weight: 500;
+}
+
+.app-guide-button:hover {
+  color: #16365c !important;
+  background: #f3f7fb !important;
+}
+
+.user-guide-brand-image {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.user-guide-steps {
+  margin-inline: 4px;
+}
+
+.user-guide-step-content {
+  display: flex;
+  gap: 20px;
+  min-height: 190px;
+  padding: 8px 8px 18px;
+}
+
+.user-guide-step-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #eaf1f8;
+  color: #16365c;
+  font-size: 26px;
+}
+
+.user-guide-step-copy {
+  min-width: 0;
+}
+
+.user-guide-step-copy .ant-typography {
+  max-width: 560px;
+}
+
+.user-guide-points {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #4b5563;
+  line-height: 1.9;
+}
+
+.user-guide-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #e7ebf0;
+  box-shadow: 0 1px 8px rgb(15 23 42 / 3%);
+}
+
+.app-header-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header-repo {
+  flex: 0 0 auto;
+}
+
+.app-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(100vh - 64px);
+  padding: 24px;
+  overflow-x: hidden;
+}
+
+/* 简历预览按窗口缩放到完整可见，放大后由外层区域承载滚动。 */
+.resume-preview-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 30px;
+  margin-bottom: 4px;
+}
+
+.resume-preview-zoom-label {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.resume-preview-viewport {
+  display: block;
+  width: 100%;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f5f7fa;
+  cursor: grab;
+  touch-action: none;
+}
+
+.resume-preview-viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.resume-preview-scale-box {
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.resume-iframe {
+  display: block;
+  border: none;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+/* 生成过程的流式文本区域：等宽字体、可滚动 */
+.stream-text {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.profile-page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.settings-page {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.settings-card {
+  margin-bottom: 16px;
+}
+
+.profile-page:not(.is-editing) .ant-input::placeholder,
+.settings-page:not(.is-editing) .ant-input::placeholder,
+.profile-page:not(.is-editing) .ant-input-number-input::placeholder,
+.settings-page:not(.is-editing) .ant-input-number-input::placeholder {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  opacity: 0 !important;
+}
+
+.profile-page:not(.is-editing) .ant-select-selection-placeholder,
+.settings-page:not(.is-editing) .ant-select-selection-placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+.profile-page:not(.is-editing) .ant-input-disabled,
+.settings-page:not(.is-editing) .ant-input-disabled,
+.settings-page:not(.is-editing) .ant-input-number-disabled .ant-input-number-input {
+  color: #262626 !important;
+  -webkit-text-fill-color: #262626;
+  opacity: 1;
+}
+
+/* 文本域调整大小时只重排当前输入控件，避免拖动手柄牵连整页表单。 */
+.profile-page textarea.ant-input {
+  max-height: 360px;
+  contain: layout;
+  resize: vertical;
+}
+
+.settings-page:not(.is-editing) .ant-select-disabled .ant-select-selection-item {
+  color: #262626 !important;
+}
+
+.jobs-filter-bar {
+  width: 100%;
+}
+
+.jobs-search-input {
+  width: 260px;
+}
+
+.table-text-link {
+  height: auto;
+  padding: 0;
+  white-space: normal;
+  text-align: left;
+}
+
+.job-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-favorite-button {
+  flex: 0 0 auto;
+  color: #8c8c8c;
+}
+
+.job-favorite-button.is-favorite {
+  color: #f5a623;
+}
+
+.job-detail-text-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.job-detail-text-section {
+  padding: 14px 16px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.job-detail-text-section--description {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.job-detail-text-section--requirements {
+  border-color: #c7d2fe;
+  background: #fafaff;
+}
+
+.job-detail-text-section--note {
+  border-color: #fde68a;
+  background: #fffdf2;
+}
+
+.job-detail-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.job-detail-section-icon {
+  display: inline-flex;
+  color: #1677ff;
+}
+
+.job-detail-text-section--requirements .job-detail-section-icon {
+  color: #4f46e5;
+}
+
+.job-detail-text-section--note .job-detail-section-icon {
+  color: #d48806;
+}
+
+.job-detail-text {
+  margin-bottom: 0 !important;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+}
+
+.job-detail-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 20px;
+  padding: 16px 0 4px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
+.profile-page-header,
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.profile-page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-top-card {
+  height: 100%;
+}
+
+.profile-photo-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-photo-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 132px;
+  height: 176px;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #f5f5f5;
+}
+
+.profile-photo-frame .ant-image,
+.profile-photo-frame img {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-photo-frame img {
+  object-fit: cover;
+}
+
+.profile-photo-placeholder {
+  color: #8c8c8c;
+  font-size: 52px;
+}
+
+.profile-section-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-section-stack.is-section-reordering {
+  gap: 8px;
+}
+
+.profile-section-sortable {
+  position: relative;
+  min-width: 0;
+  /* 长资料页只绘制当前视口附近的分区，避免滚动时反复绘制整棵表单树。 */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 420px;
+}
+
+.profile-section-sortable.is-section-reordering {
+  /* 拖动时必须让所有标题条参与布局，不能被屏幕外延迟绘制隐藏。 */
+  content-visibility: visible;
+  min-height: 50px;
+  border: 1px solid #d9e5f5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.profile-section-compact-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+  gap: 12px;
+  padding: 0 76px 0 16px;
+}
+
+.profile-section-compact-label .ant-typography:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-section-sortable.is-section-reordering .profile-section-content.is-collapsed {
+  display: none;
+}
+
+.profile-section-sortable.is-drag-over > .ant-card,
+.profile-section-sortable.is-drag-over > .profile-top-card,
+.profile-section-sortable.is-drag-over > .ant-row,
+.profile-section-sortable.is-drag-over {
+  outline: 2px dashed #1677ff;
+  outline-offset: 3px;
+}
+
+.profile-section-drag-handle {
+  position: absolute;
+  z-index: 3;
+  top: 9px;
+  right: 38px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8c8c8c;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.profile-page.is-editing .profile-section-drag-handle {
+  display: inline-flex;
+}
+
+.profile-section-drag-handle:hover {
+  background: #eef5ff;
+  color: #1677ff;
+}
+
+.profile-section-drag-handle:active {
+  cursor: grabbing;
+}
+
+.profile-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-list-item {
+  position: relative;
+  min-width: 0;
+  padding: 16px 76px 4px 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.profile-list-item.is-drag-over {
+  border-color: #1677ff;
+  outline: 2px dashed #1677ff;
+  outline-offset: 2px;
+}
+
+.profile-list-item-drag-handle,
+.profile-list-item-delete {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+}
+
+.profile-list-item-drag-handle {
+  right: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8c8c8c;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.profile-list-item-drag-handle:hover {
+  background: #eef5ff;
+  color: #1677ff;
+}
+
+.profile-list-item-drag-handle:active {
+  cursor: grabbing;
+}
+
+.profile-list-item-delete {
+  right: 8px;
+}
+
+.profile-list-item-summary {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding-right: 4px;
+}
+
+.profile-list-item-summary .ant-typography {
+  min-width: 0;
+}
+
+.profile-list-item-content.is-collapsed {
+  display: none;
+}
+
+.profile-reference-preview {
+  max-height: 60vh;
+  margin: 12px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+@media (max-width: 575px) {
+  .jobs-filter-bar > .ant-space-item:first-child,
+  .jobs-search-input {
+    width: 100%;
+  }
+
+  .profile-page-header,
+  .settings-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .profile-page-header-actions {
+    width: 100%;
+  }
+
+  .profile-page-header-actions > button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 991px) {
+  .app-main {
+    margin-left: 64px;
+  }
+
+  .app-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .app-brand-copy {
+    display: none;
+  }
+
+  .app-header-repo {
+    display: none;
+  }
+
+  .app-nav-menu {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .app-sider-footer {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .ant-layout-sider-collapsed .app-guide-button {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .ant-layout-sider-collapsed .app-guide-label {
+    display: none;
+  }
+
+  .app-header {
+    padding: 0 16px;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .user-guide-footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .user-guide-footer > .ant-space {
+    justify-content: flex-end;
+  }
+
+  .user-guide-step-content {
+    gap: 12px;
+    padding-inline: 0;
+  }
+}

@@ -1,0 +1,42 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.tmp_*_venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# ===== Node =====
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+node_modules/.tmp/
+
+# ===== 环境与本地数据 =====
+.env
+.env.*
+!.env.example
+backend/data/
+backend/*.db
+backend/*.db-*
+backend/*.sqlite
+backend/*.sqlite-*
+backend/*.sqlite3
+backend/*.sqlite3-*
+backend/backups/
+backend/test_resume_forge.db
+
+# ===== 编辑器 =====
+.vscode/
+.idea/
+.DS_Store
+
+# ===== 日志 =====
+*.log

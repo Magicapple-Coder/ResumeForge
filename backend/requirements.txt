@@ -1,0 +1,10 @@
+# 直接运行依赖固定版本；开发与 CI 工具见 requirements-dev.txt。
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.40
+pydantic==2.11.3
+pydantic-settings==2.9.1
+httpx==0.28.1
+jinja2==3.1.6
+alembic==1.19.1
