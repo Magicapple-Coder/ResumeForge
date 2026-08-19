@@ -62,7 +62,19 @@ cd ResumeForge
 - Python ≥ 3.10
 - Node.js ≥ 20.19.0（含 npm）
 
-### 1. 启动后端
+### 1. Windows 一键启动（推荐）
+
+在项目根目录双击 [start.cmd](start.cmd)。首次运行会自动创建后端虚拟环境、安装缺失的前后端依赖、启动两个服务，并打开浏览器：
+
+```text
+http://127.0.0.1:5173
+```
+
+之后再次双击 `start.cmd` 即可打开项目，无需分别启动前端和后端。需要完全关闭服务时，双击 [stop.cmd](stop.cmd)；它只会结束由启动器记录并验证过的 ResumeForge 进程，不会结束其他项目。
+
+启动器会固定前端代理到本次启动的本地后端。若提示端口被其他程序占用，请先关闭旧的 ResumeForge 服务或冲突程序，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
+
+### 2. 手动启动（开发、排错或 macOS/Linux）
 
 ```powershell
 cd backend
@@ -80,7 +92,7 @@ macOS/Linux 使用 `.venv/bin/python -m pip ...` 和 `.venv/bin/python -m uvicor
 
 数据库文件首次启动时自动创建于 `backend/data/resume_forge.db`。空库和已版本化数据库直接由 Alembic revision 管理；只有检测到早期未版本化业务表时，才先用幂等兼容层补齐已知列并接入迁移基线。如果已有用户数据且存在待执行迁移，会先在数据库同级的 `backups/` 目录创建一致性备份。升级前仍建议自行备份。可选环境变量见 [backend/.env.example](backend/.env.example)（全部有默认值，不配置也能运行）。
 
-### 2. 启动前端
+然后在另一个终端启动前端：
 
 ```powershell
 cd frontend

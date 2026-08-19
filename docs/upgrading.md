@@ -39,7 +39,9 @@ cd ../frontend
 npm ci
 ```
 
-依赖安装完成后，分别在两个终端重新启动后端与前端，并确认健康检查正常：
+依赖安装完成后，Windows 用户可在项目根目录双击 `start.cmd`，它会启动前后端并自动打开页面。需要关闭服务时双击 `stop.cmd`。启动器只会终止自己记录且校验通过的 ResumeForge 进程。
+
+开发、排错或 macOS/Linux 环境仍可分别启动后端与前端，并确认健康检查正常：
 
 ```powershell
 # 终端 1（Windows）

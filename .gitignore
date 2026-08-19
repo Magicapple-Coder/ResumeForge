@@ -32,6 +32,7 @@ backend/*.sqlite3
 backend/*.sqlite3-*
 backend/backups/
 backend/test_resume_forge.db
+runtime/
 
 # ===== 编辑器 =====
 .vscode/
