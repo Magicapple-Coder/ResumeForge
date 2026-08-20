@@ -17,6 +17,8 @@ from app.services.assistant_service import normalize_attachments
 from app.services.assistant_web_search import (
     BING_SEARCH_URL,
     AssistantSearchError,
+    build_search_query,
+    filter_relevant_results,
     parse_bing_rss,
     search_web,
 )
@@ -393,6 +395,39 @@ def test_parse_bing_rss_limits_and_sanitizes_results():
         parse_bing_rss(b"<!DOCTYPE rss [<!ENTITY x 'boom'>]><rss>&x;</rss>")
 
 
+def test_career_query_drops_conversational_filler_and_keeps_concrete_terms():
+    query = build_search_query("如果我秋招投递互联网大厂没通过，会有投递冷却期吗？")
+
+    assert query == "秋招 投递 互联网大厂 冷却期 招聘"
+    assert "如果" not in query
+
+
+def test_career_search_filters_unrelated_dictionary_and_poem_results():
+    question = "如果我秋招投递互联网大厂没通过，会有投递冷却期吗？"
+    results = filter_relevant_results(
+        [
+            {
+                "title": "如果（汉语假设连词）_百度百科",
+                "url": "https://baike.baidu.com/item/example",
+                "snippet": "如果是表示假设关系的连词。",
+            },
+            {
+                "title": "互联网企业校园招聘常见问题",
+                "url": "https://careers.example.com/campus-faq",
+                "snippet": "秋招投递未通过后的再次申请与招聘安排说明。",
+            },
+            {
+                "title": "诗歌《如果》原文",
+                "url": "https://example.com/poem",
+                "snippet": "一首关于人生选择的诗歌。",
+            },
+        ],
+        question,
+    )
+
+    assert [result["url"] for result in results] == ["https://careers.example.com/campus-faq"]
+
+
 @pytest.mark.asyncio
 async def test_search_web_uses_fetch_function_without_network(monkeypatch):
     xml = b"<rss><channel><item><title>Result</title><link>https://example.com</link></item></channel></rss>"
@@ -406,6 +441,24 @@ async def test_search_web_uses_fetch_function_without_network(monkeypatch):
     results = await search_web("  Python   jobs  ")
     assert captured["query"] == "Python jobs"
     assert results[0]["title"] == "Result"
+
+
+@pytest.mark.asyncio
+async def test_search_web_rejects_unrelated_results_for_a_career_question(monkeypatch):
+    xml = """<rss><channel>
+    <item><title>如果（汉语假设连词）_百度百科</title>
+    <link>https://baike.baidu.com/item/example</link><description>表示假设关系。</description></item>
+    </channel></rss>""".encode("utf-8")
+    captured = {}
+
+    async def fake_fetch(query: str):
+        captured["query"] = query
+        return xml
+
+    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+    with pytest.raises(AssistantSearchError, match="直接相关"):
+        await search_web("如果我秋招投递互联网大厂没通过，会有投递冷却期吗？")
+    assert captured["query"] == "秋招 投递 互联网大厂 冷却期 招聘"
 
 
 def test_chat_migration_builds_history_tables_and_cascades(tmp_path):

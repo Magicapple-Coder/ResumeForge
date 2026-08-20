@@ -3,6 +3,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
+  MoreOutlined,
   PaperClipOutlined,
   PlusOutlined,
   SaveOutlined,
@@ -13,10 +14,12 @@ import {
   Alert,
   App,
   Button,
+  Collapse,
   Empty,
   Input,
   List,
   Popconfirm,
+  Popover,
   Select,
   Skeleton,
   Space,
@@ -27,6 +30,7 @@ import {
   Upload,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   createAssistantConversation,
@@ -80,6 +84,143 @@ interface AttachmentClassification {
   mimeType: string;
 }
 
+function safeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const tokenPattern =
+    /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<，。！？、）】〉》]+))/g;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(value)) !== null) {
+    if (match.index > cursor) nodes.push(value.slice(cursor, match.index));
+    if (match[2]) {
+      nodes.push(<strong key={`strong-${match.index}`}>{match[2]}</strong>);
+    } else if (match[3]) {
+      nodes.push(<code key={`code-${match.index}`}>{match[3]}</code>);
+    } else {
+      const url = safeExternalUrl(match[5] ?? match[6]);
+      nodes.push(
+        url ? (
+          <a key={`link-${match.index}`} href={url} target="_blank" rel="noopener noreferrer">
+            {match[4] ?? match[6]}
+          </a>
+        ) : (
+          (match[4] ?? match[6])
+        ),
+      );
+    }
+    cursor = tokenPattern.lastIndex;
+  }
+  if (cursor < value.length) nodes.push(value.slice(cursor));
+  return nodes;
+}
+
+function parseMarkdownTableRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return null;
+  const source = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed;
+  const row = (source.endsWith("|") ? source.slice(0, -1) : source)
+    .split("|")
+    .map((cell) => cell.trim());
+  return row.length >= 2 && row.every(Boolean) ? row : null;
+}
+
+function isMarkdownTableDivider(line: string, columnCount: number): boolean {
+  const cells = parseMarkdownTableRow(line);
+  return cells?.length === columnCount && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+export function AssistantMessageContent({ content }: { content: string }) {
+  const lines = content.split(/\r?\n/);
+  const blocks: ReactNode[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const tableHeader = parseMarkdownTableRow(lines[index]);
+    if (tableHeader && isMarkdownTableDivider(lines[index + 1] ?? "", tableHeader.length)) {
+      const rows: string[][] = [];
+      let nextIndex = index + 2;
+      while (nextIndex < lines.length) {
+        const row = parseMarkdownTableRow(lines[nextIndex]);
+        if (!row || row.length !== tableHeader.length) break;
+        rows.push(row);
+        nextIndex += 1;
+      }
+      blocks.push(
+        <div key={`table-${index}`} className="assistant-markdown-table-wrap" tabIndex={0}>
+          <table>
+            <thead>
+              <tr>
+                {tableHeader.map((cell, cellIndex) => (
+                  <th key={`header-${cellIndex}`}>{renderInlineMarkdown(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={`cell-${rowIndex}-${cellIndex}`}>{renderInlineMarkdown(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      index = nextIndex - 1;
+      continue;
+    }
+
+    const line = lines[index];
+    const heading = line.match(/^#{1,3}\s+(.+)$/);
+    const bullet = line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\s*(\d+)[.)]\s+(.+)$/);
+    if (heading) {
+      blocks.push(<h4 key={`heading-${index}`}>{renderInlineMarkdown(heading[1])}</h4>);
+      continue;
+    }
+    if (bullet || ordered) {
+      blocks.push(
+        <div key={`list-${index}`} className="assistant-markdown-list-item">
+          <span aria-hidden="true">{ordered ? `${ordered[1]}.` : "•"}</span>
+          <div>{renderInlineMarkdown(bullet?.[1] ?? ordered?.[2] ?? "")}</div>
+        </div>,
+      );
+      continue;
+    }
+    if (!line.trim()) {
+      blocks.push(<div key={`space-${index}`} className="assistant-markdown-spacer" />);
+      continue;
+    }
+    blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(line)}</p>);
+  }
+
+  return <div className="assistant-message-content assistant-message-content--rich">{blocks}</div>;
+}
+
+export function StreamingStatus({ message }: { message: string }) {
+  return (
+    <div className="assistant-streaming-status" role="status">
+      <span className="assistant-streaming-dot" aria-hidden="true" />
+      <span>{message}</span>
+      <span className="assistant-streaming-ellipsis" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+    </div>
+  );
+}
+
 function positiveId(value: string | null): number | undefined {
   return value && /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : undefined;
 }
@@ -115,6 +256,60 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function ConversationTitle({ title, onSelect }: { title: string; onSelect: () => void }) {
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [overflowDistance, setOverflowDistance] = useState(0);
+
+  useEffect(() => {
+    const element = titleRef.current;
+    if (!element) return;
+
+    const updateOverflowDistance = () => {
+      const nextDistance = Math.max(0, element.scrollWidth - element.clientWidth);
+      setOverflowDistance((current) => (current === nextDistance ? current : nextDistance));
+    };
+    updateOverflowDistance();
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(updateOverflowDistance);
+    observer?.observe(element);
+    window.addEventListener("resize", updateOverflowDistance);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateOverflowDistance);
+    };
+  }, [title]);
+
+  const style = {
+    "--assistant-title-scroll-distance": `-${overflowDistance}px`,
+  } as CSSProperties;
+
+  return (
+    <Tooltip title={title} placement="right">
+      <button
+        type="button"
+        className="assistant-conversation-button"
+        aria-label={title}
+        onClick={onSelect}
+      >
+        <span
+          ref={titleRef}
+          className={
+            overflowDistance > 0
+              ? "assistant-conversation-title is-overflowing"
+              : "assistant-conversation-title"
+          }
+          style={style}
+        >
+          <span>{title}</span>
+        </span>
+      </button>
+    </Tooltip>
+  );
+}
+
 function MessageAttachments({ message }: { message: AssistantMessage }) {
   if (!message.attachments.length) return null;
   return (
@@ -137,22 +332,33 @@ function MessageAttachments({ message }: { message: AssistantMessage }) {
   );
 }
 
-function MessageSources({ sources }: { sources: AssistantSource[] }) {
+export function MessageSources({ sources }: { sources: AssistantSource[] }) {
   if (!sources.length) return null;
   return (
-    <div className="assistant-sources">
-      <Typography.Text type="secondary">参考来源</Typography.Text>
-      {sources.map((source) => (
-        <Typography.Link
-          key={source.url}
-          href={source.url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {source.title || source.url}
-        </Typography.Link>
-      ))}
-    </div>
+    <Collapse
+      className="assistant-sources"
+      size="small"
+      items={[
+        {
+          key: "sources",
+          label: `参考来源（${sources.length}）`,
+          children: (
+            <ol>
+              {sources.map((source) => (
+                <li key={source.url}>
+                  <Typography.Link href={source.url} target="_blank" rel="noopener noreferrer">
+                    {source.title || source.url}
+                  </Typography.Link>
+                  {source.snippet && (
+                    <Typography.Text type="secondary">{source.snippet}</Typography.Text>
+                  )}
+                </li>
+              ))}
+            </ol>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -182,6 +388,7 @@ export default function AssistantPage() {
   const [streamError, setStreamError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [actionMenuId, setActionMenuId] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeIdRef = useRef<number | null>(null);
   const sendingRef = useRef(false);
@@ -485,33 +692,50 @@ export default function AssistantPage() {
             <List.Item
               className={conversation.id === activeId ? "is-active" : ""}
               actions={[
-                <Tooltip title="重命名" key="rename">
-                  <Button
-                    type="text"
-                    size="small"
-                    aria-label="重命名对话"
-                    icon={<EditOutlined />}
-                    onClick={() => {
-                      setEditingId(conversation.id);
-                      setEditingTitle(conversation.title);
-                    }}
-                  />
-                </Tooltip>,
-                <Popconfirm
-                  key="delete"
-                  title="删除这段对话？"
-                  onConfirm={() => void removeConversation(conversation.id)}
+                <Popover
+                  key="more"
+                  trigger="click"
+                  placement="bottomRight"
+                  open={actionMenuId === conversation.id}
+                  onOpenChange={(open) => setActionMenuId(open ? conversation.id : null)}
+                  content={
+                    <div className="assistant-conversation-actions-menu">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setActionMenuId(null);
+                          setEditingId(conversation.id);
+                          setEditingTitle(conversation.title);
+                        }}
+                      >
+                        重命名
+                      </Button>
+                      <Popconfirm
+                        title="删除这段对话？"
+                        onConfirm={() => {
+                          setActionMenuId(null);
+                          void removeConversation(conversation.id);
+                        }}
+                      >
+                        <Button type="text" size="small" danger icon={<DeleteOutlined />}>
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    </div>
+                  }
                 >
-                  <Tooltip title="删除">
+                  <Tooltip title="更多操作">
                     <Button
                       type="text"
                       size="small"
-                      danger
-                      aria-label="删除对话"
-                      icon={<DeleteOutlined />}
+                      aria-label="更多对话操作"
+                      className="assistant-conversation-more-button"
+                      icon={<MoreOutlined />}
                     />
                   </Tooltip>
-                </Popconfirm>,
+                </Popover>,
               ]}
             >
               {editingId === conversation.id ? (
@@ -533,13 +757,10 @@ export default function AssistantPage() {
                   onPressEnter={() => void saveConversationTitle(conversation.id)}
                 />
               ) : (
-                <button
-                  type="button"
-                  className="assistant-conversation-button"
-                  onClick={() => selectConversation(conversation.id)}
-                >
-                  {conversation.title}
-                </button>
+                <ConversationTitle
+                  title={conversation.title}
+                  onSelect={() => selectConversation(conversation.id)}
+                />
               )}
             </List.Item>
           )}
@@ -566,7 +787,7 @@ export default function AssistantPage() {
                 className={`assistant-message assistant-message--${item.role}`}
               >
                 <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
-                <div className="assistant-message-content">{item.content}</div>
+                <AssistantMessageContent content={item.content} />
                 <MessageAttachments message={item} />
                 <MessageSources sources={item.context.sources ?? []} />
                 {item.status === "error" && item.error && (
@@ -578,15 +799,16 @@ export default function AssistantPage() {
           {isActiveStream && pendingUserText && (
             <article className="assistant-message assistant-message--user">
               <Typography.Text strong>你</Typography.Text>
-              <div className="assistant-message-content">{pendingUserText}</div>
+              <AssistantMessageContent content={pendingUserText} />
             </article>
           )}
           {isActiveStream && sending && (
             <article className="assistant-message assistant-message--assistant">
               <Typography.Text strong>求职助手</Typography.Text>
-              <div className="assistant-message-content">
-                {streamingText || progressText || "正在思考…"}
-              </div>
+              <AssistantMessageContent content={streamingText || progressText || "正在思考…"} />
+              <StreamingStatus
+                message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}
+              />
               <MessageSources sources={streamingSources} />
             </article>
           )}
@@ -596,32 +818,26 @@ export default function AssistantPage() {
 
         <div className="assistant-composer">
           <div className="assistant-context-controls">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="关联岗位"
-              value={jobId}
-              options={jobOptions}
-              onChange={setJobId}
-            />
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="关联简历"
-              value={resumeId}
-              options={resumeOptions}
-              onChange={setResumeId}
-            />
-            <Space size={6}>
-              <Switch size="small" checked={includeProfile} onChange={setIncludeProfile} />
-              <Typography.Text>使用我的资料</Typography.Text>
-            </Space>
-            <Space size={6}>
-              <Switch size="small" checked={webSearch} onChange={setWebSearch} />
-              <Typography.Text>联网搜索</Typography.Text>
-            </Space>
+            <div className="assistant-context-selects">
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="关联岗位"
+                value={jobId}
+                options={jobOptions}
+                onChange={setJobId}
+              />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="关联简历"
+                value={resumeId}
+                options={resumeOptions}
+                onChange={setResumeId}
+              />
+            </div>
           </div>
           {(attachments.length > 0 || includeProfile) && (
             <Alert
@@ -657,29 +873,41 @@ export default function AssistantPage() {
             }}
           />
           <div className="assistant-composer-actions">
-            <Upload
-              accept=".txt,.md,.json,.csv,image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              showUploadList={false}
-              disabled={
-                sending || attachmentReads > 0 || attachments.length >= MAX_ATTACHMENT_COUNT
-              }
-              beforeUpload={(file) => {
-                void addAttachment(file as File);
-                return Upload.LIST_IGNORE;
-              }}
-            >
-              <Tooltip title="添加文本或图片附件">
-                <Button
-                  aria-label="添加附件"
-                  icon={<PaperClipOutlined />}
-                  loading={attachmentReads > 0}
-                  disabled={sending || attachmentReads > 0}
-                >
-                  附件
-                </Button>
-              </Tooltip>
-            </Upload>
+            <div className="assistant-composer-utility">
+              <Upload
+                accept=".txt,.md,.json,.csv,image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                showUploadList={false}
+                disabled={
+                  sending || attachmentReads > 0 || attachments.length >= MAX_ATTACHMENT_COUNT
+                }
+                beforeUpload={(file) => {
+                  void addAttachment(file as File);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Tooltip title="添加文本或图片附件">
+                  <Button
+                    aria-label="添加附件"
+                    icon={<PaperClipOutlined />}
+                    loading={attachmentReads > 0}
+                    disabled={sending || attachmentReads > 0}
+                  >
+                    附件
+                  </Button>
+                </Tooltip>
+              </Upload>
+              <div className="assistant-context-toggles">
+                <label className="assistant-context-toggle">
+                  <Switch size="small" checked={includeProfile} onChange={setIncludeProfile} />
+                  <span>使用我的资料</span>
+                </label>
+                <label className="assistant-context-toggle">
+                  <Switch size="small" checked={webSearch} onChange={setWebSearch} />
+                  <span>联网搜索</span>
+                </label>
+              </div>
+            </div>
             {sending ? (
               <Button
                 danger

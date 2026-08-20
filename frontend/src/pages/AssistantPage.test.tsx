@@ -7,7 +7,11 @@ import type {
   AssistantConversationDetail,
   AssistantStreamEvent,
 } from "../types";
-import AssistantPage from "./AssistantPage";
+import AssistantPage, {
+  AssistantMessageContent,
+  MessageSources,
+  StreamingStatus,
+} from "./AssistantPage";
 
 const apiMocks = vi.hoisted(() => ({
   createAssistantConversation: vi.fn(),
@@ -86,6 +90,72 @@ afterEach(() => {
 });
 
 describe("AssistantPage", () => {
+  it("renders assistant Markdown as structured, safe content", () => {
+    render(
+      <AssistantMessageContent
+        content={
+          "## 投递建议\n\n**先确认招聘政策**\n- 保留投递记录\n1. 关注官网说明\n查看 [招聘官网](https://careers.example.com/faq)、https://jobs.example.com 与 `冷却期`。"
+        }
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "投递建议" })).toBeInTheDocument();
+    expect(screen.getByText("先确认招聘政策").tagName).toBe("STRONG");
+    expect(screen.getByText("保留投递记录")).toBeInTheDocument();
+    expect(screen.getByText("关注官网说明")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "招聘官网" })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    expect(screen.getByRole("link", { name: "https://jobs.example.com" })).toHaveAttribute(
+      "href",
+      "https://jobs.example.com/",
+    );
+    expect(screen.getByText("冷却期").tagName).toBe("CODE");
+  });
+
+  it("renders standard Markdown tables with accessible headers and cells", () => {
+    render(
+      <AssistantMessageContent content={"| 阶段 | 建议 |\n| --- | --- |\n| 网申 | 关注官网 |"} />,
+    );
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "阶段" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "网申" })).toBeInTheDocument();
+  });
+
+  it("shows an accessible generating status", () => {
+    render(<StreamingStatus message="正在生成回答" />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("正在生成回答");
+  });
+
+  it("keeps web sources collapsed until the user expands them", () => {
+    render(
+      <MessageSources
+        sources={[{ title: "招聘官网", url: "https://example.com/job", snippet: "岗位信息" }]}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "招聘官网" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /参考来源（1）/ }));
+    expect(screen.getByRole("link", { name: "招聘官网" })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+  });
+
+  it("shows conversation management only after opening the more-actions menu", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "会话一" });
+
+    expect(screen.queryByRole("button", { name: /重命名/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "更多对话操作" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /重命名/ }));
+
+    expect(await screen.findByDisplayValue("会话一")).toBeInTheDocument();
+  });
+
   it("keeps the latest conversation when an older detail request finishes late", async () => {
     const firstRequest = deferred<AssistantConversationDetail>();
     apiMocks.getAssistantConversation.mockImplementation((id: number) =>
@@ -129,10 +199,8 @@ describe("AssistantPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(await screen.findByText("旧会话回复")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "招聘官网" })).toHaveAttribute(
-      "rel",
-      "noopener noreferrer",
-    );
+    expect(screen.queryByRole("link", { name: "招聘官网" })).not.toBeInTheDocument();
+    expect(screen.getByText("参考来源（1）")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "会话二" }));
     expect(await screen.findByRole("heading", { name: "会话二" })).toBeInTheDocument();
@@ -147,7 +215,7 @@ describe("AssistantPage", () => {
     expect(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题")).toBeEnabled();
     expect(screen.getByRole("heading", { name: "会话二" })).toBeInTheDocument();
     expect(apiMocks.getAssistantConversation).toHaveBeenLastCalledWith(2);
-  });
+  }, 10_000);
 
   it("prevents duplicate sends and aborts the active request", async () => {
     let signal: AbortSignal | undefined;

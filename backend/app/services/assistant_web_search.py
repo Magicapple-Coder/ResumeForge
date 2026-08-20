@@ -16,6 +16,28 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _MAX_QUERY_CHARS = 300
 _MAX_RESULTS = 5
 _TAG_RE = re.compile(r"\s+")
+_QUERY_SEPARATOR_RE = re.compile(r"[，。！？、；：,.!?;:\n\r]+")
+_CAREER_TERMS = (
+    "互联网大厂",
+    "冷却期",
+    "秋招",
+    "春招",
+    "校招",
+    "社招",
+    "投递",
+    "招聘",
+    "求职",
+    "面试",
+    "简历",
+    "实习",
+    "转正",
+    "offer",
+    "就业",
+    "岗位",
+    "职业发展",
+)
+_CAREER_MARKERS = frozenset(_CAREER_TERMS) | {"人才", "人力资源", "应聘"}
+_OBVIOUSLY_UNRELATED_MARKERS = frozenset({"百度百科", "维基百科", "汉语国学", "诗歌", "词典"})
 
 
 class AssistantSearchError(Exception):
@@ -61,6 +83,54 @@ def _safe_result_url(value: str) -> str:
     if parsed.username or parsed.password:
         return ""
     return value[:2048]
+
+
+def _normalized_query(value: str) -> str:
+    return " ".join(_QUERY_SEPARATOR_RE.sub(" ", value).split())[:_MAX_QUERY_CHARS]
+
+
+def _matched_career_terms(value: str) -> list[str]:
+    """Return distinct career terms in their order of appearance in the question."""
+    matches = [(value.casefold().find(term.casefold()), term) for term in _CAREER_TERMS]
+    return [term for position, term in sorted(matches) if position >= 0]
+
+
+def build_search_query(question: str) -> str:
+    """Remove conversational filler from Chinese career questions before calling Bing.
+
+    Search engines can overweight opening words such as ``如果`` in a natural-language
+    question. For a recognisable career question, use only concrete career concepts and
+    add a recruitment qualifier. Other questions keep their original wording.
+    """
+    normalized = _normalized_query(question)
+    terms = _matched_career_terms(normalized)
+    if len(terms) < 2:
+        return normalized
+    if "招聘" not in terms and "求职" not in terms:
+        terms.append("招聘")
+    return " ".join(terms)[:_MAX_QUERY_CHARS]
+
+
+def _is_relevant_career_result(result: dict[str, str], terms: list[str]) -> bool:
+    haystack = f"{result['title']} {result['snippet']}".casefold()
+    matched = [term for term in terms if term.casefold() in haystack]
+    has_career_marker = any(marker.casefold() in haystack for marker in _CAREER_MARKERS)
+    is_obviously_unrelated = any(marker.casefold() in haystack for marker in _OBVIOUSLY_UNRELATED_MARKERS)
+    # A dictionary or poem result can match a generic word in a question. It is not a
+    # useful recruitment source unless it also contains explicit hiring context.
+    if is_obviously_unrelated and not has_career_marker:
+        return False
+    return bool(matched and has_career_marker)
+
+
+def filter_relevant_results(
+    results: list[dict[str, str]], question: str
+) -> list[dict[str, str]]:
+    """Keep only sources that visibly relate to an identifiable career question."""
+    terms = _matched_career_terms(question)
+    if not terms:
+        return results
+    return [result for result in results if _is_relevant_career_result(result, terms)]
 
 
 def parse_bing_rss(xml_bytes: bytes, limit: int = _MAX_RESULTS) -> list[dict[str, str]]:
@@ -124,9 +194,12 @@ async def fetch_bing_rss(query: str) -> bytes:
 
 
 async def search_web(query: str) -> list[dict[str, str]]:
-    normalized = " ".join(query.split())[:_MAX_QUERY_CHARS]
+    normalized = _normalized_query(query)
     if not normalized:
         raise AssistantSearchError("请先输入要搜索的内容")
-    results = parse_bing_rss(await fetch_bing_rss(normalized))
+    search_query = build_search_query(normalized)
+    results = filter_relevant_results(parse_bing_rss(await fetch_bing_rss(search_query)), normalized)
+    if not results and _matched_career_terms(normalized):
+        raise AssistantSearchError("没有找到与当前求职问题直接相关的公开来源，请调整关键词后重试")
     logger.info("Bing RSS 搜索完成 result_count=%s", len(results))
     return results
