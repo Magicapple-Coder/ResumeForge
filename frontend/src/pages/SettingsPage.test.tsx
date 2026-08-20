@@ -216,7 +216,7 @@ describe("SettingsPage API key reveal", () => {
     );
 
     const input = await screen.findByLabelText("API Key（选填）");
-    expect(input).toHaveValue("********");
+    await waitFor(() => expect(input).toHaveValue("********"));
     expect(apiMocks.revealLLMApiKey).not.toHaveBeenCalled();
 
     fireEvent.click(passwordToggle());
