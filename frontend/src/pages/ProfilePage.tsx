@@ -37,6 +37,7 @@ import { ExperienceSection } from "../components/profile/ExperienceSection";
 import { ProjectSection } from "../components/profile/ProjectSection";
 import { SkillSection } from "../components/profile/SkillSection";
 import type { Profile } from "../types";
+import { mergeParsedProfileValues } from "../utils/profileText";
 
 type ProfileFormValues = Omit<Profile, "id" | "updated_at">;
 
@@ -410,14 +411,10 @@ export default function ProfilePage() {
       const parsed = await parseProfileText({ text });
       if (requestId !== profileTextRequestId.current) return;
       const { warnings } = parsed;
-      const draft = { ...parsed } as Partial<ProfileFormValues> & { warnings?: string[] };
-      delete draft.photo;
-      delete draft.section_order;
-      delete draft.warnings;
       const currentValues = form.getFieldsValue(true) as Partial<ProfileFormValues>;
+      const merged = mergeParsedProfileValues(currentValues as ProfileFormValues, parsed);
       form.setFieldsValue({
-        ...draft,
-        photo: currentValues.photo ?? "",
+        ...merged,
         section_order: sectionOrder,
       });
       setProfileTextWarnings(warnings);

@@ -381,6 +381,10 @@ export interface LLMTestResult {
   message: string;
 }
 
+export interface LLMApiKeyRevealResult {
+  api_key: string;
+}
+
 // ===== 搜索与统计 =====
 export interface SearchResult {
   jobs: Job[];

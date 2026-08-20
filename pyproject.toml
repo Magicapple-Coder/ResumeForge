@@ -12,9 +12,6 @@ extend-exclude = [
 # Start with correctness-oriented rules that match the existing codebase. More
 # opinionated rules can be enabled incrementally without creating a noisy rewrite.
 select = ["E4", "E7", "E9", "F"]
-# A few legacy modules still carry unused imports; enable that rule in a focused
-# cleanup later. Keep all other Pyflakes checks active in the initial gate.
-ignore = ["F401"]
 
 [tool.coverage.run]
 branch = true

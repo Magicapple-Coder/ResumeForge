@@ -1,5 +1,6 @@
 """导出服务测试。"""
 import json
+import re
 
 from app.schemas.resume import (
     ResumeAward,
@@ -104,6 +105,19 @@ def test_render_html_uses_single_a4_page_layout():
     assert "width: 210mm" in html
     assert "height: 297mm" in html
     assert "@page { size: A4; margin: 0; }" in html
+
+
+def test_render_html_uses_a_unique_nonce_for_the_a4_script():
+    first_html = render_html(RESUME)
+    second_html = render_html(RESUME)
+    first_nonce = re.search(r'<script nonce="([a-f0-9]+)">', first_html)
+    second_nonce = re.search(r'<script nonce="([a-f0-9]+)">', second_html)
+
+    assert first_nonce is not None
+    assert second_nonce is not None
+    assert first_nonce.group(1) != second_nonce.group(1)
+    assert f"script-src 'nonce-{first_nonce.group(1)}'" in first_html
+    assert "script-src 'unsafe-inline'" not in first_html
 
 
 def test_filename_sanitize_and_build():

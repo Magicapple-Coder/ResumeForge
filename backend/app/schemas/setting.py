@@ -47,3 +47,9 @@ class LLMTestResult(BaseModel):
     ok: bool
     latency_ms: int | None = None
     message: str = Field(default="", max_length=1000)
+
+
+class LLMApiKeyRevealResult(BaseModel):
+    """仅响应用户显式查看动作；普通配置读取仍返回脱敏引用。"""
+
+    api_key: str = Field(default="", max_length=8192)

@@ -195,7 +195,7 @@ def parse_bing_rss(xml_bytes: bytes, limit: int = _MAX_RESULTS) -> list[dict[str
                 "snippet": _plain_text(_child_text(node, "description"), 1000),
             }
         )
-        if len(results) >= max(1, min(limit, _MAX_RESULTS)):
+        if len(results) >= max(1, min(limit, _MAX_CANDIDATE_RESULTS)):
             break
     return results
 
@@ -205,7 +205,7 @@ async def fetch_bing_rss(query: str) -> bytes:
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
     headers = {
         "Accept": "application/rss+xml, application/xml;q=0.9",
-        "User-Agent": "ResumeForge/0.1 (+local career assistant)",
+        "User-Agent": "ResumeForge/0.2 (+local career assistant)",
     }
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:

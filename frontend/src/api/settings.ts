@@ -1,5 +1,5 @@
 /** 设置相关接口。 */
-import type { LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
+import type { LLMApiKeyRevealResult, LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
 import { request } from "./client";
 
 export function getLLMConfig(): Promise<LLMConfig> {
@@ -8,6 +8,10 @@ export function getLLMConfig(): Promise<LLMConfig> {
 
 export function saveLLMConfig(config: LLMConfig): Promise<LLMConfig> {
   return request("/settings/llm", { method: "PUT", body: JSON.stringify(config) });
+}
+
+export function revealLLMApiKey(): Promise<LLMApiKeyRevealResult> {
+  return request("/settings/llm/api-key/reveal", { method: "POST" });
 }
 
 export function testLLM(config: LLMConfig): Promise<LLMTestResult> {

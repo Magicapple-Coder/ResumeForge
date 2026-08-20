@@ -489,6 +489,33 @@ async def test_search_web_rejects_unrelated_results_for_a_career_question(monkey
     assert captured["query"] == "秋招 投递 互联网大厂 冷却期 招聘"
 
 
+@pytest.mark.asyncio
+async def test_search_web_filters_ten_candidates_before_limiting_results(monkeypatch):
+    unrelated_items = "".join(
+        f"<item><title>无关结果 {index}</title>"
+        f"<link>https://example.com/article/{index}</link>"
+        "<description>与求职无关的普通新闻内容。</description></item>"
+        for index in range(1, 6)
+    )
+    xml = (
+        "<rss><channel>"
+        f"{unrelated_items}"
+        "<item><title>Example Careers</title>"
+        "<link>https://careers.example.org/jobs</link>"
+        "<description>Explore open opportunities.</description></item>"
+        "</channel></rss>"
+    ).encode("utf-8")
+
+    async def fake_fetch(_query: str):
+        return xml
+
+    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+
+    results = await search_web("给我一些最近刚发布招聘信息的互联网企业")
+
+    assert [result["url"] for result in results] == ["https://careers.example.org/jobs"]
+
+
 def test_chat_migration_builds_history_tables_and_cascades(tmp_path):
     migration_engine = create_engine(f"sqlite:///{tmp_path / 'assistant-migration.db'}")
     config = build_alembic_config(migration_engine)

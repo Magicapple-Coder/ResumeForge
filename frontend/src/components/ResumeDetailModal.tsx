@@ -29,6 +29,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
   const loadedRecordId = useRef<number | null>(null);
   const requestVersion = useRef(0);
+  const saveRequestVersion = useRef(0);
 
   useEffect(() => {
     const currentRequest = ++requestVersion.current;
@@ -66,8 +67,16 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
 
   const saveEditedResume = async (content: ResumeContent) => {
     if (!detail) return;
+    const requestAtStart = requestVersion.current;
+    const saveAtStart = ++saveRequestVersion.current;
     const updated = await updateResume(detail.id, content);
+    if (requestAtStart !== requestVersion.current || saveAtStart !== saveRequestVersion.current) {
+      return;
+    }
     const rendered = await renderResume(updated.content);
+    if (requestAtStart !== requestVersion.current || saveAtStart !== saveRequestVersion.current) {
+      return;
+    }
     setDetail(updated);
     setHtml(rendered);
     setSuggestionsGenerated(false);

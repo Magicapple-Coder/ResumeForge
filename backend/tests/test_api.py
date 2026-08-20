@@ -420,6 +420,53 @@ def test_settings_roundtrip(client, db_session):
     assert response.status_code == 200 and response.json()["ok"] is False
 
 
+def test_settings_api_key_reveal_is_explicit_and_not_cached(client):
+    config = LLMConfig(
+        provider="deepseek",
+        base_url="https://api.deepseek.com",
+        api_key="sk-reveal-test",
+        model="deepseek-chat",
+    )
+    saved = client.put("/api/settings/llm", json=config.model_dump())
+
+    assert saved.status_code == 200
+    assert saved.json()["api_key"] == API_KEY_MASK
+    assert "sk-reveal-test" not in client.get("/api/settings/llm").text
+    assert client.get("/api/settings/llm/api-key/reveal").status_code == 405
+
+    revealed = client.post("/api/settings/llm/api-key/reveal")
+
+    assert revealed.status_code == 200
+    assert revealed.json() == {"api_key": "sk-reveal-test"}
+    assert revealed.headers["cache-control"] == "no-store, private"
+    assert revealed.headers["pragma"] == "no-cache"
+
+
+def test_settings_api_key_reveal_handles_config_without_a_key(client):
+    config = LLMConfig(
+        provider="ollama",
+        base_url="http://localhost:11434/v1",
+        api_key="",
+        model="qwen2.5:7b",
+    )
+    client.put("/api/settings/llm", json=config.model_dump())
+
+    response = client.post("/api/settings/llm/api-key/reveal")
+
+    assert response.status_code == 200
+    assert response.json() == {"api_key": ""}
+    assert response.headers["cache-control"] == "no-store, private"
+
+
+def test_settings_api_key_reveal_rejects_non_loopback_clients(client, monkeypatch):
+    monkeypatch.setattr("app.api.settings._is_loopback_request", lambda _request: False)
+
+    response = client.post("/api/settings/llm/api-key/reveal")
+
+    assert response.status_code == 403
+    assert "只能在运行后端的本机查看" in response.json()["detail"]
+
+
 def test_settings_config_records_roundtrip_and_upsert(client):
     config = LLMConfig(
         provider="deepseek",

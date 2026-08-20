@@ -4,6 +4,7 @@ import {
   CloseOutlined,
   DeleteOutlined,
   EditOutlined,
+  LoadingOutlined,
   SaveOutlined,
   SwapOutlined,
 } from "@ant-design/icons";
@@ -28,11 +29,12 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteLLMConfigRecord,
   getLLMConfig,
   listLLMConfigRecords,
+  revealLLMApiKey,
   saveLLMConfig,
   saveLLMConfigRecord,
   testLLM,
@@ -43,19 +45,145 @@ import { formatDateTime } from "../utils/format";
 
 const CUSTOM_PRESET = "custom";
 const CUSTOM_PRESET_LABEL = "自定义模型（OpenAI 兼容）";
+const API_KEY_MASK = "********";
 const PRESET_OPTIONS = [
   ...LLM_PRESETS.map((preset) => ({ value: preset.provider, label: preset.label })),
   { value: CUSTOM_PRESET, label: CUSTOM_PRESET_LABEL },
 ];
 
-/** provider 由预设选择推导，避免未注册的隐藏字段在表单校验时丢失。 */
-type SettingsFormValues = Omit<LLMConfig, "provider"> & { preset: string };
+type SettingsFormValues = LLMConfig & { preset: string };
+
+function normalizePresetBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  try {
+    const url = new URL(trimmed);
+    if (url.username || url.password || url.search || url.hash) return trimmed;
+    const defaultPort =
+      (url.protocol === "https:" && url.port === "443") ||
+      (url.protocol === "http:" && url.port === "80");
+    const port = url.port && !defaultPort ? `:${url.port}` : "";
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol.toLowerCase()}//${url.hostname.toLowerCase()}${port}${path}`;
+  } catch {
+    return trimmed;
+  }
+}
+
+function matchingPreset(config: Pick<LLMConfig, "provider" | "base_url">) {
+  const normalizedUrl = normalizePresetBaseUrl(config.base_url);
+  const exact = LLM_PRESETS.find(
+    (preset) =>
+      preset.provider === config.provider &&
+      normalizePresetBaseUrl(preset.base_url) === normalizedUrl,
+  );
+  if (exact || config.provider !== CUSTOM_PRESET) return exact;
+  // 早期自定义配置没有保存正确的展示标识；官方地址足以无歧义地恢复预设名称。
+  return LLM_PRESETS.find((preset) => normalizePresetBaseUrl(preset.base_url) === normalizedUrl);
+}
+
+function isMaskedApiKey(value: string): boolean {
+  return value === API_KEY_MASK || value.startsWith(`${API_KEY_MASK}:record:`);
+}
+
+interface ApiKeyInputProps {
+  id?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  editing: boolean;
+  disabled: boolean;
+  resetToken: number;
+  onReveal: () => Promise<string>;
+  onRevealError: (message: string) => void;
+}
+
+function ApiKeyInput({
+  id,
+  value = "",
+  onChange,
+  editing,
+  disabled,
+  resetToken,
+  onReveal,
+  onRevealError,
+}: ApiKeyInputProps) {
+  const [visible, setVisible] = useState(false);
+  const [revealedKey, setRevealedKey] = useState("");
+  const [revealing, setRevealing] = useState(false);
+  const revealRequestId = useRef(0);
+  const maskedReference = isMaskedApiKey(value) ? value : "";
+
+  useEffect(() => {
+    revealRequestId.current += 1;
+    setVisible(false);
+    setRevealedKey("");
+    setRevealing(false);
+  }, [editing, resetToken]);
+
+  useEffect(
+    () => () => {
+      revealRequestId.current += 1;
+    },
+    [],
+  );
+
+  const changeVisibility = async (nextVisible: boolean) => {
+    if (!nextVisible) {
+      revealRequestId.current += 1;
+      setVisible(false);
+      setRevealedKey("");
+      setRevealing(false);
+      return;
+    }
+    if (!maskedReference) {
+      setVisible(true);
+      return;
+    }
+    if (revealing) return;
+
+    const requestId = ++revealRequestId.current;
+    setRevealing(true);
+    try {
+      const apiKey = await onReveal();
+      if (requestId !== revealRequestId.current) return;
+      setRevealedKey(apiKey);
+      setVisible(true);
+    } catch (error) {
+      if (requestId !== revealRequestId.current) return;
+      setVisible(false);
+      setRevealedKey("");
+      onRevealError(error instanceof Error ? error.message : "读取 API Key 失败");
+    } finally {
+      if (requestId === revealRequestId.current) setRevealing(false);
+    }
+  };
+
+  const displayedValue = maskedReference ? (visible ? revealedKey : API_KEY_MASK) : value;
+
+  return (
+    <Input.Password
+      id={id}
+      value={displayedValue}
+      placeholder="sk-...（无需鉴权时可留空）"
+      autoComplete="off"
+      readOnly={!editing || Boolean(maskedReference && visible)}
+      disabled={disabled || revealing}
+      suffix={revealing ? <LoadingOutlined spin /> : undefined}
+      visibilityToggle={{
+        visible,
+        onVisibleChange: (nextVisible) => void changeVisibility(nextVisible),
+      }}
+      onChange={(event) => {
+        if (!editing || (maskedReference && visible)) return;
+        onChange?.(event.target.value);
+      }}
+    />
+  );
+}
 
 function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
-  const matched = LLM_PRESETS.find(
-    (preset) => preset.provider === config.provider && preset.base_url === config.base_url,
-  );
+  const matched = matchingPreset(config);
   return {
+    provider: config.provider,
     base_url: config.base_url,
     api_key: config.api_key,
     model: config.model,
@@ -67,9 +195,8 @@ function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
 }
 
 function configFromFormValues(values: SettingsFormValues): LLMConfig {
-  const preset = LLM_PRESETS.find((item) => item.provider === values.preset);
   return {
-    provider: preset?.provider ?? CUSTOM_PRESET,
+    provider: values.provider,
     base_url: values.base_url,
     api_key: values.api_key,
     model: values.model,
@@ -119,6 +246,9 @@ export default function SettingsPage() {
   const [recordSaving, setRecordSaving] = useState(false);
   const [recordApplyingId, setRecordApplyingId] = useState<number | null>(null);
   const [recordDeletingId, setRecordDeletingId] = useState<number | null>(null);
+  const [apiKeyResetToken, setApiKeyResetToken] = useState(0);
+
+  const resetRevealedApiKey = useCallback(() => setApiKeyResetToken((current) => current + 1), []);
 
   // 同时加载当前配置与记录，避免页面先显示一套配置、稍后又跳变到另一套状态。
   useEffect(() => {
@@ -138,11 +268,22 @@ export default function SettingsPage() {
   const applyPreset = (provider: string) => {
     if (!editing) return;
     // 自定义模式保留当前内容，避免用户误点后丢失已经填写的接口信息。
-    if (provider === CUSTOM_PRESET) return;
+    if (provider === CUSTOM_PRESET) {
+      resetRevealedApiKey();
+      form.setFieldValue("provider", CUSTOM_PRESET);
+      return;
+    }
     const preset = LLM_PRESETS.find((item) => item.provider === provider);
     if (!preset) return;
-    form.setFieldsValue({ base_url: preset.base_url, model: preset.model });
+    resetRevealedApiKey();
+    form.setFieldsValue({
+      provider: preset.provider,
+      base_url: preset.base_url,
+      model: preset.model,
+    });
   };
+
+  const revealSavedApiKey = async () => (await revealLLMApiKey()).api_key;
 
   /** 收集表单值并剔除前端专用的 preset 字段 */
   const collectValues = async (): Promise<LLMConfig | null> => {
@@ -165,6 +306,7 @@ export default function SettingsPage() {
       form.setFieldsValue(nextValues);
       savedValues.current = nextValues;
       setActiveRecordId(records.find((record) => sameConfig(record, saved))?.id ?? null);
+      resetRevealedApiKey();
       setEditing(false);
       setTestResult(null);
       message.success("配置已保存，可在下方保存为记录");
@@ -228,6 +370,7 @@ export default function SettingsPage() {
 
   const applyRecord = async (record: LLMConfigRecord) => {
     if (editing || saving || testing || recordApplyingId !== null) return;
+    resetRevealedApiKey();
     setRecordApplyingId(record.id);
     try {
       const saved = await saveLLMConfig(configFromRecord(record));
@@ -246,11 +389,37 @@ export default function SettingsPage() {
 
   const removeRecord = async (record: LLMConfigRecord) => {
     if (recordDeletingId !== null || recordApplyingId !== null) return;
+    const wasActive = activeRecordId === record.id;
     setRecordDeletingId(record.id);
     try {
       await deleteLLMConfigRecord(record.id);
       setRecords((current) => current.filter((item) => item.id !== record.id));
-      setActiveRecordId((current) => (current === record.id ? null : current));
+      if (wasActive) {
+        // The current app setting is independent from its saved record. Reload it
+        // so the form no longer keeps a reference to the deleted record's key.
+        try {
+          const currentConfig = await getLLMConfig();
+          const nextValues = formValuesFromConfig(currentConfig);
+          form.setFieldsValue(nextValues);
+          savedValues.current = nextValues;
+        } catch (refreshError) {
+          // A failed refresh must still make the stale record reference unusable.
+          const currentValues = form.getFieldsValue(true) as SettingsFormValues;
+          const nextValues = {
+            ...currentValues,
+            api_key: isMaskedApiKey(currentValues.api_key) ? API_KEY_MASK : currentValues.api_key,
+          };
+          form.setFieldsValue(nextValues);
+          savedValues.current = nextValues;
+          message.warning(
+            refreshError instanceof Error
+              ? `配置记录已删除，但当前配置刷新失败：${refreshError.message}`
+              : "配置记录已删除，但当前配置刷新失败",
+          );
+        }
+        resetRevealedApiKey();
+        setActiveRecordId(null);
+      }
       message.success("配置记录已删除");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "删除配置记录失败");
@@ -266,6 +435,7 @@ export default function SettingsPage() {
       form.setFieldsValue(savedValues.current);
     }
     setTestResult(null);
+    resetRevealedApiKey();
     setEditing(false);
   };
 
@@ -311,7 +481,17 @@ export default function SettingsPage() {
           style={{ marginBottom: 16 }}
           message="支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、智谱、OpenAI、Ollama 等。API Key 保存在本地数据库中，仅本机可访问。"
         />
-        <Form form={form} layout="vertical" disabled={!editing || saving || testing}>
+        <Form
+          form={form}
+          layout="vertical"
+          disabled={!editing || saving || testing}
+          onValuesChange={(changedValues) => {
+            if ("base_url" in changedValues) resetRevealedApiKey();
+          }}
+        >
+          <Form.Item name="provider" hidden>
+            <Input />
+          </Form.Item>
           <Form.Item name="preset" label="快速预设（选择后自动填充 Base URL 与模型名）">
             <Select options={PRESET_OPTIONS} onChange={applyPreset} />
           </Form.Item>
@@ -340,9 +520,15 @@ export default function SettingsPage() {
           <Form.Item
             name="api_key"
             label="API Key（选填）"
-            tooltip="多数云模型服务需要填写；Ollama 等无需鉴权的本地兼容服务可留空。密钥仅保存在本机，并只发送给这里配置的模型服务。"
+            tooltip="多数云模型服务需要填写；Ollama 等无需鉴权的本地兼容服务可留空。点击眼睛时才会从本机后端临时读取已保存密钥，隐藏后立即清除显示值。"
           >
-            <Input.Password placeholder="sk-...（无需鉴权时可留空）" autoComplete="off" />
+            <ApiKeyInput
+              editing={editing}
+              disabled={saving || testing}
+              resetToken={apiKeyResetToken}
+              onReveal={revealSavedApiKey}
+              onRevealError={(error) => message.error(error)}
+            />
           </Form.Item>
           <Row gutter={[16, 0]}>
             <Col xs={24} md={8}>
@@ -476,7 +662,7 @@ export default function SettingsPage() {
                 }
                 description={
                   <Space size={[8, 4]} wrap>
-                    <Tag>{record.provider || "custom"}</Tag>
+                    <Tag>{matchingPreset(record)?.label ?? CUSTOM_PRESET_LABEL}</Tag>
                     <Typography.Text type="secondary">
                       {record.model || "未填写模型"}
                     </Typography.Text>

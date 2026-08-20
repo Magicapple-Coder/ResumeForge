@@ -1,14 +1,16 @@
 """设置接口：大模型配置的读取、保存与连通性测试。"""
+import ipaddress
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.setting import LLMConfigRecord
 from ..schemas.setting import (
     LLMConfig,
+    LLMApiKeyRevealResult,
     LLMConfigRecordCreate,
     LLMConfigRecordOut,
     LLMTestRequest,
@@ -29,6 +31,19 @@ from ..services.settings_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+def _is_loopback_request(request: Request) -> bool:
+    """密钥明文只能返回给直接连接本机后端的客户端。"""
+    if request.client is None:
+        return False
+    try:
+        address = ipaddress.ip_address(request.client.host.split("%", maxsplit=1)[0])
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    return address.ipv4_mapped is not None and address.ipv4_mapped.is_loopback
 
 
 @router.get("/llm/records", response_model=list[LLMConfigRecordOut])
@@ -55,6 +70,20 @@ def remove_llm_config_record(record_id: int, db: Session = Depends(get_db)):
 @router.get("/llm", response_model=LLMConfig)
 def read_llm_config(db: Session = Depends(get_db)):
     return mask_llm_config(db, get_llm_config(db))
+
+
+@router.post("/llm/api-key/reveal", response_model=LLMApiKeyRevealResult)
+def reveal_llm_api_key(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """仅在用户点击显示时临时返回当前密钥，且禁止浏览器和代理缓存。"""
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="API Key 只能在运行后端的本机查看")
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return LLMApiKeyRevealResult(api_key=get_llm_config(db).api_key)
 
 
 @router.put("/llm", response_model=LLMConfig)

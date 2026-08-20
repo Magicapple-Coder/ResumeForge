@@ -73,10 +73,10 @@ macOS/Linux 将后端 Python 路径替换为 `.venv/bin/python`；前端命令�
 ```powershell
 $backup = "backend\data\backups\resume_forge-YYYYMMDD-HHMMSS-ffffff.db"
 Copy-Item $backup backend\data\resume_forge.db -Force
-git checkout v0.1.0  # 示例：替换为 CHANGELOG 中标注的上一个稳定版本
+git checkout <previous-stable-tag-or-commit>  # 例如已发布的 v0.1.0 标签或对应提交
 ```
 
-如果数据库已经执行了不可逆的迁移，必须先阅读对应 revision 的降级说明；不要把新版本数据库直接交给旧版本使用。发布新版本时应在 `CHANGELOG.md` 标出迁移和兼容性要求。
+将占位符替换为你要回滚到的实际稳定标签或提交；发布新版本时应为稳定版本创建 Git 标签（本次为 `v0.2.0`），并在 `CHANGELOG.md` 标出迁移和兼容性要求。如果数据库已经执行了不可逆的迁移，必须先阅读对应 revision 的降级说明；不要把新版本数据库直接交给旧版本使用。
 
 ## 使用压缩包更新
 

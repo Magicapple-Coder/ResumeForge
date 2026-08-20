@@ -522,7 +522,10 @@ export default function ResumeEditorModal({
       zIndex={1100}
       destroyOnHidden
       maskClosable={!saving}
-      onCancel={onClose}
+      keyboard={!saving}
+      onCancel={() => {
+        if (!saving) onClose();
+      }}
       footer={
         <Space>
           <Button disabled={saving} onClick={onClose}>

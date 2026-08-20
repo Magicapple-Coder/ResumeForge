@@ -7,6 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteLLMConfigRecord: vi.fn(),
   getLLMConfig: vi.fn(),
   listLLMConfigRecords: vi.fn(),
+  revealLLMApiKey: vi.fn(),
   saveLLMConfig: vi.fn(),
   saveLLMConfigRecord: vi.fn(),
   testLLM: vi.fn(),
@@ -34,6 +35,7 @@ function tooltipTriggerFor(label: string): HTMLElement {
 beforeEach(() => {
   apiMocks.getLLMConfig.mockResolvedValue(llmConfig);
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
+  apiMocks.revealLLMApiKey.mockResolvedValue({ api_key: "sk-revealed" });
 });
 
 afterEach(() => {
@@ -70,6 +72,39 @@ describe("SettingsPage parameter help", () => {
 });
 
 describe("SettingsPage model presets", () => {
+  it("recognizes a legacy custom config that uses the official DeepSeek endpoint", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      provider: "custom",
+      base_url: "https://api.deepseek.com/",
+      api_key: "********:record:1",
+      model: "deepseek-v4-flash",
+    });
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText("DeepSeek（深度求索）")).toBeInTheDocument();
+    expect(screen.getByLabelText("模型名称")).toHaveValue("deepseek-v4-flash");
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "custom",
+          api_key: "********:record:1",
+          model: "deepseek-v4-flash",
+        }),
+      ),
+    );
+  });
+
   it("shows an unknown saved configuration as a custom OpenAI-compatible model", async () => {
     apiMocks.getLLMConfig.mockResolvedValue({
       ...llmConfig,
@@ -152,4 +187,131 @@ describe("SettingsPage model presets", () => {
       ),
     );
   }, 15_000);
+});
+
+describe("SettingsPage API key reveal", () => {
+  function passwordToggle(): HTMLElement {
+    const input = screen.getByLabelText("API Key（选填）");
+    const toggle = input
+      .closest(".ant-input-affix-wrapper")
+      ?.querySelector<HTMLElement>(".ant-input-password-icon");
+    if (!toggle) throw new Error("未找到 API Key 显示按钮");
+    return toggle;
+  }
+
+  it("reveals the saved key only on demand and keeps the form reference masked", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      provider: "custom",
+      base_url: "https://api.deepseek.com",
+      api_key: "********:record:1",
+      model: "deepseek-v4-flash",
+    });
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    const input = await screen.findByLabelText("API Key（选填）");
+    expect(input).toHaveValue("********");
+    expect(apiMocks.revealLLMApiKey).not.toHaveBeenCalled();
+
+    fireEvent.click(passwordToggle());
+
+    await waitFor(() => expect(apiMocks.revealLLMApiKey).toHaveBeenCalledOnce());
+    await waitFor(() => expect(input).toHaveValue("sk-revealed"));
+    expect(input).toHaveAttribute("type", "text");
+
+    fireEvent.click(passwordToggle());
+    await waitFor(() => expect(input).toHaveValue("********"));
+    expect(input).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.click(passwordToggle());
+    await waitFor(() => expect(input).toHaveValue("sk-revealed"));
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ api_key: "********:record:1" }),
+      ),
+    );
+  });
+
+  it("keeps the key masked when the explicit reveal request fails", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      api_key: "********:record:1",
+    });
+    apiMocks.revealLLMApiKey.mockRejectedValue(new Error("读取密钥失败"));
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    const input = await screen.findByLabelText("API Key（选填）");
+    fireEvent.click(passwordToggle());
+
+    expect(await screen.findByText("读取密钥失败")).toBeInTheDocument();
+    expect(input).toHaveValue("********");
+    expect(input).toHaveAttribute("type", "password");
+  });
+});
+
+describe("SettingsPage configuration record lifecycle", () => {
+  it("refreshes the current config after deleting the active record", async () => {
+    const record = {
+      id: 7,
+      name: "DeepSeek 校招",
+      provider: "deepseek",
+      base_url: "https://api.deepseek.com",
+      api_key: "********:record:7",
+      model: "deepseek-chat",
+      temperature: 0.1,
+      timeout_seconds: 120,
+      max_tokens: 4096,
+      created_at: "2026-08-20T10:00:00",
+      updated_at: "2026-08-20T10:00:00",
+    };
+    apiMocks.getLLMConfig.mockResolvedValueOnce({ ...llmConfig, ...record }).mockResolvedValueOnce({
+      ...llmConfig,
+      provider: "deepseek",
+      base_url: record.base_url,
+      model: record.model,
+    });
+    apiMocks.listLLMConfigRecords.mockResolvedValue([record]);
+    apiMocks.deleteLLMConfigRecord.mockResolvedValue(undefined);
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    await screen.findByText("DeepSeek 校招");
+    fireEvent.click(screen.getByRole("button", { name: "删除配置记录 DeepSeek 校招" }));
+    const confirmDelete = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        ".ant-popconfirm-buttons .ant-btn-primary",
+      );
+      if (!button) throw new Error("未找到删除确认按钮");
+      return button;
+    });
+    fireEvent.click(confirmDelete);
+
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledTimes(2), { timeout: 1000 });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "删除配置记录 DeepSeek 校招" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText("DeepSeek 校招")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("API Key（选填）")).toHaveValue("********");
+  });
 });

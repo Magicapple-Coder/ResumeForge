@@ -21,13 +21,17 @@ from .profile_relevance import (
     build_job_prompt_text,
     build_profile_prompt_data,
     build_targeted_profile_context,
-    split_commas,
+    split_commas as _split_commas,
     split_lines,
 )
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 logger = logging.getLogger(__name__)
+
+# Keep the historical import path used by integrations and tests while making
+# the dependency usage explicit to Ruff and future maintainers.
+split_commas = _split_commas
 
 # 控制总输入体积：先筛选资料，再为 JD 保留独立预算，避免超长资料/JD 挤掉彼此。
 MAX_JD_CHARS = 5_000

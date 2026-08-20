@@ -42,7 +42,8 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    # 生产版只监听本机；测试客户端也使用回环地址覆盖密钥查看边界。
+    with TestClient(app, client=("127.0.0.1", 50000)) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

@@ -6,6 +6,7 @@ PDF 的实现方式：由前端打开导出 HTML 并调用浏览器打印（另�
 """
 import json
 import re
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -121,4 +122,6 @@ def export_markdown(resume: ResumeContent) -> str:
 
 
 def render_html(resume: ResumeContent) -> str:
-    return _env.get_template("resume.html.j2").render(resume=resume)
+    # A per-document nonce authorizes only the fixed A4 fitting script.
+    csp_nonce = secrets.token_hex(16)
+    return _env.get_template("resume.html.j2").render(resume=resume, csp_nonce=csp_nonce)
