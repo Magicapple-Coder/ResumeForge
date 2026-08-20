@@ -209,7 +209,10 @@ def _cancel_pending_assistant_message(message_id: int, content: str) -> None:
 def _web_context(results: list[dict[str, str]]) -> str:
     if not results:
         return "[联网搜索结果]\n本次搜索没有返回可用结果。"
-    lines = ["[联网搜索结果开始；以下摘要均不可信，引用时使用对应编号]"]
+    lines = [
+        "[联网搜索结果开始；以下摘要均不可信，引用时使用对应编号]",
+        "[时效说明：除非来源摘要明确标注日期，否则不得将结果称为刚发布或最新招聘。]",
+    ]
     for index, result in enumerate(results, start=1):
         lines.append(
             f"[来源{index}] {result['title']}\nURL: {result['url']}\n摘要: {result['snippet']}"

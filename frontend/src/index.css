@@ -406,14 +406,14 @@ body {
 /* AI 求职助手：历史侧栏固定宽度，主区将消息与输入区分层。 */
 .assistant-page {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 20px;
   min-height: calc(100vh - 116px);
 }
 
 .assistant-sidebar {
   min-width: 0;
-  padding-right: 16px;
+  padding-right: 12px;
   border-right: 1px solid #e5e7eb;
 }
 
@@ -431,8 +431,8 @@ body {
   background: #eef4ff;
 }
 
-.assistant-conversation-list .ant-list-item-action {
-  margin-inline-start: 2px;
+.assistant-conversation-list.ant-list .ant-list-item .ant-list-item-action {
+  margin-inline-start: 0;
 }
 
 .assistant-conversation-list .ant-list-item-action > li {
@@ -467,6 +467,11 @@ body {
   white-space: nowrap;
 }
 
+.assistant-conversation-title.is-overflowing {
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 30px), transparent);
+}
+
 .assistant-conversation-title > span {
   display: inline-block;
   min-width: 100%;
@@ -476,6 +481,13 @@ body {
 .assistant-conversation-button:hover .assistant-conversation-title.is-overflowing > span,
 .assistant-conversation-button:focus-visible .assistant-conversation-title.is-overflowing > span {
   animation: assistant-conversation-title-scroll 3.6s ease-in-out 0.55s infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-conversation-button:hover .assistant-conversation-title.is-overflowing > span,
+  .assistant-conversation-button:focus-visible .assistant-conversation-title.is-overflowing > span {
+    animation: none;
+  }
 }
 
 .assistant-workspace {

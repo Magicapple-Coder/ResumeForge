@@ -347,6 +347,7 @@ def test_web_search_results_are_cited_context_and_search_does_not_create_jobs(cl
     sources_event = next(event for event in events if event["type"] == "sources")
     assert sources_event["sources"][0]["url"] == "https://careers.example.com/jobs/1"
     assert "[来源1]" in captured["messages"][-1]["content"]
+    assert "不得将结果称为刚发布或最新招聘" in captured["messages"][-1]["content"]
     assert client.get("/api/jobs").json()["total"] == 0
 
     context = client.get(f"/api/assistant/conversations/{conversation['id']}").json()["messages"][
@@ -400,6 +401,33 @@ def test_career_query_drops_conversational_filler_and_keeps_concrete_terms():
 
     assert query == "秋招 投递 互联网大厂 冷却期 招聘"
     assert "如果" not in query
+
+
+def test_recent_internet_recruitment_query_uses_stable_short_keywords():
+    question = "给我一些最近刚发布招聘信息的互联网企业"
+
+    assert build_search_query(question) == "互联网企业 招聘"
+
+
+def test_recruitment_discovery_keeps_careers_pages_without_chinese_recruitment_words():
+    question = "给我一些最近刚发布招聘信息的互联网企业"
+    results = filter_relevant_results(
+        [
+            {
+                "title": "Careers at Example",
+                "url": "https://careers.example.com/jobs",
+                "snippet": "Explore open opportunities.",
+            },
+            {
+                "title": "给（汉语汉字）_百度百科",
+                "url": "https://baike.baidu.com/item/example",
+                "snippet": "汉语常用字释义。",
+            },
+        ],
+        question,
+    )
+
+    assert [result["url"] for result in results] == ["https://careers.example.com/jobs"]
 
 
 def test_career_search_filters_unrelated_dictionary_and_poem_results():

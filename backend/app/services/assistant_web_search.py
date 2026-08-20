@@ -15,6 +15,7 @@ BING_SEARCH_URL = "https://cn.bing.com/search"
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _MAX_QUERY_CHARS = 300
 _MAX_RESULTS = 5
+_MAX_CANDIDATE_RESULTS = 10
 _TAG_RE = re.compile(r"\s+")
 _QUERY_SEPARATOR_RE = re.compile(r"[，。！？、；：,.!?;:\n\r]+")
 _CAREER_TERMS = (
@@ -38,6 +39,11 @@ _CAREER_TERMS = (
 )
 _CAREER_MARKERS = frozenset(_CAREER_TERMS) | {"人才", "人力资源", "应聘"}
 _OBVIOUSLY_UNRELATED_MARKERS = frozenset({"百度百科", "维基百科", "汉语国学", "诗歌", "词典"})
+_RECRUITMENT_DISCOVERY_MARKERS = frozenset({"招聘", "招募", "招聘信息", "招聘岗位", "职位", "岗位"})
+_INTERNET_EMPLOYER_MARKERS = frozenset({"互联网", "大厂", "科技企业", "科技公司"})
+_RECRUITMENT_URL_MARKERS = frozenset(
+    {"career", "careers", "jobs", "recruit", "recruiting", "talent", "campus"}
+)
 
 
 class AssistantSearchError(Exception):
@@ -95,6 +101,20 @@ def _matched_career_terms(value: str) -> list[str]:
     return [term for position, term in sorted(matches) if position >= 0]
 
 
+def _is_recruitment_discovery_question(value: str) -> bool:
+    normalized = value.casefold()
+    return any(marker.casefold() in normalized for marker in _RECRUITMENT_DISCOVERY_MARKERS) and any(
+        marker.casefold() in normalized for marker in _INTERNET_EMPLOYER_MARKERS
+    )
+
+
+def _build_recruitment_discovery_query(value: str) -> str:
+    """Use a compact query because Bing RSS mishandles long Chinese questions."""
+    normalized = value.casefold()
+    employer = "互联网企业" if "互联网" in normalized or "大厂" in normalized else "企业"
+    return f"{employer} 招聘"
+
+
 def build_search_query(question: str) -> str:
     """Remove conversational filler from Chinese career questions before calling Bing.
 
@@ -103,6 +123,8 @@ def build_search_query(question: str) -> str:
     add a recruitment qualifier. Other questions keep their original wording.
     """
     normalized = _normalized_query(question)
+    if _is_recruitment_discovery_question(normalized):
+        return _build_recruitment_discovery_query(normalized)
     terms = _matched_career_terms(normalized)
     if len(terms) < 2:
         return normalized
@@ -111,15 +133,30 @@ def build_search_query(question: str) -> str:
     return " ".join(terms)[:_MAX_QUERY_CHARS]
 
 
-def _is_relevant_career_result(result: dict[str, str], terms: list[str]) -> bool:
-    haystack = f"{result['title']} {result['snippet']}".casefold()
+def _has_recruitment_url_marker(url: str) -> bool:
+    parsed = urlsplit(url)
+    url_text = f"{parsed.hostname or ''}{parsed.path}".casefold()
+    return any(marker in url_text for marker in _RECRUITMENT_URL_MARKERS)
+
+
+def _is_relevant_career_result(
+    result: dict[str, str], terms: list[str], question: str
+) -> bool:
+    haystack = f"{result['title']} {result['snippet']} {result['url']}".casefold()
     matched = [term for term in terms if term.casefold() in haystack]
-    has_career_marker = any(marker.casefold() in haystack for marker in _CAREER_MARKERS)
+    has_recruitment_url_marker = _has_recruitment_url_marker(result["url"])
+    has_career_marker = has_recruitment_url_marker or any(
+        marker.casefold() in haystack for marker in _CAREER_MARKERS
+    )
     is_obviously_unrelated = any(marker.casefold() in haystack for marker in _OBVIOUSLY_UNRELATED_MARKERS)
     # A dictionary or poem result can match a generic word in a question. It is not a
     # useful recruitment source unless it also contains explicit hiring context.
     if is_obviously_unrelated and not has_career_marker:
         return False
+    if _is_recruitment_discovery_question(question):
+        # Official career pages frequently use English "Careers" or "Jobs" and may not
+        # repeat the Chinese word "招聘" in their title or summary.
+        return bool(has_career_marker and (matched or has_recruitment_url_marker))
     return bool(matched and has_career_marker)
 
 
@@ -130,7 +167,7 @@ def filter_relevant_results(
     terms = _matched_career_terms(question)
     if not terms:
         return results
-    return [result for result in results if _is_relevant_career_result(result, terms)]
+    return [result for result in results if _is_relevant_career_result(result, terms, question)]
 
 
 def parse_bing_rss(xml_bytes: bytes, limit: int = _MAX_RESULTS) -> list[dict[str, str]]:
@@ -198,7 +235,10 @@ async def search_web(query: str) -> list[dict[str, str]]:
     if not normalized:
         raise AssistantSearchError("请先输入要搜索的内容")
     search_query = build_search_query(normalized)
-    results = filter_relevant_results(parse_bing_rss(await fetch_bing_rss(search_query)), normalized)
+    candidates = parse_bing_rss(
+        await fetch_bing_rss(search_query), limit=_MAX_CANDIDATE_RESULTS
+    )
+    results = filter_relevant_results(candidates, normalized)[:_MAX_RESULTS]
     if not results and _matched_career_terms(normalized):
         raise AssistantSearchError("没有找到与当前求职问题直接相关的公开来源，请调整关键词后重试")
     logger.info("Bing RSS 搜索完成 result_count=%s", len(results))
