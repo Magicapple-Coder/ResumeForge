@@ -93,7 +93,9 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
+        # Limit parallel workers so resource-constrained runners do not starve
+        # jsdom timers used by the async UI tests.
+        run: npm test -- --maxWorkers=2
 
       - name: Check formatting
         run: npm run format:check

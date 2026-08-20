@@ -8,6 +8,9 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     clearMocks: true,
     restoreMocks: true,
+    // Shared CI runners can spend several seconds mounting Ant Design-heavy
+    // pages; keep async UI assertions from failing before the render settles.
+    testTimeout: 15_000,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
