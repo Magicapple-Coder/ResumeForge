@@ -286,7 +286,7 @@ _DESCRIPTION_HEADINGS = (
 )
 _REQUIREMENTS_HEADINGS = (
     r"(?:职位要求|岗位要求|任职要求|任职资格|岗位资格|职位资格|任职条件|岗位条件|招聘要求|能力要求|"
-    r"任职要求与条件|任职资格与要求|岗位要求与条件|应聘要求|资格要求|必备条件|"
+    r"职责要求|任职要求与条件|任职资格与要求|岗位要求与条件|应聘要求|资格要求|必备条件|"
     r"任职资格与条件|岗位要求与职责|"
     r"我们希望你|我们期待你|what\s+you(?:'|’)ll\s+bring|what\s+you\s+will\s+bring|"
     r"what\s+we(?:'|’)re\s+looking\s+for|what\s+we\s+are\s+looking\s+for|"
@@ -353,6 +353,11 @@ _PUBLISHED_DATE_RE = re.compile(
 )
 _UPDATED_DATE_RE = re.compile(
     r"^(?:更新于|更新日期|更新时间|updated|last\s+updated)\s*[:：]?\s*\S+",
+    re.IGNORECASE,
+)
+_BARE_DATE_RE = re.compile(r"(?<!\d)(?P<date>20\d{2}[-/.]\d{1,2}[-/.]\d{1,2})(?!\d)")
+_NON_PUBLISHED_DATE_CONTEXT_RE = re.compile(
+    r"更新|截止|到期|有效期|申请结束|报名结束|last\s+updated|deadline|closing\s+date|expires?",
     re.IGNORECASE,
 )
 
@@ -659,6 +664,22 @@ def _strip_inline_salary(value: str) -> str:
     return _SALARY_RE.sub("", value).strip(" \t|｜·,，;；/\\")
 
 
+def _prepare_title_candidate(value: str) -> tuple[str, str]:
+    """清理标题行附带的 URL，并拆出明确分隔的地点前缀。"""
+    candidate = _strip_inline_salary(_URL_RE.sub("", value)).strip()
+    leading_location = ""
+    prefix_match = re.match(
+        r"^(?P<prefix>[^|丨｜\-—–]{1,64})\s*(?:[|丨｜—–]|-(?!\d))\s*(?P<remainder>.+)$",
+        candidate,
+    )
+    if prefix_match:
+        prefix = prefix_match.group("prefix").strip()
+        if _looks_like_location(prefix):
+            leading_location = prefix
+            candidate = prefix_match.group("remainder").strip()
+    return candidate, leading_location
+
+
 def _looks_like_title(value: str) -> bool:
     candidate = value.strip()
     if not candidate or len(candidate) > 128 or candidate.startswith(_TITLE_SENTENCE_PREFIXES):
@@ -743,6 +764,18 @@ def _looks_like_internship_marker(value: str) -> bool:
 
 
 def _split_title_company(value: str) -> tuple[str, str]:
+    # 部分官网把“岗位名(职位编号)公司品牌”无分隔地拼接。含数字的括号编号
+    # 是可靠边界；尾部仍需通过公司候选校验，避免拆坏普通括号说明。
+    for code_match in re.finditer(r"[（(](?=[^（）()\s]{1,32}[)）])[^（）()\s]*\d[^（）()\s]*[)）]", value):
+        compact_title = value[: code_match.end()].strip()
+        compact_company = value[code_match.end() :].strip(" \t|｜·,，;；/\\")
+        if (
+            compact_company
+            and _looks_like_title(compact_title)
+            and _looks_like_company_candidate(compact_company)
+        ):
+            return compact_title, compact_company
+
     # 招聘卡片常把公司、岗位、地点、薪资和类型压成一行。先按管道分段
     # 定位真正的岗位片段，避免把后续元信息一起写入 title。
     pipe_parts = [
@@ -840,12 +873,24 @@ def _looks_like_location(value: str) -> bool:
 
 def _extract_location_from_metadata(value: str) -> str:
     """从将地点、薪资放在同一行的招聘卡片中保留地点部分。"""
-    without_salary = _SALARY_RE.sub("", value)
+    without_salary = _SALARY_RE.sub("", _URL_RE.sub("", value))
+
+    # ``北京-岗位名`` 的连字符既不是薪资区间，也不是地点内容；只在
+    # 连字符左侧本身可独立识别为地点时使用该边界。
+    prefix_match = re.match(
+        r"^(?P<prefix>[^|丨｜\-—–]{1,64})\s*(?:[|丨｜—–]|-(?!\d))\s*(?P<remainder>.+)$",
+        without_salary,
+    )
+    if prefix_match:
+        prefix = prefix_match.group("prefix").strip()
+        if _looks_like_location(prefix):
+            return prefix
+
     without_salary = re.sub(
         r"(?:正式|正式员工|全职|兼职|长期|实习|校招|社招|intern(?:ship)?|full[- ]?time|"
         r"part[- ]?time|permanent|contract|"
         r"campus\s+(?:recruitment|hiring)|graduate\s+program)",
-        "",
+        "|",
         without_salary,
         flags=re.IGNORECASE,
     )
@@ -860,6 +905,21 @@ def _extract_location_from_metadata(value: str) -> str:
     if _looks_like_location(without_salary):
         return without_salary
     return ""
+
+
+def _looks_like_compact_recruitment_metadata(value: str) -> bool:
+    """判断是否为官网压缩在一行的地点、类型、类别、人数和日期元数据。"""
+    if not _extract_location_from_metadata(value):
+        return False
+    return bool(
+        re.search(
+            r"校招|社招|校园招聘|社会招聘|实习招聘|招聘人数|若干|"
+            r"campus\s+(?:recruitment|hiring)|graduate\s+program|headcount|"
+            r"20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}",
+            value,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _normalize_job_type(value: str) -> str:
@@ -978,27 +1038,43 @@ def _mark_unlabeled_metadata(
             location = _extract_location_from_metadata(line)
             if not location:
                 continue
+            title_candidate, leading_title_location = _prepare_title_candidate(line)
+            if leading_title_location and _looks_like_title(title_candidate):
+                # 独立元数据行通常比标题里的“北京-岗位名”更具体。标题解析
+                # 会在没有其他地点时再用该前缀兜底，因此这里先不占位。
+                continue
             values["location"] = location
             # 同一行可能同时包含“岗位名 | 地点 | 薪资”；保留该行供标题
-            # 提取逻辑处理，不能因为识别出地点就把岗位名一起消费掉。
-            if not _looks_like_title(_strip_inline_salary(line)):
+            # 提取逻辑处理。紧凑元数据行还包含类别、人数等无法可靠命名的
+            # 信息，留给 additional_info 原样保存，不能在这里直接消费。
+            if not _looks_like_title(_strip_inline_salary(line)) and not (
+                _looks_like_compact_recruitment_metadata(line)
+            ):
                 consumed.add(index)
 
 
 def _extract_title_and_company(
     lines: list[str], values: dict[str, str], consumed: set[int], preamble_end: int
 ) -> tuple[str, str]:
-    title_value = _strip_inline_salary(values.get("title", ""))
+    title_value, leading_location = _prepare_title_candidate(values.get("title", ""))
+    if leading_location:
+        values.setdefault("location", leading_location)
     company = values.get("company", "")
     if title_value:
+        # 明确标注的职位与公司比标题分隔符启发式更可靠。岗位方向常写成
+        # ``工程师 - 数据平台``，此时再拆分会把方向误当成公司名称。
+        if company:
+            return title_value, company
         title, inline_company = _split_title_company(title_value)
         return title, company or _discard_location_as_company(inline_company)
 
     for index, line in enumerate(lines[:preamble_end]):
         if index in consumed or _JOB_ID_RE.match(line) or _ADDITIONAL_HEADING_RE.match(line):
             continue
-        title_candidate = _strip_inline_salary(line)
+        title_candidate, leading_location = _prepare_title_candidate(line)
         if _looks_like_title(title_candidate):
+            if leading_location:
+                values.setdefault("location", leading_location)
             consumed.add(index)
             title, inline_company = _split_title_company(title_candidate)
             if not company and not inline_company:
@@ -1062,7 +1138,11 @@ def _mark_type_lines(lines: list[str], consumed: set[int], preamble_end: int) ->
 def _is_additional_preamble_line(line: str) -> bool:
     """识别标题区中应保留、但不属于岗位职责的招聘元信息。"""
     candidate = line.strip()
-    if _JOB_ID_RE.match(candidate) or _UPDATED_DATE_RE.match(candidate):
+    if (
+        _JOB_ID_RE.match(candidate)
+        or _UPDATED_DATE_RE.match(candidate)
+        or _looks_like_compact_recruitment_metadata(candidate)
+    ):
         return True
     if re.fullmatch(
         r"(?:正式|正式员工|全职|兼职|长期|合同工|临时工|劳务派遣|"
@@ -1085,6 +1165,16 @@ def _is_additional_preamble_line(line: str) -> bool:
             r"(?:客户端|服务端|研发|生产|制造|销售|市场|运营|门店|科室|"
             r"client|server|engineering|production|sales|marketing|operations)",
             candidate,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _is_generic_additional_heading(value: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"(?:其他信息|补充信息|additional\s+information|other\s+information)",
+            value.strip(),
             re.IGNORECASE,
         )
     )
@@ -1129,9 +1219,11 @@ def _extract_sections(
                     if content:
                         requirement_lines.append(content)
                 else:
-                    additional_lines.append(
-                        f"{heading.strip()}：{content}" if content else heading.strip()
-                    )
+                    normalized_heading = heading.strip()
+                    if content:
+                        additional_lines.append(f"{normalized_heading}：{content}")
+                    elif not _is_generic_additional_heading(normalized_heading):
+                        additional_lines.append(normalized_heading)
                     # 职责正文常先写一行“团队/公司介绍：...”，随后立即列出
                     # 实际职责。这种内联介绍只归入补充信息，不改变后续正文归属。
                     if previous_section == "description" and re.fullmatch(
@@ -1171,7 +1263,10 @@ def _extract_sections(
             section_indices.add(index)
             heading = additional_match.group("heading").strip()
             content = additional_match.group("content").strip()
-            additional_lines.append(f"{heading}：{content}" if content else heading)
+            if content:
+                additional_lines.append(f"{heading}：{content}")
+            elif not _is_generic_additional_heading(heading):
+                additional_lines.append(heading)
             continue
 
         if current_section:
@@ -1194,12 +1289,20 @@ def _extract_sections(
     )
 
 
-def _extract_posted_at(lines: list[str], values: dict[str, str]) -> str:
+def _extract_posted_at(lines: list[str], values: dict[str, str], preamble_end: int) -> str:
     if "posted_at" in values:
         return values["posted_at"]
     for line in lines:
         match = _PUBLISHED_DATE_RE.search(line)
         if match:
+            return match.group("date")
+    # 无标签日期只在职责正文之前、且带有招聘元数据的短行中可信。这样不会
+    # 把正文中的项目年份或“截止/更新日期”误写成岗位发布时间。
+    for line in lines[:preamble_end]:
+        if _NON_PUBLISHED_DATE_CONTEXT_RE.search(line):
+            continue
+        match = _BARE_DATE_RE.search(line)
+        if match and _looks_like_compact_recruitment_metadata(line):
             return match.group("date")
     return ""
 
@@ -1276,7 +1379,7 @@ def parse_job_text(text: str) -> JobTextParseResult:
         requirements=requirements.strip(),
         additional_info=additional_info.strip(),
         source_url=_truncate(source_url, "source_url"),
-        posted_at=_truncate(_extract_posted_at(lines, values), "posted_at"),
+        posted_at=_truncate(_extract_posted_at(lines, values, preamble_end), "posted_at"),
         status=_truncate(_normalize_status(status_context), "status"),
         warnings=warnings,
     )

@@ -27,6 +27,17 @@ SAMPLE_JOB_TEXT = """AI应用客户端开发工程师 - 剪映CapCut
 5、业余爱好视频拍摄、视频编辑，有移动端、桌面端视频编辑软件使用经验者优先。"""
 
 
+BAIDU_COMPACT_JOB_TEXT = """北京-全栈开发工程师(J103963)百度 https://talent.baidu.com/jobs/detail/GRADUATE/8ded98ee-9ddf-486c-96e9-75d4941d943b
+北京市校招技术若干2026-07-30
+工作职责：
+-负责前端和服务端的业务开发工作，覆盖业务全链路
+-深度运用AI Coding工具，开发并维护基于MCP、CLI、Skills等的各类工具
+职责要求：
+-本科及以上学历，计算机、通信和电子信息科学、数学等相关专业
+-熟练使用HTML5/CSS3/JavaScript/TypeScript/Vue/React等前端技术完成页面布局和交互开发
+"""
+
+
 def test_parse_full_job_posting_extracts_core_fields_and_sections():
     result = parse_job_text(SAMPLE_JOB_TEXT)
 
@@ -57,6 +68,48 @@ def test_parse_full_job_posting_extracts_core_fields_and_sections():
     assert "业余爱好视频拍摄、视频编辑" not in result.description
 
 
+def test_parse_compact_official_job_header_and_responsibility_requirements():
+    result = parse_job_text(BAIDU_COMPACT_JOB_TEXT)
+
+    assert result.title == "全栈开发工程师(J103963)"
+    assert result.company == "百度"
+    assert result.location == "北京市"
+    assert result.job_type == "校招"
+    assert result.source_url == (
+        "https://talent.baidu.com/jobs/detail/GRADUATE/"
+        "8ded98ee-9ddf-486c-96e9-75d4941d943b"
+    )
+    assert result.posted_at == "2026-07-30"
+    assert "负责前端和服务端的业务开发工作" in result.description
+    assert "深度运用AI Coding工具" in result.description
+    assert "本科及以上学历" in result.requirements
+    assert "HTML5/CSS3/JavaScript/TypeScript/Vue/React" in result.requirements
+    assert "本科及以上学历" not in result.description
+    assert "北京市校招技术若干2026-07-30" in result.additional_info
+
+
+def test_parse_compact_metadata_does_not_treat_deadline_as_posted_date():
+    result = parse_job_text(
+        "北京-全栈开发工程师(J103963)示例品牌\n"
+        "北京市校招技术若干 截止日期2026-08-30\n"
+        "工作职责：负责平台开发。"
+    )
+
+    assert result.location == "北京市"
+    assert result.job_type == "校招"
+    assert result.posted_at == ""
+
+
+def test_parse_title_location_prefix_is_used_when_no_location_metadata_exists():
+    result = parse_job_text(
+        "北京-全栈开发工程师(J103963)示例品牌\n工作职责：负责平台开发。"
+    )
+
+    assert result.title == "全栈开发工程师(J103963)"
+    assert result.company == "示例品牌"
+    assert result.location == "北京"
+
+
 def test_parse_labeled_fields():
     text = """职位名称：大模型应用开发工程师
 公司：星河科技有限公司
@@ -79,6 +132,29 @@ def test_parse_labeled_fields():
     assert result.posted_at == "2026-08-15"
     assert "大模型应用服务的设计与开发" in result.description
     assert "三年以上 Python 开发经验" in result.requirements
+
+
+def test_labeled_company_keeps_hyphenated_position_direction_in_title():
+    result = parse_job_text(
+        "职位名称：Agent全栈开发实习生 - 数据平台\n"
+        "公司：字节跳动\n"
+        "职位描述：负责数据平台开发。"
+    )
+
+    assert result.title == "Agent全栈开发实习生 - 数据平台"
+    assert result.company == "字节跳动"
+
+
+def test_generic_additional_heading_is_not_copied_into_additional_value():
+    result = parse_job_text(
+        "职位名称：后端开发工程师\n"
+        "公司：示例科技\n"
+        "职位描述：负责 API 开发。\n"
+        "其他信息\n"
+        "职位 ID：A100"
+    )
+
+    assert result.additional_info == "职位 ID：A100"
 
 
 @pytest.mark.parametrize(

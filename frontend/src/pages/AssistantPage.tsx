@@ -29,7 +29,7 @@ import {
   Typography,
   Upload,
 } from "antd";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -72,6 +72,31 @@ const TEXT_CANONICAL_MIME_BY_EXTENSION: Record<string, string> = {
   json: "application/json",
   csv: "text/csv",
 };
+interface StarterPrompt {
+  label: string;
+  content: string;
+  enableWebSearch?: boolean;
+}
+
+const STARTER_PROMPTS: readonly StarterPrompt[] = [
+  {
+    label: "分析岗位匹配度",
+    content: "请结合我选择的岗位和资料，分析我的匹配度，并给出准备建议。",
+  },
+  {
+    label: "优化项目经历",
+    content: "请帮我把我的项目经历改写得更贴合目标岗位，并保留真实事实。",
+  },
+  {
+    label: "准备一轮面试",
+    content: "请根据目标岗位模拟一轮面试，并逐题给出回答思路。",
+  },
+  {
+    label: "查找招聘信息",
+    content: "请帮我查找与目标方向相关的招聘信息，并优先给出官网链接。",
+    enableWebSearch: true,
+  },
+] as const;
 
 interface PendingAttachment extends AssistantAttachmentInput {
   id: number;
@@ -310,6 +335,41 @@ function ConversationTitle({ title, onSelect }: { title: string; onSelect: () =>
   );
 }
 
+function AssistantEmptyState({
+  onChoosePrompt,
+}: {
+  onChoosePrompt: (prompt: (typeof STARTER_PROMPTS)[number]) => void;
+}) {
+  return (
+    <div className="assistant-empty-state">
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={
+          <div className="assistant-empty-state-copy">
+            <Typography.Text strong>可以这样问</Typography.Text>
+            <Typography.Text type="secondary">
+              可先关联岗位或简历，再按需开启资料和联网搜索。
+            </Typography.Text>
+          </div>
+        }
+      >
+        <div className="assistant-starter-prompts" aria-label="常用求职提问">
+          {STARTER_PROMPTS.map((prompt) => (
+            <Button
+              key={prompt.label}
+              size="small"
+              className="assistant-starter-prompt"
+              onClick={() => onChoosePrompt(prompt)}
+            >
+              {prompt.label}
+            </Button>
+          ))}
+        </div>
+      </Empty>
+    </div>
+  );
+}
+
 function MessageAttachments({ message }: { message: AssistantMessage }) {
   if (!message.attachments.length) return null;
   return (
@@ -485,10 +545,6 @@ export default function AssistantPage() {
     };
   }, [activeId, loadDetail]);
 
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: sending ? "auto" : "smooth" });
-  }, [detail?.messages, pendingUserText, sending, streamingText]);
-
   const createConversation = async () => {
     try {
       const created = await createAssistantConversation();
@@ -661,6 +717,8 @@ export default function AssistantPage() {
 
   const historyMessages = detail?.messages ?? [];
   const isActiveStream = activeId !== null && activeId === sendingConversationId;
+  const hasActiveDetail = detail?.id === activeId;
+  const showDetailLoading = detailLoading && !hasActiveDetail;
   const jobOptions = (contextOptions?.jobs ?? []).map((job) => ({
     value: job.id,
     label: `${job.company ? `${job.company} · ` : ""}${job.title}`,
@@ -669,6 +727,30 @@ export default function AssistantPage() {
     value: resume.id,
     label: resume.title,
   }));
+
+  const chooseStarterPrompt = (prompt: (typeof STARTER_PROMPTS)[number]) => {
+    setContent(prompt.content);
+    if (prompt.enableWebSearch) setWebSearch(true);
+  };
+
+  // 在浏览器绘制前定位到末尾，避免详情刷新时先闪现旧的顶部位置。
+  useLayoutEffect(() => {
+    if (showDetailLoading || (!historyMessages.length && !isActiveStream)) return;
+    messageEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [detail?.id, detail?.messages, historyMessages.length, isActiveStream, showDetailLoading]);
+
+  useEffect(() => {
+    if (!sending || !isActiveStream) return;
+    messageEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [
+    isActiveStream,
+    pendingUserText,
+    progressText,
+    sending,
+    streamError,
+    streamingSources,
+    streamingText,
+  ]);
 
   return (
     <div className="assistant-page">
@@ -776,10 +858,10 @@ export default function AssistantPage() {
         </header>
 
         <div className="assistant-messages" aria-live="polite">
-          {detailLoading ? (
+          {showDetailLoading ? (
             <Skeleton active paragraph={{ rows: 6 }} />
           ) : historyMessages.length === 0 && !(sending && isActiveStream) ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="开始一段求职对话" />
+            <AssistantEmptyState onChoosePrompt={chooseStarterPrompt} />
           ) : (
             historyMessages.map((item) => (
               <article

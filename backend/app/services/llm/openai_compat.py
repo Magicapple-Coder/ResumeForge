@@ -152,11 +152,11 @@ class OpenAICompatProvider(BaseLLMProvider):
         except ValueError:
             return False
 
-    def _headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
-        }
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        return headers
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=self._timeout(), transport=self._transport)

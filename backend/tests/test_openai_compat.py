@@ -55,6 +55,14 @@ def test_base_url_rejects_unsafe_addresses(base_url):
         provider._endpoint()
 
 
+def test_headers_omit_authorization_when_api_key_is_empty():
+    provider = OpenAICompatProvider(
+        LLMConfig(base_url="http://localhost:11434/v1", api_key="", model="test")
+    )
+
+    assert provider._headers() == {"Content-Type": "application/json"}
+
+
 async def test_chat_maps_invalid_json_to_llm_error():
     provider = _provider(lambda _request: httpx.Response(200, text="<html>bad gateway</html>"))
 

@@ -18,6 +18,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] [request_id=%(request_id)s] %(message)s",
 )
+# HTTPX 的 INFO 摘要包含完整 URL，可能暴露助手联网搜索词。
+# 业务层会另行记录不含查询参数的主机、状态码和请求 ID。
+logging.getLogger("httpx").setLevel(logging.WARNING)
 for handler in logging.getLogger().handlers:
     handler.addFilter(RequestIdFilter())
 

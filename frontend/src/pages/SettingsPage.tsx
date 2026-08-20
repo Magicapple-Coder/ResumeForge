@@ -41,19 +41,35 @@ import { LLM_PRESETS } from "../config";
 import type { LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
 import { formatDateTime } from "../utils/format";
 
-const PRESET_OPTIONS = LLM_PRESETS.map((preset, index) => ({ value: index, label: preset.label }));
+const CUSTOM_PRESET = "custom";
+const CUSTOM_PRESET_LABEL = "自定义模型（OpenAI 兼容）";
+const PRESET_OPTIONS = [
+  ...LLM_PRESETS.map((preset) => ({ value: preset.provider, label: preset.label })),
+  { value: CUSTOM_PRESET, label: CUSTOM_PRESET_LABEL },
+];
 
-/** 表单字段 = LLM 配置 + 前端专用的预设选择索引 */
-type SettingsFormValues = LLMConfig & { preset?: number };
+/** provider 由预设选择推导，避免未注册的隐藏字段在表单校验时丢失。 */
+type SettingsFormValues = Omit<LLMConfig, "provider"> & { preset: string };
 
 function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
-  const matched = LLM_PRESETS.findIndex((preset) => preset.base_url === config.base_url);
-  return { ...config, preset: matched >= 0 ? matched : undefined };
+  const matched = LLM_PRESETS.find(
+    (preset) => preset.provider === config.provider && preset.base_url === config.base_url,
+  );
+  return {
+    base_url: config.base_url,
+    api_key: config.api_key,
+    model: config.model,
+    temperature: config.temperature,
+    timeout_seconds: config.timeout_seconds,
+    max_tokens: config.max_tokens,
+    preset: matched?.provider ?? CUSTOM_PRESET,
+  };
 }
 
 function configFromFormValues(values: SettingsFormValues): LLMConfig {
+  const preset = LLM_PRESETS.find((item) => item.provider === values.preset);
   return {
-    provider: values.provider,
+    provider: preset?.provider ?? CUSTOM_PRESET,
     base_url: values.base_url,
     api_key: values.api_key,
     model: values.model,
@@ -119,9 +135,11 @@ export default function SettingsPage() {
       .finally(() => setRecordsLoading(false));
   }, [form, message]);
 
-  const applyPreset = (index: number) => {
+  const applyPreset = (provider: string) => {
     if (!editing) return;
-    const preset = LLM_PRESETS[index];
+    // 自定义模式保留当前内容，避免用户误点后丢失已经填写的接口信息。
+    if (provider === CUSTOM_PRESET) return;
+    const preset = LLM_PRESETS.find((item) => item.provider === provider);
     if (!preset) return;
     form.setFieldsValue({ base_url: preset.base_url, model: preset.model });
   };
@@ -258,7 +276,9 @@ export default function SettingsPage() {
           <Typography.Title level={3} style={{ margin: 0 }}>
             设置
           </Typography.Title>
-          <Typography.Text type="secondary">配置生成简历时使用的大模型服务</Typography.Text>
+          <Typography.Text type="secondary">
+            配置简历生成、岗位需求解读和求职助手等 AI 功能使用的模型服务
+          </Typography.Text>
         </div>
         <div className="profile-page-header-actions">
           {editing ? (
@@ -293,7 +313,7 @@ export default function SettingsPage() {
         />
         <Form form={form} layout="vertical" disabled={!editing || saving || testing}>
           <Form.Item name="preset" label="快速预设（选择后自动填充 Base URL 与模型名）">
-            <Select options={PRESET_OPTIONS} onChange={(value) => applyPreset(value as number)} />
+            <Select options={PRESET_OPTIONS} onChange={applyPreset} />
           </Form.Item>
           <Row gutter={[16, 0]}>
             <Col xs={24} lg={16}>
@@ -319,11 +339,10 @@ export default function SettingsPage() {
           </Row>
           <Form.Item
             name="api_key"
-            label="API Key"
-            rules={[{ required: true, message: "必填" }]}
-            tooltip="密钥只保存在本机，不会上传到任何第三方"
+            label="API Key（选填）"
+            tooltip="多数云模型服务需要填写；Ollama 等无需鉴权的本地兼容服务可留空。密钥仅保存在本机，并只发送给这里配置的模型服务。"
           >
-            <Input.Password placeholder="sk-..." autoComplete="off" />
+            <Input.Password placeholder="sk-...（无需鉴权时可留空）" autoComplete="off" />
           </Form.Item>
           <Row gutter={[16, 0]}>
             <Col xs={24} md={8}>

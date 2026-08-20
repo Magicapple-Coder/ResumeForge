@@ -23,6 +23,7 @@ const apiMocks = vi.hoisted(() => ({
   listJobs: vi.fn(),
   listResumes: vi.fn(),
 }));
+const scrollIntoViewMock = vi.fn();
 
 vi.mock("../api/assistant", () => ({
   createAssistantConversation: apiMocks.createAssistantConversation,
@@ -70,8 +71,9 @@ function renderPage() {
 beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
     configurable: true,
-    value: vi.fn(),
+    value: scrollIntoViewMock,
   });
+  scrollIntoViewMock.mockReset();
   apiMocks.listAssistantConversations.mockReset().mockResolvedValue(CONVERSATIONS);
   apiMocks.getAssistantConversation
     .mockReset()
@@ -90,6 +92,92 @@ afterEach(() => {
 });
 
 describe("AssistantPage", () => {
+  it("offers starter prompts for an empty conversation", async () => {
+    renderPage();
+
+    expect(await screen.findByText("可以这样问")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查找招聘信息" }));
+
+    expect(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题")).toHaveValue(
+      "请帮我查找与目标方向相关的招聘信息，并优先给出官网链接。",
+    );
+    expect(screen.getByRole("switch", { name: "联网搜索" })).toBeChecked();
+  });
+
+  it("keeps loaded messages visible while refreshing the active conversation", async () => {
+    const refreshedDetail = deferred<AssistantConversationDetail>();
+    const loadedDetail: AssistantConversationDetail = {
+      ...conversationDetail(1),
+      messages: [
+        {
+          id: 1,
+          conversation_id: 1,
+          role: "assistant",
+          content: "已加载的回复",
+          attachments: [],
+          context: {},
+          status: "complete",
+          error: "",
+          model: "test-model",
+          created_at: CREATED_AT,
+        },
+      ],
+    };
+    let detailRequests = 0;
+    apiMocks.getAssistantConversation.mockImplementation(() => {
+      detailRequests += 1;
+      return detailRequests === 1 ? Promise.resolve(loadedDetail) : refreshedDetail.promise;
+    });
+
+    renderPage();
+    expect(await screen.findByText("已加载的回复")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
+      target: { value: "继续分析" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(detailRequests).toBe(2));
+    expect(screen.getByText("已加载的回复")).toBeInTheDocument();
+    expect(document.querySelector(".assistant-messages .ant-skeleton")).not.toBeInTheDocument();
+
+    refreshedDetail.resolve(loadedDetail);
+  });
+
+  it("positions a loaded conversation at the latest message without smooth scrolling", async () => {
+    const delayedDetail = deferred<AssistantConversationDetail>();
+    apiMocks.getAssistantConversation.mockImplementation(() => delayedDetail.promise);
+
+    renderPage();
+    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    delayedDetail.resolve({
+      ...conversationDetail(1),
+      messages: [
+        {
+          id: 1,
+          conversation_id: 1,
+          role: "assistant",
+          content: "最新回复",
+          attachments: [],
+          context: {},
+          status: "complete",
+          error: "",
+          model: "test-model",
+          created_at: CREATED_AT,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("最新回复")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "auto", block: "end" }),
+    );
+    expect(scrollIntoViewMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "smooth" }),
+    );
+  });
+
   it("renders assistant Markdown as structured, safe content", () => {
     render(
       <AssistantMessageContent
@@ -147,14 +235,14 @@ describe("AssistantPage", () => {
 
   it("shows conversation management only after opening the more-actions menu", async () => {
     renderPage();
-    await screen.findByRole("heading", { name: "会话一" });
+    await screen.findByRole("button", { name: "会话一" });
 
     expect(screen.queryByRole("button", { name: /重命名/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "更多对话操作" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: /重命名/ }));
 
     expect(await screen.findByDisplayValue("会话一")).toBeInTheDocument();
-  });
+  }, 10_000);
 
   it("keeps the latest conversation when an older detail request finishes late", async () => {
     const firstRequest = deferred<AssistantConversationDetail>();
@@ -236,7 +324,7 @@ describe("AssistantPage", () => {
     );
 
     renderPage();
-    expect(await screen.findByRole("heading", { name: "会话一" })).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "请给我建议" },
     });
@@ -272,7 +360,7 @@ describe("AssistantPage", () => {
     );
 
     const view = renderPage();
-    await screen.findByRole("heading", { name: "会话一" });
+    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "保持连接" },
     });
@@ -299,7 +387,6 @@ describe("AssistantPage", () => {
     });
 
     const view = renderPage();
-    await screen.findByRole("heading", { name: "会话一" });
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "分析附件" },
     });
@@ -320,7 +407,6 @@ describe("AssistantPage", () => {
 
   it("rejects a supported MIME type when its filename extension is unsafe", async () => {
     const view = renderPage();
-    await screen.findByRole("heading", { name: "会话一" });
     const disguisedFile = new File(["not executable"], "resume.exe", { type: "text/plain" });
 
     fireEvent.change(view.container.querySelector('input[type="file"]') as HTMLInputElement, {

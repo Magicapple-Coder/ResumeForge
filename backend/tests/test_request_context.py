@@ -1,5 +1,7 @@
 import json
+import logging
 
+from app import main as app_main
 from app.middleware import RequestContextMiddleware
 
 
@@ -17,6 +19,11 @@ def _scope(headers=()):
         "client": ("127.0.0.1", 1234),
         "server": ("127.0.0.1", 8000),
     }
+
+
+def test_http_client_does_not_log_full_request_urls_at_info():
+    assert app_main.app is not None
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
 
 
 async def _collect_response(middleware, scope, request_messages):

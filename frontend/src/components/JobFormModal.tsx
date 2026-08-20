@@ -43,10 +43,10 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
     }
   }, [open, initial, form]);
 
-  const parseText = async () => {
+  const parseImport = async () => {
     if (submittingRef.current) return;
-    const text = rawText.trim();
-    if (!text) {
+    const value = rawText.trim();
+    if (!value) {
       message.warning("请先粘贴招聘信息");
       return;
     }
@@ -54,7 +54,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
     setParsing(true);
     const requestId = ++parseRequestId.current;
     try {
-      const { warnings, ...draft } = await parseJobText({ text });
+      const { warnings, ...draft } = await parseJobText({ text: value });
       if (requestId !== parseRequestId.current) return;
       // 空字段也要回填，避免连续识别两段文本时残留上一段的薪资、链接等数据。
       form.setFieldsValue(draft);
@@ -132,8 +132,9 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       >
         {!isEdit && (
           <>
-            <Form.Item label="粘贴招聘信息">
+            <Form.Item label="完整招聘信息">
               <Input.TextArea
+                aria-label="完整招聘信息"
                 value={rawText}
                 disabled={parsing}
                 onChange={(event) => {
@@ -156,7 +157,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                 type="primary"
                 icon={<FileSearchOutlined />}
                 loading={parsing}
-                onClick={() => void parseText()}
+                onClick={() => void parseImport()}
               >
                 识别并填充
               </Button>

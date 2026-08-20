@@ -68,3 +68,88 @@ describe("SettingsPage parameter help", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent(helpText);
   });
 });
+
+describe("SettingsPage model presets", () => {
+  it("shows an unknown saved configuration as a custom OpenAI-compatible model", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      provider: "private-cloud",
+      base_url: "https://llm.example.com/v1",
+      model: "company-chat",
+    });
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText("自定义模型（OpenAI 兼容）")).toBeInTheDocument();
+    expect(screen.getByLabelText("Base URL")).toHaveValue("https://llm.example.com/v1");
+    expect(screen.getByLabelText("模型名称")).toHaveValue("company-chat");
+  });
+
+  it("saves the provider that belongs to the selected preset", async () => {
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
+    fireEvent.click(await screen.findByText("DeepSeek（深度求索）"));
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "deepseek",
+          base_url: "https://api.deepseek.com",
+          model: "deepseek-chat",
+        }),
+      ),
+    );
+  }, 15_000);
+
+  it("saves a custom local model without an API key", async () => {
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
+    fireEvent.click(await screen.findByText("自定义模型（OpenAI 兼容）"));
+
+    expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.openai.com/v1");
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "http://localhost:11434/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("模型名称"), {
+      target: { value: "private-model" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key（选填）"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "custom",
+          base_url: "http://localhost:11434/v1",
+          api_key: "",
+          model: "private-model",
+        }),
+      ),
+    );
+  }, 15_000);
+});
