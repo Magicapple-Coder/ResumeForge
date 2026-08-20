@@ -267,6 +267,11 @@ body {
   user-select: none;
 }
 
+.resume-preview-viewport.is-editing {
+  cursor: default;
+  touch-action: auto;
+}
+
 .resume-preview-scale-box {
   margin: 0 auto;
   overflow: hidden;
@@ -277,6 +282,101 @@ body {
   border: none;
   flex: 0 0 auto;
   pointer-events: none;
+}
+
+.resume-iframe[data-interaction-mode="edit"] {
+  pointer-events: auto;
+}
+
+/* 手写简历在桌面端并排显示岗位参考；参考栏跟随弹窗内部滚动保持可见。 */
+.resume-editor-layout--with-reference {
+  display: grid;
+  grid-template-areas: "editor reference";
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: start;
+  gap: 20px;
+}
+
+.resume-editor-main {
+  grid-area: editor;
+  min-width: 0;
+}
+
+.resume-editor-description {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.resume-editor-reference {
+  grid-area: reference;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 210px);
+  overflow-y: auto;
+}
+
+.job-reference-panel {
+  padding-left: 18px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.job-reference-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.job-reference-eyebrow {
+  display: block;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.job-reference-title.ant-typography {
+  margin: 4px 0 2px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.job-reference-meta {
+  margin-top: 12px;
+}
+
+.job-reference-meta .ant-descriptions-item {
+  padding-bottom: 4px;
+}
+
+.job-reference-meta .ant-descriptions-item-label {
+  width: 44px;
+  color: #6b7280;
+}
+
+.job-reference-section {
+  padding: 14px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.job-reference-section:last-child {
+  border-bottom: none;
+}
+
+.job-reference-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.job-reference-section-icon {
+  color: #1677ff;
+  line-height: 1;
+}
+
+.job-reference-section-content.ant-typography {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
 }
 
 /* 生成过程的流式文本区域：等宽字体、可滚动 */
@@ -301,6 +401,143 @@ body {
 
 .settings-card {
   margin-bottom: 16px;
+}
+
+/* AI 求职助手：历史侧栏固定宽度，主区将消息与输入区分层。 */
+.assistant-page {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+  min-height: calc(100vh - 116px);
+}
+
+.assistant-sidebar {
+  min-width: 0;
+  padding-right: 16px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.assistant-conversation-list {
+  margin-top: 12px;
+}
+
+.assistant-conversation-list .ant-list-item {
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 6px;
+}
+
+.assistant-conversation-list .ant-list-item.is-active {
+  background: #eef4ff;
+}
+
+.assistant-conversation-list .ant-list-item-action {
+  margin-inline-start: 2px;
+}
+
+.assistant-conversation-list .ant-list-item-action > li {
+  padding: 0;
+}
+
+.assistant-conversation-button {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: #262626;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.assistant-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) auto;
+  min-width: 0;
+  max-height: calc(100vh - 116px);
+}
+
+.assistant-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.assistant-header .ant-typography {
+  margin: 0;
+}
+
+.assistant-messages {
+  min-height: 320px;
+  padding: 18px 4px;
+  overflow-y: auto;
+}
+
+.assistant-message {
+  width: min(86%, 820px);
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.assistant-message--user {
+  margin-left: auto;
+  background: #f3f7ff;
+  border-color: #d6e4ff;
+}
+
+.assistant-message-content {
+  margin-top: 6px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant-message-attachments,
+.assistant-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.assistant-sources {
+  flex-direction: column;
+  align-items: flex-start;
+  padding-top: 8px;
+  border-top: 1px solid #edf0f4;
+}
+
+.assistant-message-image {
+  width: 120px;
+  height: 90px;
+  object-fit: cover;
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+}
+
+.assistant-composer {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.assistant-context-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.assistant-composer-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .profile-page:not(.is-editing) .ant-input::placeholder,
@@ -391,6 +628,11 @@ body {
   background: #fafaff;
 }
 
+.job-detail-text-section--additional {
+  border-color: #bbf7d0;
+  background: #f7fef9;
+}
+
 .job-detail-text-section--note {
   border-color: #fde68a;
   background: #fffdf2;
@@ -410,6 +652,10 @@ body {
 
 .job-detail-text-section--requirements .job-detail-section-icon {
   color: #4f46e5;
+}
+
+.job-detail-text-section--additional .job-detail-section-icon {
+  color: #15803d;
 }
 
 .job-detail-text-section--note .job-detail-section-icon {
@@ -665,6 +911,14 @@ body {
 }
 
 @media (max-width: 575px) {
+  .assistant-context-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-message {
+    width: 94%;
+  }
+
   .jobs-filter-bar > .ant-space-item:first-child,
   .jobs-search-input {
     width: 100%;
@@ -686,6 +940,50 @@ body {
 }
 
 @media (max-width: 991px) {
+  .assistant-page {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .assistant-sidebar {
+    max-height: 220px;
+    padding-right: 0;
+    padding-bottom: 12px;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .assistant-workspace {
+    max-height: none;
+  }
+
+  .assistant-context-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .resume-editor-layout--with-reference {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .resume-editor-reference {
+    position: static;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .resume-editor-reference .ant-collapse {
+    background: #f8fafc;
+  }
+
+  .job-reference-panel {
+    padding-left: 0;
+    border-left: none;
+  }
+
   .app-main {
     margin-left: 64px;
   }

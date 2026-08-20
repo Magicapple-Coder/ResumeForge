@@ -26,6 +26,8 @@ _APPLICATION_TABLES = {
     "resume_record",
     "app_setting",
     "llm_config_record",
+    "chat_conversation",
+    "chat_message",
 }
 
 
@@ -47,9 +49,20 @@ def _assert_head_schema(bind) -> None:
         item["referred_table"] == "job" and item["constrained_columns"] == ["job_id"]
         for item in inspector.get_foreign_keys("resume_record")
     )
+    assert "ix_chat_conversation_updated_at" in {
+        item["name"] for item in inspector.get_indexes("chat_conversation")
+    }
+    assert {"ix_chat_message_conversation_id", "ix_chat_message_created_at"} <= {
+        item["name"] for item in inspector.get_indexes("chat_message")
+    }
+    assert any(
+        item["referred_table"] == "chat_conversation"
+        and item["constrained_columns"] == ["conversation_id"]
+        for item in inspector.get_foreign_keys("chat_message")
+    )
     with bind.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0002_indexes_resume_fk"
+    assert revision == "0005_chat_assistant"
 
 
 def test_ensure_sqlite_columns_preserves_legacy_rows(tmp_path):
@@ -220,11 +233,15 @@ def test_alembic_migration_preserves_rows_repairs_fk_and_is_idempotent(tmp_path)
         )
         with legacy_engine.connect() as connection:
             rows = connection.execute(
-                text("SELECT id, title, job_id FROM resume_record ORDER BY id")
+                text("SELECT id, title, job_id, favorite FROM resume_record ORDER BY id")
             ).all()
+            additional_info = connection.execute(
+                text("SELECT additional_info FROM job WHERE id = 1")
+            ).scalar_one()
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert rows == [(1, "有效简历", 1), (2, "孤立简历", None)]
-        assert revision == "0002_indexes_resume_fk"
+        assert rows == [(1, "有效简历", 1, 0), (2, "孤立简历", None, 0)]
+        assert additional_info == ""
+        assert revision == "0005_chat_assistant"
         assert run_database_migrations(legacy_engine) is None
     finally:
         legacy_engine.dispose()
@@ -250,6 +267,27 @@ def test_migration_runner_builds_schema_from_empty_database(tmp_path):
         assert is_unversioned_legacy_database(empty_engine) is False
     finally:
         empty_engine.dispose()
+
+
+def test_migration_runner_accepts_unversioned_metadata_schema_with_new_job_column(tmp_path):
+    migration_engine = create_engine(f"sqlite:///{tmp_path / 'metadata-schema.db'}")
+    try:
+        Base.metadata.create_all(migration_engine)
+        with Session(migration_engine) as session:
+            session.add(Job(title="门店店长", additional_info="提供员工宿舍"))
+            session.commit()
+
+        backup_path = run_database_migrations(migration_engine)
+
+        assert backup_path is not None and backup_path.exists()
+        _assert_head_schema(migration_engine)
+        with migration_engine.connect() as connection:
+            additional_info = connection.execute(
+                text("SELECT additional_info FROM job WHERE title = '门店店长'")
+            ).scalar_one()
+        assert additional_info == "提供员工宿舍"
+    finally:
+        migration_engine.dispose()
 
 
 def test_migration_runner_supports_in_memory_database():
@@ -298,6 +336,14 @@ def test_alembic_downgrade_removes_resume_job_fk_without_losing_data(tmp_path):
         assert "ix_resume_record_job_id" not in {
             item["name"] for item in inspector.get_indexes("resume_record")
         }
+        assert "chat_conversation" not in inspector.get_table_names()
+        assert "chat_message" not in inspector.get_table_names()
+        assert "additional_info" not in {
+            column["name"] for column in inspector.get_columns("job")
+        }
+        assert "favorite" not in {
+            column["name"] for column in inspector.get_columns("resume_record")
+        }
         with migration_engine.connect() as connection:
             row = connection.execute(
                 text("SELECT id, title, job_id FROM resume_record WHERE id = :resume_id"),
@@ -316,7 +362,12 @@ def test_alembic_downgrade_removes_resume_job_fk_without_losing_data(tmp_path):
                 text("SELECT job_id FROM resume_record WHERE id = :resume_id"),
                 {"resume_id": resume_id},
             ).scalar_one()
+            restored_favorite = connection.execute(
+                text("SELECT favorite FROM resume_record WHERE id = :resume_id"),
+                {"resume_id": resume_id},
+            ).scalar_one()
         assert restored_job_id == job_id
+        assert restored_favorite == 0
     finally:
         migration_engine.dispose()
 
@@ -330,8 +381,8 @@ def test_alembic_downgrade_handles_legacy_anonymous_resume_foreign_key(tmp_path)
             connection.exec_driver_sql(
                 "INSERT INTO resume_record "
                 "(title, job_id, job_title, company, content, warnings, source, model, tone, "
-                "enhancement_enabled, enhancement_level, parse_error, created_at) "
-                "VALUES ('孤立记录', 999, '', '', '{}', '[]', 'ai', '', 'standard', 0, "
+                "favorite, enhancement_enabled, enhancement_level, parse_error, created_at) "
+                "VALUES ('孤立记录', 999, '', '', '{}', '[]', 'ai', '', 'standard', 0, 0, "
                 "'balanced', '', '2026-08-18')"
             )
         command.stamp(config, BASELINE_REVISION)

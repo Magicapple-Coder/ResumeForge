@@ -40,6 +40,7 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [previewHtml, setPreviewHtml] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTarget, setEditorTarget] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
@@ -92,6 +93,7 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
     setResult(null);
     setPreviewHtml("");
     setEditorOpen(false);
+    setEditorTarget(null);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
     setSuggestionsOpen(false);
@@ -114,6 +116,7 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
     setErrorMsg("");
     setResult(null);
     setEditorOpen(false);
+    setEditorTarget(null);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
     // 事件回调里只更新状态；最终结果收集在闭包变量中，流结束后统一处理
@@ -312,7 +315,15 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
 
       {stage === "preview" && result && (
         <div>
-          <ResumePreview html={previewHtml} warnings={result.warnings} />
+          <ResumePreview
+            html={previewHtml}
+            warnings={result.warnings}
+            onEditTarget={(path) => {
+              if (!result.recordId) return;
+              setEditorTarget(path);
+              setEditorOpen(true);
+            }}
+          />
           <div
             style={{
               marginTop: 16,
@@ -332,7 +343,10 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
               <Button
                 icon={<EditOutlined />}
                 disabled={!result.recordId}
-                onClick={() => setEditorOpen(true)}
+                onClick={() => {
+                  setEditorTarget(null);
+                  setEditorOpen(true);
+                }}
               >
                 微调内容
               </Button>
@@ -361,7 +375,11 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
       <ResumeEditorModal
         open={editorOpen}
         content={result?.resume ?? null}
-        onClose={() => setEditorOpen(false)}
+        initialTarget={editorTarget}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditorTarget(null);
+        }}
         onSave={saveEditedResume}
       />
       <ResumeSuggestionsModal

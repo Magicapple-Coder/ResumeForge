@@ -1,9 +1,10 @@
-/** 简历中心：生成历史列表、预览与导出。 */
-import { App, Button, Input, Popconfirm, Space, Table, Tag, Typography } from "antd";
+/** 简历中心：生成历史列表、收藏、预览与导出。 */
+import { StarFilled, StarOutlined } from "@ant-design/icons";
+import { App, Button, Input, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { deleteResume, listResumes } from "../api/resumes";
+import { deleteResume, listResumes, updateResumeFavorite } from "../api/resumes";
 import ResumeDetailModal from "../components/ResumeDetailModal";
 import { RESUME_ENHANCEMENT_LEVELS } from "../config";
 import { useApi } from "../hooks/useApi";
@@ -18,6 +19,8 @@ export default function ResumesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [previewId, setPreviewId] = useState<number | null>(null);
+  const [favoriteResumeId, setFavoriteResumeId] = useState<number | null>(null);
+  const favoriteResumeIdRef = useRef<number | null>(null);
   const jobIdParam = searchParams.get("job_id");
   const jobId = jobIdParam && /^\d+$/.test(jobIdParam) ? Number(jobIdParam) : undefined;
 
@@ -43,7 +46,43 @@ export default function ResumesPage() {
     [message, reload],
   );
 
+  const toggleFavorite = useCallback(
+    async (record: ResumeBrief) => {
+      if (favoriteResumeIdRef.current !== null) return;
+      favoriteResumeIdRef.current = record.id;
+      setFavoriteResumeId(record.id);
+      try {
+        await updateResumeFavorite(record.id, !record.favorite);
+        await reload();
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : "更新收藏状态失败");
+      } finally {
+        favoriteResumeIdRef.current = null;
+        setFavoriteResumeId(null);
+      }
+    },
+    [message, reload],
+  );
+
   const columns: ColumnsType<ResumeBrief> = [
+    {
+      title: "收藏",
+      key: "favorite",
+      width: 64,
+      align: "center",
+      render: (_, record) => (
+        <Tooltip title={record.favorite ? "取消收藏" : "收藏简历"}>
+          <Button
+            type="text"
+            aria-label={record.favorite ? "取消收藏简历" : "收藏简历"}
+            loading={favoriteResumeId === record.id}
+            disabled={favoriteResumeId !== null}
+            icon={record.favorite ? <StarFilled style={{ color: "#d89614" }} /> : <StarOutlined />}
+            onClick={() => void toggleFavorite(record)}
+          />
+        </Tooltip>
+      ),
+    },
     {
       title: "简历标题",
       dataIndex: "title",
@@ -146,7 +185,7 @@ export default function ResumesPage() {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
-        scroll={{ x: 960 }}
+        scroll={{ x: 1024 }}
         pagination={{
           current: page,
           pageSize,

@@ -112,6 +112,7 @@ export interface Job {
   job_type: string;
   description: string;
   requirements: string;
+  additional_info: string;
   keywords: SkillTag[];
   source: string;
   source_url: string;
@@ -131,6 +132,7 @@ export interface JobPayload {
   job_type?: string;
   description?: string;
   requirements?: string;
+  additional_info?: string;
   source_url?: string;
   posted_at?: string;
   status?: string;
@@ -148,6 +150,27 @@ export interface JobBatchStatusResult {
 
 export interface JobBatchDeleteResult {
   deleted: number;
+}
+
+export type JobAnalysisPriority = "high" | "medium" | "low";
+
+export interface JobRequirementAnalysis {
+  priority: JobAnalysisPriority;
+  category: string;
+  requirement: string;
+  evidence: string;
+}
+
+export interface JobSearchAdvice {
+  title: string;
+  action: string;
+  rationale: string;
+}
+
+export interface JobAnalysisResult {
+  summary: string;
+  requirements: JobRequirementAnalysis[];
+  advice: JobSearchAdvice[];
 }
 
 // ===== 简历 =====
@@ -224,6 +247,7 @@ export interface ResumeBrief {
   job_title: string;
   company: string;
   source: "ai" | "manual";
+  favorite: boolean;
   model: string;
   enhancement_enabled: boolean;
   enhancement_level: EnhancementLevel;
@@ -266,6 +290,71 @@ export type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; resume: ResumeContent; warnings: string[] }
   | { type: "saved"; record_id: number }
+  | { type: "error"; message: string };
+
+// ===== AI 求职助手 =====
+export interface AssistantConversationBrief {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistantAttachment {
+  name: string;
+  mime_type: string;
+  kind: "text" | "image";
+  size_bytes: number;
+  text: string;
+  data_url: string;
+}
+
+export interface AssistantSource {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface AssistantMessage {
+  id: number;
+  conversation_id: number;
+  role: "user" | "assistant";
+  content: string;
+  attachments: AssistantAttachment[];
+  context: {
+    job_id?: number | null;
+    resume_id?: number | null;
+    include_profile?: boolean;
+    web_search?: boolean;
+    sources?: AssistantSource[];
+  };
+  status: "pending" | "complete" | "error" | "cancelled";
+  error: string;
+  model: string;
+  created_at: string;
+}
+
+export interface AssistantConversationDetail extends AssistantConversationBrief {
+  messages: AssistantMessage[];
+}
+
+export interface AssistantAttachmentInput {
+  name: string;
+  mime_type: string;
+  data: string;
+}
+
+export type AssistantStreamEvent =
+  | {
+      type: "start";
+      user_message_id: number;
+      assistant_message_id: number;
+      conversation_title: string;
+    }
+  | { type: "progress"; message: string }
+  | { type: "sources"; sources: AssistantSource[]; error: string }
+  | { type: "delta"; text: string }
+  | { type: "done"; message: AssistantMessage }
   | { type: "error"; message: string };
 
 // ===== 设置 =====

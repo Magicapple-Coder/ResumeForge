@@ -19,6 +19,7 @@ from ..schemas.resume import (
     ManualResumeRequest,
     ResumeBrief,
     ResumeContent,
+    ResumeFavoriteUpdate,
     ResumeOut,
     ResumeRenderRequest,
     ResumeSuggestionsOut,
@@ -203,6 +204,7 @@ def _to_resume_out(record: ResumeRecord) -> ResumeOut:
         job_title=record.job_title,
         company=record.company,
         source=record.source or "ai",
+        favorite=record.favorite,
         model=record.model,
         enhancement_enabled=record.enhancement_enabled,
         enhancement_level=record.enhancement_level,
@@ -220,10 +222,13 @@ def list_resumes(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     job_id: int | None = Query(default=None, ge=1),
+    favorite: bool | None = Query(default=None),
 ):
     query = db.query(ResumeRecord)
     if job_id is not None:
         query = query.filter(ResumeRecord.job_id == job_id)
+    if favorite is not None:
+        query = query.filter(ResumeRecord.favorite == favorite)
     if keyword:
         like = f"%{keyword}%"
         query = query.filter(
@@ -299,6 +304,22 @@ def update_resume(resume_id: int, payload: ResumeContent, db: Session = Depends(
     # AI 生成阶段的告警不再适用于用户已手工确认过的内容。
     record.warnings = []
     record.parse_error = ""
+    db.commit()
+    db.refresh(record)
+    return _to_resume_out(record)
+
+
+@router.patch("/{resume_id}/favorite", response_model=ResumeOut)
+def update_resume_favorite(
+    resume_id: int,
+    payload: ResumeFavoriteUpdate,
+    db: Session = Depends(get_db),
+):
+    """切换简历收藏状态，不修改简历正文。"""
+    record = db.get(ResumeRecord, resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    record.favorite = payload.favorite
     db.commit()
     db.refresh(record)
     return _to_resume_out(record)

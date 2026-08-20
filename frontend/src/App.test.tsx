@@ -7,6 +7,8 @@ vi.mock("./pages/HomePage", () => ({ default: () => <div>首页内容</div> }));
 vi.mock("./pages/JobsPage", () => ({ default: () => <div>岗位广场内容</div> }));
 vi.mock("./pages/ProfilePage", () => ({ default: () => <div>我的资料内容</div> }));
 vi.mock("./pages/ResumesPage", () => ({ default: () => <div>简历中心内容</div> }));
+vi.mock("./pages/FavoritesPage", () => ({ default: () => <div>收藏夹内容</div> }));
+vi.mock("./pages/AssistantPage", () => ({ default: () => <div>求职助手内容</div> }));
 vi.mock("./pages/SettingsPage", () => ({ default: () => <div>设置内容</div> }));
 
 afterEach(() => {
@@ -40,4 +42,21 @@ describe("first-visit guide", () => {
     fireEvent.click(screen.getByRole("button", { name: "使用指南" }));
     expect(await screen.findByRole("dialog", { name: "欢迎使用简历通" })).toBeInTheDocument();
   }, 15_000);
+});
+
+describe("application navigation", () => {
+  it("opens the favorites and assistant pages from the sidebar", async () => {
+    window.localStorage.setItem("resumeforge.user-guide.seen", "1");
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByText("收藏夹"));
+    expect(await screen.findByText("收藏夹内容")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("求职助手"));
+    expect(await screen.findByText("求职助手内容")).toBeInTheDocument();
+  });
 });

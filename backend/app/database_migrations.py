@@ -1,4 +1,5 @@
 """Database migration orchestration and safe SQLite backups."""
+
 from __future__ import annotations
 
 import logging
@@ -29,6 +30,8 @@ _APPLICATION_TABLES = (
     "resume_record",
     "app_setting",
     "llm_config_record",
+    "chat_conversation",
+    "chat_message",
 )
 _USER_DATA_TABLES = _APPLICATION_TABLES
 

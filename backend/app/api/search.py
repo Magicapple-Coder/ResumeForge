@@ -31,6 +31,7 @@ def search(
                     Job.company.like(like),
                     Job.location.like(like),
                     Job.description.like(like),
+                    Job.additional_info.like(like),
                     Job.note.like(like),
                 )
             )

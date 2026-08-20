@@ -1,6 +1,19 @@
 /** 简历微调表单：编辑结构化内容后交由父组件保存并重新渲染。 */
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
-import { App, Button, Col, Form, Input, Modal, Row, Space, Tabs, Typography } from "antd";
+import {
+  App,
+  Button,
+  Col,
+  Collapse,
+  Form,
+  Grid,
+  Input,
+  Modal,
+  Row,
+  Space,
+  Tabs,
+  Typography,
+} from "antd";
 import type { FormListFieldData } from "antd/es/form/FormList";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -14,6 +27,9 @@ interface Props {
   title?: string;
   description?: string;
   saveLabel?: string;
+  referencePanel?: ReactNode;
+  /** 从预览点击进入时使用的结构化字段路径，如 projects.0.description.1。 */
+  initialTarget?: string | null;
 }
 
 interface ListSectionProps {
@@ -33,6 +49,42 @@ const multilineItemProps = {
   getValueProps: (value: string[] | undefined) => ({ value: (value ?? []).join("\n") }),
   normalize: (value: string) => splitLines(value),
 };
+
+const TAB_BY_SECTION: Record<string, string> = {
+  education: "education",
+  experience: "experience",
+  campus_experience: "campus",
+  projects: "projects",
+  skills: "skills",
+  awards: "awards",
+};
+
+const MULTILINE_FIELDS = new Set([
+  "courses",
+  "achievements",
+  "description",
+  "tech_stack",
+  "highlights",
+]);
+
+function resolveEditorTarget(path: string): { tab: string; name: (string | number)[] } {
+  const parts = path
+    .split(".")
+    .filter(Boolean)
+    .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+  const section = typeof parts[0] === "string" ? parts[0] : "";
+  const lastPart = parts[parts.length - 1];
+  const lastField = parts[parts.length - 2];
+  // 预览中的数组要点各有独立路径，但编辑器以一个多行文本框维护整个数组。
+  if (
+    typeof lastPart === "number" &&
+    typeof lastField === "string" &&
+    MULTILINE_FIELDS.has(lastField)
+  ) {
+    parts.pop();
+  }
+  return { tab: TAB_BY_SECTION[section] ?? "basic", name: parts };
+}
 
 function ListSection({ title, name, emptyValue, children }: ListSectionProps) {
   return (
@@ -365,14 +417,28 @@ export default function ResumeEditorModal({
   title = "微调简历内容",
   description,
   saveLabel = "保存并更新预览",
+  referencePanel,
+  initialTarget,
 }: Props) {
   const { message } = App.useApp();
   const [form] = Form.useForm<ResumeContent>();
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("basic");
+  const screens = Grid.useBreakpoint();
 
   useEffect(() => {
-    if (open && content) form.setFieldsValue(content);
-  }, [content, form, open]);
+    if (!open || !content) return;
+    form.setFieldsValue(content);
+    const target = initialTarget ? resolveEditorTarget(initialTarget) : null;
+    setActiveTab(target?.tab ?? "basic");
+    if (!target || target.name.length === 0) return;
+    const timer = window.setTimeout(() => {
+      form.scrollToField(target.name, { behavior: "smooth", block: "center" });
+      const field = form.getFieldInstance(target.name) as { focus?: () => void } | undefined;
+      field?.focus?.();
+    });
+    return () => window.clearTimeout(timer);
+  }, [content, form, initialTarget, open]);
 
   const tabItems = useMemo(
     () => [
@@ -452,7 +518,7 @@ export default function ResumeEditorModal({
     <Modal
       title={title}
       open={open}
-      width="min(1000px, calc(100vw - 24px))"
+      width={referencePanel ? "min(1320px, calc(100vw - 24px))" : "min(1000px, calc(100vw - 24px))"}
       zIndex={1100}
       destroyOnHidden
       maskClosable={!saving}
@@ -474,18 +540,42 @@ export default function ResumeEditorModal({
       }
       styles={{ body: { maxHeight: "calc(100vh - 180px)", overflowY: "auto" } }}
     >
-      {description && (
-        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-          {description}
-        </Typography.Text>
-      )}
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={(values) => void handleFinish(values as ResumeContent)}
+      <div
+        className={`resume-editor-layout${referencePanel ? " resume-editor-layout--with-reference" : ""}`}
       >
-        <Tabs items={tabItems} />
-      </Form>
+        {referencePanel && (
+          <div className="resume-editor-reference">
+            {screens.lg ? (
+              referencePanel
+            ) : (
+              <Collapse
+                size="small"
+                items={[
+                  {
+                    key: "job-reference",
+                    label: "查看岗位要求",
+                    children: referencePanel,
+                  },
+                ]}
+              />
+            )}
+          </div>
+        )}
+        <div className="resume-editor-main">
+          {description && (
+            <Typography.Text type="secondary" className="resume-editor-description">
+              {description}
+            </Typography.Text>
+          )}
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={(values) => void handleFinish(values as ResumeContent)}
+          >
+            <Tabs activeKey={activeTab} items={tabItems} onChange={setActiveTab} />
+          </Form>
+        </div>
+      </div>
     </Modal>
   );
 }

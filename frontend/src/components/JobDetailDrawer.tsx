@@ -1,10 +1,13 @@
 /** 岗位详情抽屉：JD 全文、技能标签、投递链接与操作入口。 */
 import {
+  BulbOutlined,
   CheckCircleOutlined,
   EditOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
+  MessageOutlined,
   PushpinOutlined,
   StarFilled,
   StarOutlined,
@@ -20,6 +23,8 @@ interface Props {
   onGenerate: (job: Job) => void;
   onWrite: (job: Job) => void;
   onViewResumes: (job: Job) => void;
+  onAnalyze: (job: Job) => void;
+  onAskAssistant: (job: Job) => void;
   onFavorite: (job: Job) => void;
   favoriteLoading?: boolean;
 }
@@ -29,7 +34,7 @@ interface TextSectionProps {
   icon: ReactNode;
   content: string;
   emptyText: string;
-  variant: "description" | "requirements" | "note";
+  variant: "description" | "requirements" | "additional" | "note";
 }
 
 function TextSection({ title, icon, content, emptyText, variant }: TextSectionProps) {
@@ -52,6 +57,8 @@ export default function JobDetailDrawer({
   onGenerate,
   onWrite,
   onViewResumes,
+  onAnalyze,
+  onAskAssistant,
   onFavorite,
   favoriteLoading = false,
 }: Props) {
@@ -81,6 +88,7 @@ export default function JobDetailDrawer({
             <Descriptions.Item label="薪资范围">{job.salary || "-"}</Descriptions.Item>
             <Descriptions.Item label="岗位类型">{job.job_type || "-"}</Descriptions.Item>
             <Descriptions.Item label="状态">{job.status || "-"}</Descriptions.Item>
+            <Descriptions.Item label="发布时间">{job.posted_at || "-"}</Descriptions.Item>
           </Descriptions>
 
           {job.keywords.length > 0 && (
@@ -108,6 +116,13 @@ export default function JobDetailDrawer({
               variant="requirements"
             />
             <TextSection
+              title="其他招聘信息"
+              icon={<InfoCircleOutlined />}
+              content={job.additional_info}
+              emptyText="暂无其他招聘信息"
+              variant="additional"
+            />
+            <TextSection
               title="备注"
               icon={<PushpinOutlined />}
               content={job.note}
@@ -125,6 +140,12 @@ export default function JobDetailDrawer({
             </Button>
             <Button icon={<FolderOpenOutlined />} onClick={() => onViewResumes(job)}>
               查看生成的简历
+            </Button>
+            <Button icon={<BulbOutlined />} onClick={() => onAnalyze(job)}>
+              岗位需求解读
+            </Button>
+            <Button icon={<MessageOutlined />} onClick={() => onAskAssistant(job)}>
+              咨询求职助手
             </Button>
             {job.source_url && (
               <Button

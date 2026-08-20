@@ -75,6 +75,29 @@ def test_update_resume_returns_404_for_missing_record(client):
     assert response.status_code == 404
 
 
+def test_rendered_resume_exposes_structured_edit_paths(client):
+    response = client.post(
+        "/api/resumes/render",
+        json={
+            "content": {
+                "name": "张三",
+                "summary": "个人总结",
+                "projects": [
+                    {
+                        "name": "简历工具",
+                        "description": ["实现简历预览"],
+                    }
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'data-resume-path="summary"' in response.text
+    assert 'data-resume-path="projects.0.name"' in response.text
+    assert 'data-resume-path="projects.0.description.0"' in response.text
+
+
 def test_create_manual_resume_is_linked_and_marked_as_user_written(client):
     job_response = client.post(
         "/api/jobs",

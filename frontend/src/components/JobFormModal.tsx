@@ -213,6 +213,12 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
         <Form.Item name="requirements" label="任职要求（选填）">
           <Input.TextArea rows={3} placeholder="可单独填写任职要求，没有可留空" />
         </Form.Item>
+        <Form.Item name="additional_info" label="其他招聘信息（选填）">
+          <Input.TextArea
+            rows={4}
+            placeholder="如：公司与团队介绍、职位编号、福利待遇、工作安排、申请或面试流程"
+          />
+        </Form.Item>
         <Form.Item name="note" label="备注（选填）">
           <Input.TextArea
             rows={3}

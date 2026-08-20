@@ -14,7 +14,13 @@ import { consumeSSE } from "./stream";
 export type ExportFormat = "json" | "md" | "html";
 
 export function listResumes(
-  params: { keyword?: string; page?: number; page_size?: number; job_id?: number } = {},
+  params: {
+    keyword?: string;
+    page?: number;
+    page_size?: number;
+    job_id?: number;
+    favorite?: boolean;
+  } = {},
 ): Promise<Page<ResumeBrief>> {
   return request(`/resumes${buildQuery(params)}`);
 }
@@ -30,6 +36,14 @@ export function deleteResume(id: number): Promise<void> {
 /** 替换一份已保存简历的结构化内容。 */
 export function updateResume(id: number, content: ResumeContent): Promise<ResumeDetail> {
   return request(`/resumes/${id}`, { method: "PUT", body: JSON.stringify(content) });
+}
+
+/** 单独更新收藏状态，不上传或覆盖简历正文。 */
+export function updateResumeFavorite(id: number, favorite: boolean): Promise<ResumeDetail> {
+  return request(`/resumes/${id}/favorite`, {
+    method: "PATCH",
+    body: JSON.stringify({ favorite }),
+  });
 }
 
 /** 保存用户自行编写的简历，可选关联岗位。 */

@@ -327,17 +327,29 @@ export default function SettingsPage() {
           </Form.Item>
           <Row gutter={[16, 0]}>
             <Col xs={24} md={8}>
-              <Form.Item name="temperature" label="创意度 temperature">
+              <Form.Item
+                name="temperature"
+                label="创意度 temperature"
+                tooltip="控制输出的随机性。值越低越稳定，适合事实型简历；值越高表达更发散，也会增加内容不一致或虚构风险。"
+              >
                 <Slider min={0} max={2} step={0.1} marks={{ 0: "严谨", 1: "均衡", 2: "发散" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="timeout_seconds" label="超时时间（秒）">
+              <Form.Item
+                name="timeout_seconds"
+                label="超时时间（秒）"
+                tooltip="等待模型返回响应数据的最长时间；超过后请求会终止。网络较慢或生成内容较长时可适当调大，但调大不会让模型生成得更快。"
+              >
                 <InputNumber min={10} max={600} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="max_tokens" label="最大输出 Token">
+              <Form.Item
+                name="max_tokens"
+                label="最大输出 Token"
+                tooltip="限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。"
+              >
                 <InputNumber min={256} max={65536} step={512} style={{ width: "100%" }} />
               </Form.Item>
             </Col>

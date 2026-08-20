@@ -120,6 +120,7 @@ class ResumeBrief(BaseModel):
     job_title: str
     company: str
     source: Literal["ai", "manual"] = "ai"
+    favorite: bool = False
     model: str
     enhancement_enabled: bool
     enhancement_level: Literal["light", "balanced", "strong"]
@@ -130,6 +131,12 @@ class ResumeOut(ResumeBrief):
     content: ResumeContent
     warnings: list[str] = []
     parse_error: str = ""
+
+
+class ResumeFavoriteUpdate(BaseModel):
+    """只更新收藏状态，避免切换收藏时覆盖整份简历内容。"""
+
+    favorite: bool
 
 
 class ResumeSuggestion(BaseModel):

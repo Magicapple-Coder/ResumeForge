@@ -1,4 +1,5 @@
 """应用入口：装配中间件与路由、配置日志、启动时升级数据库。"""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401 - 确保全部模型注册到 Base.metadata
-from .api import jobs, profile, resumes, search, settings as settings_api, stats
+from .api import assistant, jobs, profile, resumes, search, settings as settings_api, stats
 from .config import get_settings
 from .database import Base, engine, ensure_sqlite_columns
 from .database_migrations import is_unversioned_legacy_database, run_database_migrations
@@ -81,7 +82,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for router in (jobs.router, resumes.router, profile.router, settings_api.router, search.router, stats.router):
+for router in (
+    jobs.router,
+    resumes.router,
+    profile.router,
+    settings_api.router,
+    search.router,
+    stats.router,
+    assistant.router,
+):
     app.include_router(router)
 
 

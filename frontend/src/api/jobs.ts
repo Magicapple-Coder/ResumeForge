@@ -3,6 +3,7 @@ import type {
   Job,
   JobBatchDeleteResult,
   JobBatchStatusResult,
+  JobAnalysisResult,
   JobPayload,
   Page,
   ParsedJobDraft,
@@ -13,6 +14,7 @@ export interface JobListParams {
   keyword?: string;
   job_type?: string;
   status?: string;
+  favorite?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -50,4 +52,8 @@ export function batchUpdateJobStatus(payload: {
 
 export function batchDeleteJobs(payload: { job_ids: number[] }): Promise<JobBatchDeleteResult> {
   return request("/jobs/batch-delete", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function generateJobAnalysis(id: number): Promise<JobAnalysisResult> {
+  return request(`/jobs/${id}/analysis`, { method: "POST" });
 }

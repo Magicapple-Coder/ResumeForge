@@ -24,6 +24,7 @@ class ResumeRecord(Base):
     warnings: Mapped[list[str]] = mapped_column(JSON, default=list)  # 一致性校验提醒
     # 历史记录没有该字段时由 SQLite 迁移默认标记为 AI 生成。
     source: Mapped[str] = mapped_column(String(16), default="ai", nullable=False)
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     model: Mapped[str] = mapped_column(String(64), default="")
     # 旧数据库中的 tone 列为 NOT NULL 且没有服务端默认值。继续写入默认值仅为
     # 兼容历史表结构；API 和前端均不再暴露定制风格功能。

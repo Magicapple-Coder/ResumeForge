@@ -34,13 +34,13 @@ import {
   updateJob,
 } from "../api/jobs";
 import GenerateResumeModal from "../components/GenerateResumeModal";
+import JobAnalysisModal from "../components/JobAnalysisModal";
 import JobDetailDrawer from "../components/JobDetailDrawer";
 import JobFormModal from "../components/JobFormModal";
 import ManualResumeModal from "../components/ManualResumeModal";
 import SkillTags from "../components/SkillTags";
 import { useApi } from "../hooks/useApi";
 import type { Job } from "../types";
-import { formatDateTime } from "../utils/format";
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
@@ -68,6 +68,7 @@ export default function JobsPage() {
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [generateJob, setGenerateJob] = useState<Job | null>(null);
   const [manualResumeJob, setManualResumeJob] = useState<Job | null>(null);
+  const [analysisJob, setAnalysisJob] = useState<Job | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
   const [batchStatus, setBatchStatus] = useState<string>();
   const [batchAction, setBatchAction] = useState<BatchAction>(null);
@@ -276,10 +277,10 @@ export default function JobsPage() {
       ),
     },
     {
-      title: "更新时间",
-      dataIndex: "updated_at",
+      title: "发布时间",
+      dataIndex: "posted_at",
       width: 150,
-      render: (value) => formatDateTime(value),
+      render: (value: string) => value || "-",
     },
     {
       title: "操作",
@@ -488,6 +489,8 @@ export default function JobsPage() {
         onGenerate={(job) => setGenerateJob(job)}
         onWrite={(job) => setManualResumeJob(job)}
         onViewResumes={(job) => navigate(`/resumes?job_id=${job.id}`)}
+        onAnalyze={setAnalysisJob}
+        onAskAssistant={(job) => navigate(`/assistant?job_id=${job.id}`)}
         onFavorite={(job) => void toggleFavorite(job)}
         favoriteLoading={favoriteJobId === detailJob?.id}
       />
@@ -502,6 +505,7 @@ export default function JobsPage() {
       />
       <GenerateResumeModal job={generateJob} onClose={() => setGenerateJob(null)} />
       <ManualResumeModal job={manualResumeJob} onClose={() => setManualResumeJob(null)} />
+      <JobAnalysisModal job={analysisJob} onClose={() => setAnalysisJob(null)} />
     </div>
   );
 }

@@ -349,7 +349,11 @@ def _contains(text: str, term: str) -> bool:
 
 def _job_text(job: JobOut) -> str:
     # 公司名不参与匹配，避免资料中恰好出现同名公司而抬高无关经历。
-    return "\n".join(value for value in (job.title, job.description, job.requirements) if value)
+    return "\n".join(
+        value
+        for value in (job.title, job.description, job.requirements, job.additional_info)
+        if value
+    )
 
 
 def build_job_focus(job: JobOut, profile: ProfileOut | None = None) -> JobFocus:
@@ -721,19 +725,35 @@ def build_job_prompt_text(job: JobOut, max_chars: int) -> str:
     """
     requirements = job.requirements.strip()
     description = job.description.strip()
-    overhead = len("任职要求（优先）：\n\n\n职位描述：\n")
+    additional_info = job.additional_info.strip()
+    overhead = len("任职要求（优先）：\n\n\n职位描述：\n\n\n其他招聘信息：\n")
     available = max(0, max_chars - overhead)
     if not requirements:
-        return f"职位描述：\n{_trim_middle(description, available)}"
+        description_budget = available if not additional_info else available * 3 // 4
+        description_text = _trim_middle(description, description_budget)
+        additional_text = _trim_middle(
+            additional_info, max(0, available - len(description_text))
+        )
+        result = f"职位描述：\n{description_text}"
+        if additional_text:
+            result += f"\n\n其他招聘信息：\n{additional_text}"
+        return result
 
     requirement_budget = min(
         len(requirements),
         max(available * 3 // 5, min(available, 1_200)),
     )
     requirement_text = _trim_middle(requirements, requirement_budget)
-    description_budget = max(0, available - len(requirement_text))
+    remaining = max(0, available - len(requirement_text))
+    description_budget = remaining if not additional_info else remaining * 3 // 4
     description_text = _trim_middle(description, description_budget)
-    return f"任职要求（优先）：\n{requirement_text}\n\n职位描述：\n{description_text}"
+    additional_text = _trim_middle(
+        additional_info, max(0, remaining - len(description_text))
+    )
+    result = f"任职要求（优先）：\n{requirement_text}\n\n职位描述：\n{description_text}"
+    if additional_text:
+        result += f"\n\n其他招聘信息：\n{additional_text}"
+    return result
 
 
 def _drop_one_detail(data: dict[str, Any]) -> bool:

@@ -46,6 +46,7 @@ class JobCreate(BaseModel):
     job_type: str = Field(default="校招", max_length=32)
     description: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
     requirements: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
+    additional_info: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
     source_url: str = Field(default="", max_length=512)
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
@@ -73,6 +74,7 @@ class JobUpdate(BaseModel):
     job_type: str = Field(default="", max_length=32)
     description: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
     requirements: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
+    additional_info: str = Field(default="", max_length=MAX_JOB_TEXT_CHARS)
     source_url: str = Field(default="", max_length=512)
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
@@ -135,6 +137,7 @@ class JobTextParseResult(BaseModel):
     job_type: str = Field(default="其他", max_length=32)
     description: str = ""
     requirements: str = ""
+    additional_info: str = ""
     source_url: str = Field(default="", max_length=512)
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)

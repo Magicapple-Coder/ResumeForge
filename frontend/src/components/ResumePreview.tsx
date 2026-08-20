@@ -1,6 +1,12 @@
-/** 简历预览：固定为一张 A4 纸，再按弹窗可用空间等比缩放。 */
-import { ReloadOutlined, ZoomInOutlined, ZoomOutOutlined } from "@ant-design/icons";
-import { Alert, Button, Space, Tooltip, Typography } from "antd";
+/** 简历预览：固定为一张 A4 纸，支持抓手浏览和按字段定位编辑。 */
+import {
+  DragOutlined,
+  EditOutlined,
+  ReloadOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+} from "@ant-design/icons";
+import { Alert, Button, Segmented, Space, Tooltip, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -8,6 +14,8 @@ interface Props {
   warnings: string[];
   /** 仅作为首次布局尚未测量时的占位高度，实际画布始终是 A4。 */
   height?: number;
+  /** 提供后显示“点击编辑”模式，并返回结构化简历字段路径。 */
+  onEditTarget?: (path: string) => void;
 }
 
 const A4_WIDTH_PX = 794;
@@ -28,13 +36,22 @@ interface PanStart {
   scrollTop: number;
 }
 
-export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }: Props) {
+type InteractionMode = "pan" | "edit";
+
+export default function ResumePreview({
+  html,
+  warnings,
+  height = A4_HEIGHT_PX,
+  onEditTarget,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const panStartRef = useRef<PanStart | null>(null);
+  const frameCleanupRef = useRef<(() => void) | null>(null);
   const [availableSpace, setAvailableSpace] = useState<AvailableSpace>({ width: 0, height });
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("pan");
 
   const updateAvailableSpace = useCallback(() => {
     const container = containerRef.current;
@@ -106,11 +123,95 @@ export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }:
     setZoom((current) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current + direction * 0.1)));
   }, []);
 
+  const bindFrameInteractions = useCallback(() => {
+    frameCleanupRef.current?.();
+    frameCleanupRef.current = null;
+    const document = iframeRef.current?.contentDocument;
+    if (!document) return;
+
+    document.addEventListener("wheel", handleWheel, { passive: false });
+    const interactiveStyle = document.getElementById("resume-preview-interaction-style");
+    interactiveStyle?.remove();
+
+    let handleClick: ((event: MouseEvent) => void) | undefined;
+    let handleKeyDown: ((event: KeyboardEvent) => void) | undefined;
+    const targets = Array.from(document.querySelectorAll<HTMLElement>("[data-resume-path]"));
+    const originalAttributes = new Map(
+      targets.map((target) => [
+        target,
+        {
+          role: target.getAttribute("role"),
+          tabIndex: target.getAttribute("tabindex"),
+        },
+      ]),
+    );
+    if (interactionMode === "edit" && onEditTarget) {
+      const style = document.createElement("style");
+      style.id = "resume-preview-interaction-style";
+      style.textContent =
+        "[data-resume-path]{cursor:pointer;border-radius:2px;outline:1px solid transparent}" +
+        "[data-resume-path]:hover,[data-resume-path]:focus{outline:2px solid #1677ff;outline-offset:2px;background:rgba(22,119,255,.08)}";
+      document.head.appendChild(style);
+      targets.forEach((target) => {
+        target.setAttribute("role", "button");
+        target.setAttribute("tabindex", "0");
+      });
+
+      const resolveTarget = (target: EventTarget | null) => {
+        const ElementConstructor = document.defaultView?.Element;
+        return ElementConstructor && target instanceof ElementConstructor
+          ? target.closest<HTMLElement>("[data-resume-path]")
+          : null;
+      };
+      handleClick = (event) => {
+        const target = resolveTarget(event.target);
+        const path = target?.dataset.resumePath;
+        if (!path) return;
+        event.preventDefault();
+        onEditTarget(path);
+      };
+      handleKeyDown = (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const target = resolveTarget(event.target);
+        const path = target?.dataset.resumePath;
+        if (!path) return;
+        event.preventDefault();
+        onEditTarget(path);
+      };
+      document.addEventListener("click", handleClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+
+    frameCleanupRef.current = () => {
+      document.removeEventListener("wheel", handleWheel);
+      if (handleClick) document.removeEventListener("click", handleClick);
+      if (handleKeyDown) document.removeEventListener("keydown", handleKeyDown);
+      targets.forEach((target) => {
+        const original = originalAttributes.get(target);
+        if (original?.role === null) target.removeAttribute("role");
+        else if (original?.role !== undefined) target.setAttribute("role", original.role);
+        if (original?.tabIndex === null) target.removeAttribute("tabindex");
+        else if (original?.tabIndex !== undefined)
+          target.setAttribute("tabindex", original.tabIndex);
+      });
+      document.getElementById("resume-preview-interaction-style")?.remove();
+    };
+  }, [handleWheel, interactionMode, onEditTarget]);
+
+  useEffect(() => {
+    bindFrameInteractions();
+    return () => {
+      frameCleanupRef.current?.();
+      frameCleanupRef.current = null;
+    };
+  }, [bindFrameInteractions, html]);
+
   useEffect(() => {
     const viewport = containerRef.current;
     if (!viewport) return;
 
     const handlePointerDown = (event: globalThis.PointerEvent) => {
+      if (interactionMode !== "pan") return;
       if (event.button !== 0) return;
       event.preventDefault();
       panStartRef.current = {
@@ -154,7 +255,7 @@ export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }:
       viewport.removeEventListener("pointercancel", stopPanning);
       viewport.removeEventListener("lostpointercapture", stopPanning);
     };
-  }, [handleWheel]);
+  }, [handleWheel, interactionMode]);
 
   const adjustZoom = (delta: number) => {
     setZoom((current) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current + delta)));
@@ -178,7 +279,19 @@ export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }:
         />
       )}
       <div className="resume-preview-toolbar">
-        <Space size={4}>
+        <Space size={8} wrap>
+          {onEditTarget && (
+            <Segmented
+              size="small"
+              aria-label="简历预览交互模式"
+              value={interactionMode}
+              onChange={(value) => setInteractionMode(value as InteractionMode)}
+              options={[
+                { value: "pan", label: "抓手", icon: <DragOutlined /> },
+                { value: "edit", label: "编辑", icon: <EditOutlined /> },
+              ]}
+            />
+          )}
           <Tooltip title="缩小预览">
             <Button
               type="text"
@@ -213,7 +326,7 @@ export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }:
       </div>
       <div
         ref={containerRef}
-        className={`resume-preview-viewport${isPanning ? " is-panning" : ""}`}
+        className={`resume-preview-viewport${isPanning ? " is-panning" : ""}${interactionMode === "edit" ? " is-editing" : ""}`}
         style={{ height: viewportHeightForPage }}
       >
         <div
@@ -232,8 +345,10 @@ export default function ResumePreview({ html, warnings, height = A4_HEIGHT_PX }:
             onLoad={() => {
               fitFrameContent();
               updateAvailableSpace();
+              bindFrameInteractions();
               requestAnimationFrame(fitFrameContent);
             }}
+            data-interaction-mode={interactionMode}
             style={{
               width: A4_WIDTH_PX,
               height: A4_HEIGHT_PX,

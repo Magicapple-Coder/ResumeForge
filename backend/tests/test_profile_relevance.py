@@ -9,6 +9,7 @@ from app.schemas.resume import GenerateOptions
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
 from app.services.profile_relevance import (
+    build_job_focus,
     build_job_prompt_text,
     build_profile_prompt_data,
     build_targeted_profile_context,
@@ -279,6 +280,19 @@ def test_context_budget_and_jd_budget_keep_valid_data_and_requirements():
     assert json.loads(serialized)
     assert len(jd) <= 5_000
     assert "MUST_KEEP_FASTAPI_AND_REDIS" in jd
+
+
+def test_job_focus_and_prompt_include_additional_recruitment_information():
+    job = make_job("数据分析师", "负责经营分析", "本科及以上学历").model_copy(
+        update={"additional_info": "加分项：熟悉 Python；面试包含业务案例分析"}
+    )
+
+    focus = build_job_focus(job)
+    jd = build_job_prompt_text(job, 5_000)
+
+    assert "Python" in focus.skills
+    assert "其他招聘信息" in jd
+    assert "面试包含业务案例分析" in jd
 
 
 async def test_generator_uses_targeted_context_and_grounds_factual_fields():

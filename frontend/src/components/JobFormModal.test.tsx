@@ -1,6 +1,6 @@
 import { App as AntdApp } from "antd";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JobFormModal from "./JobFormModal";
 
 const apiMocks = vi.hoisted(() => ({
@@ -25,7 +25,45 @@ beforeEach(() => {
   apiMocks.updateJob.mockReset();
 });
 
+afterEach(() => cleanup());
+
 describe("JobFormModal", () => {
+  it("fills additional recruitment information returned by text parsing", async () => {
+    apiMocks.parseJobText.mockResolvedValue({
+      title: "门店店长",
+      company: "示例超市",
+      location: "成都市武侯区",
+      salary: "",
+      job_type: "社招",
+      description: "负责门店经营",
+      requirements: "三年零售经验",
+      additional_info: "提供员工宿舍，面试包含门店案例分析",
+      source_url: "",
+      posted_at: "2026-08-20",
+      status: "开放中",
+      warnings: [],
+    });
+    render(
+      <AntdApp>
+        <JobFormModal open initial={null} onClose={vi.fn()} onSaved={vi.fn()} />
+      </AntdApp>,
+    );
+
+    fireEvent.change(
+      screen.getByPlaceholderText("粘贴职位名称、地点、职位描述、职位要求等完整招聘信息"),
+      {
+        target: { value: "门店店长招聘信息" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText("其他招聘信息（选填）")).toHaveValue(
+      "提供员工宿舍，面试包含门店案例分析",
+    );
+    expect(screen.getByLabelText("发布时间（选填）")).toHaveValue("2026-08-20");
+  });
+
   it("submits only once when the save button is activated repeatedly", async () => {
     const pending = deferred();
     apiMocks.createJob.mockReturnValue(pending.promise);

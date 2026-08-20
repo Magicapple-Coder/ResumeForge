@@ -31,6 +31,32 @@ def test_job_note_roundtrip_update_and_search(client):
     assert updated.json()["status"] == "已投递"
 
 
+def test_job_additional_info_roundtrip_update_and_search(client):
+    response = client.post(
+        "/api/jobs",
+        json={
+            "title": "高中语文教师",
+            "additional_info": "提供教师公寓，面试包含试讲环节",
+        },
+    )
+    assert response.status_code == 201
+    job = response.json()
+    assert job["additional_info"] == "提供教师公寓，面试包含试讲环节"
+
+    listed = client.get("/api/jobs", params={"keyword": "教师公寓"}).json()
+    assert listed["total"] == 1
+    assert listed["items"][0]["id"] == job["id"]
+    global_search = client.get("/api/search", params={"q": "试讲环节"}).json()
+    assert global_search["jobs"][0]["id"] == job["id"]
+
+    updated = client.put(
+        f"/api/jobs/{job['id']}",
+        json={"additional_info": "提供员工宿舍，需参加两轮面试"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["additional_info"] == "提供员工宿舍，需参加两轮面试"
+
+
 def test_job_favorite_roundtrip(client):
     job = _create_job(client, "算法工程师")
 
@@ -43,8 +69,38 @@ def test_job_favorite_roundtrip(client):
     assert listed[0]["favorite"] is True
 
 
+def test_job_list_filters_favorites_with_keyword_and_status(client):
+    first = _create_job(client, "算法工程师")
+    second = _create_job(client, "算法研究员")
+    _create_job(client, "后端工程师")
+    assert client.put(f"/api/jobs/{first['id']}", json={"favorite": True}).status_code == 200
+    assert (
+        client.put(
+            f"/api/jobs/{second['id']}", json={"favorite": True, "status": "已投递"}
+        ).status_code
+        == 200
+    )
+
+    response = client.get(
+        "/api/jobs",
+        params={"favorite": "true", "keyword": "算法", "status": "开放中"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [first["id"]]
+
+
 def test_job_note_rejects_oversized_value(client):
     response = client.post("/api/jobs", json={"title": "算法工程师", "note": "x" * 2001})
+
+    assert response.status_code == 422
+
+
+def test_job_additional_info_rejects_oversized_value(client):
+    response = client.post(
+        "/api/jobs",
+        json={"title": "算法工程师", "additional_info": "x" * 200_001},
+    )
 
     assert response.status_code == 422
 

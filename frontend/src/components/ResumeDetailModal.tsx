@@ -1,5 +1,5 @@
 /** 简历记录预览弹窗（历史记录用）：加载详情与渲染 HTML 后展示。 */
-import { BulbOutlined, EditOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BulbOutlined, EditOutlined, FolderOpenOutlined, MessageOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Modal, Skeleton, Space, Tag, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +23,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   const [html, setHtml] = useState("");
   const [error, setError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTarget, setEditorTarget] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
@@ -36,6 +37,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
     setHtml("");
     setError("");
     setEditorOpen(false);
+    setEditorTarget(null);
     setSuggestionsOpen(false);
     if (loadedRecordId.current !== recordId) {
       loadedRecordId.current = recordId;
@@ -102,7 +104,14 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
               创建于 {detail.created_at.replace("T", " ").slice(0, 16)}
             </Typography.Text>
           </Space>
-          <ResumePreview html={html} warnings={detail.warnings} />
+          <ResumePreview
+            html={html}
+            warnings={detail.warnings}
+            onEditTarget={(path) => {
+              setEditorTarget(path);
+              setEditorOpen(true);
+            }}
+          />
           <div
             style={{
               marginTop: 16,
@@ -112,7 +121,13 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
             }}
           >
             <Space wrap>
-              <Button icon={<EditOutlined />} onClick={() => setEditorOpen(true)}>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditorTarget(null);
+                  setEditorOpen(true);
+                }}
+              >
                 微调内容
               </Button>
               <Button
@@ -129,6 +144,12 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
               >
                 查看对应岗位
               </Button>
+              <Button
+                icon={<MessageOutlined />}
+                onClick={() => navigate(`/assistant?resume_id=${detail.id}`)}
+              >
+                咨询求职助手
+              </Button>
             </Space>
             <ExportButtons recordId={detail.id} />
           </div>
@@ -137,7 +158,11 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
       <ResumeEditorModal
         open={editorOpen}
         content={detail?.content ?? null}
-        onClose={() => setEditorOpen(false)}
+        initialTarget={editorTarget}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditorTarget(null);
+        }}
         onSave={saveEditedResume}
       />
       <ResumeSuggestionsModal

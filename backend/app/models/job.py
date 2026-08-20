@@ -26,6 +26,7 @@ class Job(Base):
     job_type: Mapped[str] = mapped_column(String(32), default="校招")  # 校招/实习/社招/其他
     description: Mapped[str] = mapped_column(Text, default="")  # JD 全文
     requirements: Mapped[str] = mapped_column(Text, default="")  # 任职要求（可选）
+    additional_info: Mapped[str] = mapped_column(Text, default="")  # 福利、流程等招聘补充信息
     # 规则解析出的技能标签：[{"name": "Python", "category": "编程语言"}, ...]
     keywords: Mapped[list[Any]] = mapped_column(JSON, default=list)
     # 保留该列以兼容历史数据；新岗位只会由手动添加接口写入默认值。

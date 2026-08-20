@@ -5,6 +5,7 @@ import { createManualResume } from "../api/resumes";
 import { getProfile } from "../api/profile";
 import type { Job, Profile, ResumeContent } from "../types";
 import { profileToResumeContent } from "../utils/profileToResume";
+import JobRequirementPanel from "./JobRequirementPanel";
 import ResumeEditorModal from "./ResumeEditorModal";
 
 interface Props {
@@ -70,6 +71,7 @@ export default function ManualResumeModal({ job, onClose }: Props) {
         title={job ? `自行编写「${job.title}」简历` : "自行编写简历"}
         description="已从我的资料预填基本信息和经历，你可以直接修改、删减或补充后保存。"
         saveLabel="保存手写简历"
+        referencePanel={job ? <JobRequirementPanel job={job} /> : undefined}
         onClose={onClose}
         onSave={save}
       />
