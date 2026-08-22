@@ -296,6 +296,8 @@ export type StreamEvent =
 export interface AssistantConversationBrief {
   id: number;
   title: string;
+  pinned: boolean;
+  favorite: boolean;
   created_at: string;
   updated_at: string;
 }

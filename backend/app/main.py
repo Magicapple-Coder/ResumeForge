@@ -57,6 +57,10 @@ SQLITE_REQUIRED_COLUMNS = {
         "enhancement_enabled": "BOOLEAN NOT NULL DEFAULT 0",
         "enhancement_level": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
     },
+    "chat_conversation": {
+        "pinned": "BOOLEAN NOT NULL DEFAULT 0",
+        "favorite": "BOOLEAN NOT NULL DEFAULT 0",
+    },
 }
 
 

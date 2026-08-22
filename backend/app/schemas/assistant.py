@@ -52,11 +52,21 @@ class ChatConversationCreate(BaseModel):
 class ChatConversationUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(min_length=1, max_length=120)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    pinned: bool | None = None
+    favorite: bool | None = None
+
+    @model_validator(mode="after")
+    def require_update(self):
+        if self.title is None and self.pinned is None and self.favorite is None:
+            raise ValueError("至少提供一个要修改的会话字段")
+        return self
 
     @field_validator("title")
     @classmethod
-    def title_must_not_be_blank(cls, value: str) -> str:
+    def title_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = " ".join(value.split())
         if not value:
             raise ValueError("会话标题不能为空")
@@ -92,6 +102,8 @@ class ChatConversationBrief(BaseModel):
 
     id: int
     title: str
+    pinned: bool
+    favorite: bool
     created_at: datetime
     updated_at: datetime
 

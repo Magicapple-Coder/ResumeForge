@@ -19,6 +19,7 @@ const apiMocks = vi.hoisted(() => ({
   getAssistantConversation: vi.fn(),
   listAssistantConversations: vi.fn(),
   renameAssistantConversation: vi.fn(),
+  updateAssistantConversation: vi.fn(),
   sendAssistantMessage: vi.fn(),
   listJobs: vi.fn(),
   listResumes: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("../api/assistant", () => ({
   getAssistantConversation: apiMocks.getAssistantConversation,
   listAssistantConversations: apiMocks.listAssistantConversations,
   renameAssistantConversation: apiMocks.renameAssistantConversation,
+  updateAssistantConversation: apiMocks.updateAssistantConversation,
   sendAssistantMessage: apiMocks.sendAssistantMessage,
 }));
 vi.mock("../api/jobs", () => ({ listJobs: apiMocks.listJobs }));
@@ -38,8 +40,22 @@ vi.mock("../api/resumes", () => ({ listResumes: apiMocks.listResumes }));
 
 const CREATED_AT = "2026-08-20T10:00:00";
 const CONVERSATIONS: AssistantConversationBrief[] = [
-  { id: 1, title: "会话一", created_at: CREATED_AT, updated_at: CREATED_AT },
-  { id: 2, title: "会话二", created_at: CREATED_AT, updated_at: CREATED_AT },
+  {
+    id: 1,
+    title: "会话一",
+    pinned: false,
+    favorite: false,
+    created_at: CREATED_AT,
+    updated_at: CREATED_AT,
+  },
+  {
+    id: 2,
+    title: "会话二",
+    pinned: false,
+    favorite: false,
+    created_at: CREATED_AT,
+    updated_at: CREATED_AT,
+  },
 ];
 
 function conversationDetail(id: number): AssistantConversationDetail {
@@ -81,6 +97,10 @@ beforeEach(() => {
   apiMocks.createAssistantConversation.mockReset().mockResolvedValue(CONVERSATIONS[0]);
   apiMocks.deleteAssistantConversation.mockReset().mockResolvedValue(undefined);
   apiMocks.renameAssistantConversation.mockReset();
+  apiMocks.updateAssistantConversation.mockReset().mockImplementation(async (id, patch) => ({
+    ...(CONVERSATIONS.find((item) => item.id === id) ?? CONVERSATIONS[0]),
+    ...patch,
+  }));
   apiMocks.sendAssistantMessage.mockReset().mockResolvedValue(undefined);
   apiMocks.listJobs.mockReset().mockResolvedValue({ items: [], total: 0 });
   apiMocks.listResumes.mockReset().mockResolvedValue({ items: [], total: 0 });
@@ -92,6 +112,25 @@ afterEach(() => {
 });
 
 describe("AssistantPage", () => {
+  it("offers pinned and favorite filters and conversation actions", async () => {
+    renderPage();
+
+    await screen.findByRole("button", { name: "会话一" });
+    fireEvent.click(screen.getAllByRole("button", { name: "更多对话操作" })[0]);
+    const actionMenu = await waitFor(() => {
+      const menu = document.querySelector(".assistant-conversation-actions-menu");
+      if (!menu) throw new Error("conversation action menu has not opened");
+      return menu;
+    });
+    fireEvent.click(actionMenu.querySelector("button:nth-of-type(2)") as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(apiMocks.updateAssistantConversation).toHaveBeenCalledWith(1, { pinned: true }),
+    );
+    expect(screen.queryByRole("radio", { name: "置顶" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "收藏" })).toBeInTheDocument();
+  });
+
   it("offers starter prompts for an empty conversation", async () => {
     renderPage();
 

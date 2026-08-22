@@ -3,11 +3,15 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
+  PushpinFilled,
+  PushpinOutlined,
   MoreOutlined,
   PaperClipOutlined,
   PlusOutlined,
   SaveOutlined,
   SendOutlined,
+  StarFilled,
+  StarOutlined,
   StopOutlined,
 } from "@ant-design/icons";
 import {
@@ -16,13 +20,14 @@ import {
   Button,
   Collapse,
   Empty,
+  Image,
   Input,
   List,
   Popconfirm,
   Popover,
   Select,
+  Segmented,
   Skeleton,
-  Space,
   Switch,
   Tag,
   Tooltip,
@@ -39,6 +44,7 @@ import {
   listAssistantConversations,
   renameAssistantConversation,
   sendAssistantMessage,
+  updateAssistantConversation,
 } from "../api/assistant";
 import { listJobs } from "../api/jobs";
 import { listResumes } from "../api/resumes";
@@ -46,7 +52,7 @@ import { useApi } from "../hooks/useApi";
 import type {
   AssistantAttachmentInput,
   AssistantConversationDetail,
-  AssistantMessage,
+  AssistantAttachment,
   AssistantSource,
 } from "../types";
 
@@ -281,7 +287,17 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function ConversationTitle({ title, onSelect }: { title: string; onSelect: () => void }) {
+function ConversationTitle({
+  title,
+  pinned,
+  favorite,
+  onSelect,
+}: {
+  title: string;
+  pinned: boolean;
+  favorite: boolean;
+  onSelect: () => void;
+}) {
   const titleRef = useRef<HTMLSpanElement>(null);
   const [overflowDistance, setOverflowDistance] = useState(0);
 
@@ -319,6 +335,12 @@ function ConversationTitle({ title, onSelect }: { title: string; onSelect: () =>
         aria-label={title}
         onClick={onSelect}
       >
+        {(pinned || favorite) && (
+          <span className="assistant-conversation-flags" aria-hidden="true">
+            {pinned && <PushpinFilled />}
+            {favorite && <StarFilled />}
+          </span>
+        )}
         <span
           ref={titleRef}
           className={
@@ -370,15 +392,20 @@ function AssistantEmptyState({
   );
 }
 
-function MessageAttachments({ message }: { message: AssistantMessage }) {
-  if (!message.attachments.length) return null;
+function MessageAttachments({
+  attachments,
+}: {
+  attachments: Array<AssistantAttachment | PendingAttachment>;
+}) {
+  if (!attachments.length) return null;
   return (
     <div className="assistant-message-attachments">
-      {message.attachments.map((attachment, index) =>
-        attachment.kind === "image" && attachment.data_url ? (
-          <img
+      {attachments.map((attachment, index) => {
+        const dataUrl = "data_url" in attachment ? attachment.data_url : attachment.data;
+        return attachment.kind === "image" && dataUrl ? (
+          <Image
             key={`${attachment.name}-${index}`}
-            src={attachment.data_url}
+            src={dataUrl}
             alt={attachment.name}
             className="assistant-message-image"
           />
@@ -386,8 +413,8 @@ function MessageAttachments({ message }: { message: AssistantMessage }) {
           <Tag key={`${attachment.name}-${index}`} icon={<FileTextOutlined />}>
             {attachment.name}
           </Tag>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -442,6 +469,7 @@ export default function AssistantPage() {
   const [sendingConversationId, setSendingConversationId] = useState<number | null>(null);
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [pendingUserText, setPendingUserText] = useState("");
+  const [pendingUserAttachments, setPendingUserAttachments] = useState<PendingAttachment[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [streamingSources, setStreamingSources] = useState<AssistantSource[]>([]);
   const [progressText, setProgressText] = useState("");
@@ -449,6 +477,7 @@ export default function AssistantPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [actionMenuId, setActionMenuId] = useState<number | null>(null);
+  const [conversationFilter, setConversationFilter] = useState<"all" | "favorite">("all");
   const abortRef = useRef<AbortController | null>(null);
   const activeIdRef = useRef<number | null>(null);
   const sendingRef = useRef(false);
@@ -587,6 +616,20 @@ export default function AssistantPage() {
     }
   };
 
+  const updateConversationFlags = async (
+    conversation: { id: number; pinned: boolean; favorite: boolean },
+    field: "pinned" | "favorite",
+  ) => {
+    try {
+      await updateAssistantConversation(conversation.id, {
+        [field]: !conversation[field],
+      });
+      await reloadConversations();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "更新会话状态失败");
+    }
+  };
+
   const addAttachment = async (file: File) => {
     const classification = classifyAttachment(file);
     if (!classification) {
@@ -663,8 +706,10 @@ export default function AssistantPage() {
       mime_type,
       data,
     }));
+    const optimisticAttachments = [...attachmentsRef.current];
     setContent("");
     setPendingUserText(text || "[附件]");
+    setPendingUserAttachments(optimisticAttachments);
     setStreamingText("");
     setStreamingSources([]);
     setProgressText("");
@@ -707,6 +752,7 @@ export default function AssistantPage() {
       if (mountedRef.current) {
         setSending(false);
         setPendingUserText("");
+        setPendingUserAttachments([]);
         setStreamingText("");
         const refreshes: Promise<void>[] = [reloadConversations()];
         if (activeIdRef.current === conversationId) refreshes.push(loadDetail(conversationId));
@@ -727,6 +773,10 @@ export default function AssistantPage() {
     value: resume.id,
     label: resume.title,
   }));
+  const visibleConversations = (conversations ?? []).filter((conversation) => {
+    if (conversationFilter === "favorite") return conversation.favorite;
+    return true;
+  });
 
   const chooseStarterPrompt = (prompt: (typeof STARTER_PROMPTS)[number]) => {
     setContent(prompt.content);
@@ -763,10 +813,20 @@ export default function AssistantPage() {
         >
           新对话
         </Button>
+        <Segmented
+          className="assistant-conversation-filter"
+          block
+          value={conversationFilter}
+          options={[
+            { label: "全部", value: "all" },
+            { label: "收藏", value: "favorite" },
+          ]}
+          onChange={(value) => setConversationFilter(value as "all" | "favorite")}
+        />
         <List
           className="assistant-conversation-list"
           loading={conversationsLoading}
-          dataSource={conversations ?? []}
+          dataSource={visibleConversations}
           locale={{
             emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />,
           }}
@@ -793,6 +853,28 @@ export default function AssistantPage() {
                         }}
                       >
                         重命名
+                      </Button>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={conversation.pinned ? <PushpinFilled /> : <PushpinOutlined />}
+                        onClick={() => {
+                          setActionMenuId(null);
+                          void updateConversationFlags(conversation, "pinned");
+                        }}
+                      >
+                        {conversation.pinned ? "取消置顶" : "置顶对话"}
+                      </Button>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={conversation.favorite ? <StarFilled /> : <StarOutlined />}
+                        onClick={() => {
+                          setActionMenuId(null);
+                          void updateConversationFlags(conversation, "favorite");
+                        }}
+                      >
+                        {conversation.favorite ? "取消收藏" : "收藏对话"}
                       </Button>
                       <Popconfirm
                         title="删除这段对话？"
@@ -841,6 +923,8 @@ export default function AssistantPage() {
               ) : (
                 <ConversationTitle
                   title={conversation.title}
+                  pinned={conversation.pinned}
+                  favorite={conversation.favorite}
                   onSelect={() => selectConversation(conversation.id)}
                 />
               )}
@@ -870,7 +954,7 @@ export default function AssistantPage() {
               >
                 <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
                 <AssistantMessageContent content={item.content} />
-                <MessageAttachments message={item} />
+                <MessageAttachments attachments={item.attachments} />
                 <MessageSources sources={item.context.sources ?? []} />
                 {item.status === "error" && item.error && (
                   <Alert type="error" message={item.error} />
@@ -878,10 +962,11 @@ export default function AssistantPage() {
               </article>
             ))
           )}
-          {isActiveStream && pendingUserText && (
+          {isActiveStream && (pendingUserText || pendingUserAttachments.length > 0) && (
             <article className="assistant-message assistant-message--user">
               <Typography.Text strong>你</Typography.Text>
               <AssistantMessageContent content={pendingUserText} />
+              <MessageAttachments attachments={pendingUserAttachments} />
             </article>
           )}
           {isActiveStream && sending && (
@@ -929,17 +1014,36 @@ export default function AssistantPage() {
             />
           )}
           {attachments.length > 0 && (
-            <Space wrap>
-              {attachments.map((attachment) => (
-                <Tag
-                  key={attachment.id}
-                  closable={!sending}
-                  onClose={() => removeAttachment(attachment.id)}
-                >
-                  {attachment.name}
-                </Tag>
-              ))}
-            </Space>
+            <div className="assistant-composer-attachments">
+              {attachments.map((attachment) =>
+                attachment.kind === "image" ? (
+                  <div key={attachment.id} className="assistant-composer-image-item">
+                    <Image
+                      src={attachment.data}
+                      alt={attachment.name}
+                      className="assistant-message-image"
+                    />
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      aria-label={`移除附件 ${attachment.name}`}
+                      onClick={() => removeAttachment(attachment.id)}
+                    >
+                      移除
+                    </Button>
+                  </div>
+                ) : (
+                  <Tag
+                    key={attachment.id}
+                    closable={!sending}
+                    onClose={() => removeAttachment(attachment.id)}
+                  >
+                    {attachment.name}
+                  </Tag>
+                ),
+              )}
+            </div>
           )}
           <Input.TextArea
             value={content}

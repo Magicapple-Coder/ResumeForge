@@ -62,7 +62,7 @@ def _assert_head_schema(bind) -> None:
     )
     with bind.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "0005_chat_assistant"
+        assert revision == "0006_chat_conversation_flags"
 
 
 def test_ensure_sqlite_columns_preserves_legacy_rows(tmp_path):
@@ -241,7 +241,7 @@ def test_alembic_migration_preserves_rows_repairs_fk_and_is_idempotent(tmp_path)
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert rows == [(1, "有效简历", 1, 0), (2, "孤立简历", None, 0)]
         assert additional_info == ""
-        assert revision == "0005_chat_assistant"
+        assert revision == "0006_chat_conversation_flags"
         assert run_database_migrations(legacy_engine) is None
     finally:
         legacy_engine.dispose()
@@ -255,6 +255,41 @@ def test_alembic_upgrade_head_builds_schema_from_empty_database(tmp_path):
         _assert_head_schema(empty_engine)
     finally:
         empty_engine.dispose()
+
+
+def test_chat_flags_migration_preserves_existing_messages(tmp_path):
+    migration_engine = create_engine(f"sqlite:///{tmp_path / 'chat-flags.db'}")
+    config = build_alembic_config(migration_engine)
+    try:
+        command.upgrade(config, "0005_chat_assistant")
+        with migration_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO chat_conversation "
+                    "(id, title, created_at, updated_at) "
+                    "VALUES (1, '保留会话', '2026-08-22', '2026-08-22')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO chat_message "
+                    "(id, conversation_id, role, content, attachments, context, status, error, model, created_at) "
+                    "VALUES (1, 1, 'user', '历史消息', '[]', '{}', 'complete', '', '', '2026-08-22')"
+                )
+            )
+
+        command.upgrade(config, "head")
+
+        with migration_engine.connect() as connection:
+            assert connection.execute(text("SELECT count(1) FROM chat_message")).scalar_one() == 1
+            assert connection.execute(
+                text("SELECT content FROM chat_message WHERE id = 1")
+            ).scalar_one() == "历史消息"
+            assert connection.execute(
+                text("SELECT pinned, favorite FROM chat_conversation WHERE id = 1")
+            ).one() == (0, 0)
+    finally:
+        migration_engine.dispose()
 
 
 def test_migration_runner_builds_schema_from_empty_database(tmp_path):

@@ -68,12 +68,22 @@ def test_conversation_crud_and_cascade_delete(client, db_session, monkeypatch):
     listed = client.get("/api/assistant/conversations")
     assert listed.status_code == 200
     assert listed.json()[0]["title"] == "新对话"
+    assert listed.json()[0]["pinned"] is False
+    assert listed.json()[0]["favorite"] is False
 
     renamed = client.patch(
         f"/api/assistant/conversations/{conversation['id']}", json={"title": "  面试 准备  "}
     )
     assert renamed.status_code == 200
     assert renamed.json()["title"] == "面试 准备"
+
+    flagged = client.patch(
+        f"/api/assistant/conversations/{conversation['id']}",
+        json={"pinned": True, "favorite": True},
+    )
+    assert flagged.status_code == 200
+    assert flagged.json()["pinned"] is True
+    assert flagged.json()["favorite"] is True
 
     sent = client.post(
         f"/api/assistant/conversations/{conversation['id']}/messages",
@@ -91,6 +101,43 @@ def test_conversation_crud_and_cascade_delete(client, db_session, monkeypatch):
     assert db_session.query(ChatConversation).count() == 0
     assert db_session.query(ChatMessage).count() == 0
     assert client.get(f"/api/assistant/conversations/{conversation['id']}").status_code == 404
+
+
+def test_conversation_list_places_pinned_items_first_and_supports_partial_flags(client, db_session):
+    first = _create_conversation(client, "普通对话")
+    second = _create_conversation(client, "重要对话")
+
+    # Make the intended chronological order explicit instead of relying on
+    # SQLite timestamp resolution when both conversations are created quickly.
+    first_row = db_session.get(ChatConversation, first["id"])
+    second_row = db_session.get(ChatConversation, second["id"])
+    assert first_row is not None and second_row is not None
+    first_row.updated_at = first_row.updated_at.replace(microsecond=1)
+    second_row.updated_at = first_row.updated_at.replace(microsecond=0)
+    db_session.commit()
+    original_second_updated_at = second_row.updated_at
+
+    updated = client.patch(
+        f"/api/assistant/conversations/{second['id']}", json={"pinned": True}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["pinned"] is True
+    assert updated.json()["favorite"] is False
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, second["id"]).updated_at == original_second_updated_at
+
+    listed = client.get("/api/assistant/conversations").json()
+    assert [item["id"] for item in listed[:2]] == [second["id"], first["id"]]
+
+    unpinned = client.patch(
+        f"/api/assistant/conversations/{second['id']}", json={"pinned": False}
+    )
+    assert unpinned.status_code == 200
+    listed_after_unpin = client.get("/api/assistant/conversations").json()
+    assert [item["id"] for item in listed_after_unpin[:2]] == [first["id"], second["id"]]
+
+    # The first conversation was newer before the second was pinned, so the
+    # original order is restored after unpinning.
 
 
 def test_first_message_generates_truncated_local_title(client, monkeypatch):
@@ -523,7 +570,7 @@ def test_chat_migration_builds_history_tables_and_cascades(tmp_path):
         command.upgrade(config, "head")
         inspector = inspect(migration_engine)
         assert {"chat_conversation", "chat_message"} <= set(inspector.get_table_names())
-        assert {"title", "created_at", "updated_at"} <= {
+        assert {"title", "pinned", "favorite", "created_at", "updated_at"} <= {
             item["name"] for item in inspector.get_columns("chat_conversation")
         }
         assert {"attachments", "context", "status", "error", "model"} <= {
@@ -532,7 +579,7 @@ def test_chat_migration_builds_history_tables_and_cascades(tmp_path):
         with migration_engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0005_chat_assistant"
+                == "0006_chat_conversation_flags"
             )
 
         with Session(migration_engine) as session:

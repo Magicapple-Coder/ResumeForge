@@ -33,6 +33,16 @@ export function renameAssistantConversation(
   });
 }
 
+export function updateAssistantConversation(
+  id: number,
+  patch: { title?: string; pinned?: boolean; favorite?: boolean },
+): Promise<AssistantConversationBrief> {
+  return request(`/assistant/conversations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export function deleteAssistantConversation(id: number): Promise<void> {
   return request(`/assistant/conversations/${id}`, { method: "DELETE" });
 }

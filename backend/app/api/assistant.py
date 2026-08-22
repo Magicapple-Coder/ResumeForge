@@ -235,9 +235,11 @@ def create_conversation(payload: ChatConversationCreate, db: Session = Depends(g
 def list_conversations(
     limit: int = Query(default=100, ge=1, le=200), db: Session = Depends(get_db)
 ):
-    rows = (
-        db.query(ChatConversation).order_by(ChatConversation.updated_at.desc()).limit(limit).all()
-    )
+    rows = db.query(ChatConversation).order_by(
+        ChatConversation.pinned.desc(),
+        ChatConversation.updated_at.desc(),
+        ChatConversation.id.desc(),
+    ).limit(limit).all()
     return [ChatConversationBrief.model_validate(row) for row in rows]
 
 
@@ -261,8 +263,16 @@ def rename_conversation(
     db: Session = Depends(get_db),
 ):
     conversation = _conversation_or_404(db, conversation_id)
-    conversation.title = payload.title
-    conversation.updated_at = utcnow()
+    if payload.title is not None:
+        conversation.title = payload.title
+    if payload.pinned is not None:
+        conversation.pinned = payload.pinned
+    if payload.favorite is not None:
+        conversation.favorite = payload.favorite
+    # Pinning/favoriting is metadata and must not change the conversation's
+    # chronological position. Otherwise unpinning would leave it at the top.
+    if payload.title is not None:
+        conversation.updated_at = utcnow()
     db.commit()
     db.refresh(conversation)
     return ChatConversationBrief.model_validate(conversation)
