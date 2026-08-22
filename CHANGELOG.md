@@ -6,12 +6,17 @@
 
 ### Added
 
+- Windows `start.cmd` 在找不到可用 Python 3.10+ 时会优先尝试 `winget` 用户级安装，并在失败后使用固定 SHA-256 校验的 Python 官方 x64 安装器兜底；安装完成后会刷新 PATH 并重新探测解释器。
+- Windows `start.cmd` 可自动探测并准备 Node.js 20.19.0+/npm：优先复用现有环境或通过 `winget` 用户级安装，失败时使用固定 SHA-256 校验的 Node.js 24.19.0 官方 x64/ARM64 便携包；新增离线启动器回归测试并接入 Windows CI。
 - 求职助手会话支持置顶和收藏，置顶会话在全部列表中自动排在最前，侧栏仍可按收藏筛选；新增 `0006_chat_conversation_flags` 数据库迁移并兼容已有 SQLite 数据。
 - 置顶或取消置顶不再刷新会话更新时间，取消置顶后会话恢复到置顶前的时间排序位置。
 - 聊天图片附件支持即时显示、紧凑缩略图和点击查看大图，避免等待助手响应期间图片暂时消失。
 
 ### Fixed
 
+- 放宽 Windows 首次启动时 pip/npm 依赖下载的读取超时并增加有限重试；改用关键运行包和 Vite 可执行文件判断依赖完整性，使下载中断后重新运行启动器可以自动修复残缺环境。
+- 修复 Windows 一键启动器从资源管理器启动时在项目根目录执行 `npm ci`、误报缺少 `package-lock.json` 的问题；缺少锁文件的旧压缩包会安全回退到一次 `npm install`。
+- 修复启动失败清理阶段对空前端进程调用 `Stop-Process` 的异常，并支持通过 `py.exe -3` 检测真实 Python 解释器，避免 Microsoft Store 别名导致误报。
 - 修复助手会话置顶迁移在 SQLite 外键级联下重建父表、可能清空历史消息的问题；新增迁移回归测试并为会话列表增加稳定的 ID 排序兜底。
 - 修复助手历史消息恢复后按更新时间显示异常的问题，保留会话原始更新时间并确保置顶状态变化不会污染排序。
 - 前端 CI 使用受控 Vitest worker 数和更宽的异步测试超时，避免共享 runner 资源紧张时误报测试失败。
@@ -36,7 +41,7 @@
 - 贡献指南、安全政策、PR 模板和 Dependabot 更新配置。
 - 项目根目录 `AGENTS.md`，集中记录渐进式改造、测试、安全、文档和发布维护规则。
 - 可独立创建空库且支持降级往返的 Alembic 版本化迁移，以及检测到任一业务表用户数据时的升级前 SQLite 自动备份。
-- Alembic `0003_job_additional_info`、`0004_resume_favorite` 和 `0005_chat_assistant` 迁移，兼容补充岗位其他信息、旧简历收藏默认值及助手会话历史表。
+- Alembic `0003_job_additional_info`、`0004_resume_favorite`、`0005_chat_assistant` 和 `0006_chat_conversation_flags` 迁移，兼容补充岗位其他信息、旧简历收藏默认值、助手会话历史表及会话置顶/收藏字段。
 
 ### Changed
 

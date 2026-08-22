@@ -53,6 +53,12 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check .
 
+      - name: Test Windows launcher
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: powershell
+        run: .\scripts\tests\Test-Start-ResumeForge.ps1
+
       - name: Run tests with coverage
         run: >-
           python -m pytest

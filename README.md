@@ -67,12 +67,12 @@ cd ResumeForge
 
 ### 环境要求
 
-- Python ≥ 3.10
-- Node.js ≥ 20.19.0（含 npm）
+- Python ≥ 3.10（Windows 一键启动器可自动准备）
+- Node.js ≥ 20.19.0（含 npm；Windows 一键启动器可自动准备）
 
 ### 1. Windows 一键启动（推荐）
 
-在项目根目录双击 [start.cmd](start.cmd)。首次运行会自动创建后端虚拟环境、安装缺失的前后端依赖、启动两个服务，并打开浏览器：
+在项目根目录双击 [start.cmd](start.cmd)。首次运行会自动准备 Python 和 Node.js/npm 运行环境、创建后端虚拟环境、安装缺失的前后端依赖、启动两个服务，并打开浏览器：
 
 ```text
 http://127.0.0.1:5173
@@ -82,13 +82,19 @@ http://127.0.0.1:5173
 
 启动器会固定前端代理到本次启动的本地后端。若提示端口被其他程序占用，请先关闭旧的 ResumeForge 服务或冲突程序，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
 
+如果电脑尚未安装可用的 Python 3.10+，启动器会先尝试通过 Windows `winget` 以当前用户身份静默安装；`winget` 不可用或安装失败时，会从固定的 [Python 官方安装器](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) 下载并校验 SHA-256 后再安装。
+
+如果没有 Node.js 20.19.0+ 或配套的 npm，启动器同样优先使用 `winget` 安装固定的 Node.js LTS；失败时下载并校验 Node.js 官方便携 ZIP（支持 Windows x64 和 ARM64），解压到被 Git 忽略的 `runtime/tools/`，仅供当前项目使用。已有且版本满足要求的 Node.js/npm 会直接复用，不会重复安装或覆盖。自动准备过程需要网络，首次下载可能需要较长时间，但不会修改 `backend/data/` 或 `.env`；若网络、系统策略或架构不受支持，按错误提示从 [python.org](https://www.python.org/downloads/windows/) 或 [nodejs.org](https://nodejs.org/) 手动安装后重新双击 `start.cmd`。
+
+如果首次启动提示 `npm ci` 找不到 `package-lock.json`，请确认命令是在项目目录双击 `start.cmd` 启动的；启动器会自动切换到 `frontend/` 后再安装依赖。对于旧版压缩包确实缺少锁文件的情况，启动器会临时使用 `npm install` 完成首次安装并生成本地锁文件。
+
 ### 2. 手动启动（开发、排错或 macOS/Linux）
 
 ```powershell
 cd backend
 
 # 创建虚拟环境并安装运行依赖
-python -m venv .venv
+py -3 -m venv .venv        # 若已配置 python，也可使用 python -m venv .venv
 $env:PYTHONUTF8 = "1"
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 

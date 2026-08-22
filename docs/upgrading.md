@@ -41,6 +41,10 @@ npm ci
 
 依赖安装完成后，Windows 用户可在项目根目录双击 `start.cmd`，它会启动前后端并自动打开页面。需要关闭服务时双击 `stop.cmd`。启动器只会终止自己记录且校验通过的 ResumeForge 进程。
 
+启动器会在 `frontend/` 目录执行 npm 安装，因此从资源管理器双击启动时不会因为当前工作目录不同而误报缺少 `package-lock.json`。仓库包含锁文件时使用 `npm ci`；旧压缩包缺少锁文件时会回退到一次 `npm install`。
+
+首次创建环境时，启动器会探测现有 Python 3.10+ 和 Node.js 20.19.0+/npm，满足要求时直接复用。缺少 Python 时优先通过 Windows `winget` 进行用户级静默安装，再回退到固定版本且校验 SHA-256 的 Python 官方 x64 安装器；缺少 Node.js/npm 时同样先使用 `winget`，再回退到校验过的 Node.js 官方 x64/ARM64 便携 ZIP，并解压到 `runtime/tools/`。自动准备需要网络，不会触碰数据库或 `.env`；如果 winget、网络、系统架构或权限不满足条件，启动器会停止并给出手动安装指引。升级代码时 `runtime/` 不受正常 `git pull` 影响；即使便携 Node 目录被手动删除，下次启动也只会重新准备运行时，不影响业务数据。
+
 开发、排错或 macOS/Linux 环境仍可分别启动后端与前端，并确认健康检查正常：
 
 ```powershell
@@ -62,7 +66,7 @@ macOS/Linux 将后端 Python 路径替换为 `.venv/bin/python`；前端命令�
 
 - 后端启动时会自动执行 `backend/migrations/` 中尚未应用的 Alembic migration。
 - 检测到已有数据且存在待迁移版本时，程序会先在 `backend/data/backups/` 创建一致性 SQLite 备份。
-- 当前迁移链中的 `0003_job_additional_info` 会为旧岗位补充空的“其他信息”，`0004_resume_favorite` 会把旧简历收藏状态初始化为未收藏，`0005_chat_assistant` 只新增助手会话和消息表；这些升级不会改写原有岗位、资料或简历正文。
+- 当前迁移链中的 `0003_job_additional_info` 会为旧岗位补充空的“其他信息”，`0004_resume_favorite` 会把旧简历收藏状态初始化为未收藏，`0005_chat_assistant` 新增助手会话和消息表，`0006_chat_conversation_flags` 新增置顶/收藏字段且不会重建会话父表；这些升级不会改写原有岗位、资料、简历正文或助手消息。
 - 自动备份不是替代品；升级前仍应把 `backend/data/resume_forge.db` 和 `.env` 复制到项目目录之外，并对备份设置访问权限。
 - 升级启动失败时，先停止服务，保留错误日志；不要删除原数据库。可从升级前备份恢复数据库，再检出上一个稳定版本启动。
 
