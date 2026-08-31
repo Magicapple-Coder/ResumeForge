@@ -80,6 +80,8 @@ http://127.0.0.1:5173
 
 之后再次双击 `start.cmd` 即可打开项目，无需分别启动前端和后端。需要完全关闭服务时，双击 [stop.cmd](stop.cmd)；它只会结束由启动器记录并验证过的 ResumeForge 进程，不会结束其他项目。
 
+一键启动器默认将后端监听在 `http://127.0.0.1:8005`，并自动把前端代理指向本次启动的端口；手动开发流程仍默认使用 8000。若 8005 已被占用，可在项目根目录用 `-BackendPort` 指定其他端口，例如 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ResumeForge.ps1 -BackendPort 8010`。
+
 启动器会固定前端代理到本次启动的本地后端。若提示端口被其他程序占用，请先关闭旧的 ResumeForge 服务或冲突程序，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
 
 如果电脑尚未安装可用的 Python 3.10+，启动器会先尝试通过 Windows `winget` 以当前用户身份静默安装；`winget` 不可用或安装失败时，会从固定的 [Python 官方安装器](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) 下载并校验 SHA-256 后再安装。
@@ -214,7 +216,7 @@ npm ci
 浏览器会读取 Markdown/TXT 正文并保存到本地 SQLite，不保存或依赖原始文件路径。启用美化拓展时，系统会从正文中选取与当前 JD 相关的片段，连同候选资料发送给你配置的模型服务商；照片仍不会发送。总结文件可能包含个人或项目敏感信息，使用第三方模型前请确认其数据政策。
 
 **升级后旧数据库需要手动迁移吗？**
-通常不需要。启动时会先兼容早期未记录 revision 的数据库，再自动执行 `backend/migrations/` 中尚未应用的 Alembic revision；当前 `0003` 增加岗位“其他信息”，`0004` 增加简历收藏状态，`0005` 增加助手会话与消息表。迁移会为旧记录使用兼容默认值，检测到已有用户数据时先创建 SQLite 备份。迁移和自动备份都不能替代用户自己的备份策略，升级前仍建议复制 `backend/data/resume_forge.db` 到安全位置。
+通常不需要。启动时会先兼容早期未记录 revision 的数据库，再自动执行 `backend/migrations/` 中尚未应用的 Alembic revision；当前 `0003` 增加岗位“其他信息”，`0004` 增加简历收藏状态，`0005` 增加助手会话与消息表，`0006` 增加会话置顶和收藏字段。迁移会为旧记录使用兼容默认值，检测到已有用户数据时先创建 SQLite 备份。迁移和自动备份都不能替代用户自己的备份策略，升级前仍建议复制 `backend/data/resume_forge.db` 到安全位置。
 
 需要随时手动创建一致性备份时，可在 `backend` 目录运行 `.venv\Scripts\python.exe scripts\backup_database.py`；macOS/Linux 将 Python 路径替换为 `.venv/bin/python`。
 
