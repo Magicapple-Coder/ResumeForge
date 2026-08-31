@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024, 65535)]
-    [int]$BackendPort = 8000,
+    [int]$BackendPort = 8005,
     [ValidateRange(1024, 65535)]
     [int]$FrontendPort = 5173,
     [switch]$NoBrowser
