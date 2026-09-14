@@ -88,7 +88,6 @@ def backup_sqlite_database(bind: Engine, output_dir: Path | None = None) -> Path
     logger.info("数据库升级前备份已创建 path=%s", destination)
     return destination
 
-
 def run_database_migrations(bind: Engine) -> Path | None:
     """Upgrade an empty or legacy database to the current Alembic head."""
     config = build_alembic_config(bind)
