@@ -73,7 +73,6 @@ _NON_NAME_MARKERS = (
 )
 
 
-
 _DEGREE_TERMS = (
     "本科",
     "大学本科",
@@ -89,7 +88,6 @@ _DEGREE_TERMS = (
     "doctorate",
     "associate",
 )
-
 
 
 _HEADER_LABEL_ALIASES = {
@@ -237,7 +235,6 @@ _HEADER_BOUNDARY_LABELS = (
     "start date",
     "end date",
 )
-
 
 
 _PROFILE_CHINESE_ROLE_RE = re.compile(

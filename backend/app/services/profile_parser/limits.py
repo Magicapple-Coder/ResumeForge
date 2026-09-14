@@ -1,6 +1,5 @@
 """解析结果的长度和数量边界。"""
 
-
 _PARSED_BASIC_FIELD_LIMITS = {
     "name": 64,
     "gender": 64,

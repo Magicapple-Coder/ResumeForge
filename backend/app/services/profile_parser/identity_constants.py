@@ -1,6 +1,5 @@
 """基本信息字段标签和身份识别正则。"""
 
-
 _BASIC_LABELS = {
     "name": ("姓名", "名字", "真实姓名", "姓名拼音", "name", "full name", "candidate name"),
     "gender": ("性别", "gender"),

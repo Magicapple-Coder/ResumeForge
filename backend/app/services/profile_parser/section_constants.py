@@ -1,6 +1,5 @@
 """资料分区标题及其兼容别名。"""
 
-
 _SECTION_ALIASES = {
     "educations": (
         "教育经历",
