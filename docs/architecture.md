@@ -46,7 +46,9 @@ backend/app/
 ├── middleware/        # 请求关联 ID 与请求体大小限制
 ├── services/          # 业务层：核心逻辑，与框架解耦
 │   ├── llm/           # 大模型抽象（base + openai_compat）
-│   ├── job_text_parser.py  # 粘贴招聘文本解析为可编辑岗位草稿
+│   ├── profile_text_parser.py # 个人资料解析兼容门面
+│   ├── profile_parser/       # 个人资料分区、条目、技能与边界解析模块
+│   ├── job_text_parser.py    # 粘贴招聘文本解析为可编辑岗位草稿
 │   ├── jd_parser.py   # JD 规则解析（技能标签/学历/年限）
 │   ├── job_analysis.py # 仅依据招聘原文生成岗位需求解读
 │   ├── assistant_service.py # 助手附件校验与模型消息组装
@@ -72,6 +74,8 @@ backend/app/
 - 每份 `ResumeRecord` 保存可空 `job_id`、岗位快照和来源 `source`。一个岗位可以关联多份 AI 生成或用户编写的简历；简历中心可按岗位筛选并展示来源，岗位详情和简历详情支持双向跳转。岗位删除后保留历史简历，但无法再生成新的岗位化建议。
 - 用户编写简历时，编辑器右侧只读展示目标岗位职责、要求、技能和其他信息；该参考面板不参与保存。预览模板为可编辑字段输出 `data-resume-path`，前端在“编辑”模式下把纸面点击或键盘操作映射到统一结构化编辑器中的相应字段，保存后重新渲染 HTML。
 - 教育、实习/工作、校园和项目条目各可保存一份 UTF-8 Markdown/TXT 参考文件。浏览器只保存文件名与正文，不保存本机路径；生成器只把与目标 JD 相关的正文片段放入候选上下文。
+
+个人资料粘贴解析采用 `profile_text_parser.py` 兼容门面，具体规则按常量、规范化、分区识别、基本字段、条目头部、技能字段和结果边界拆分到 `services/profile_parser/`。门面继续导出原有符号，因此 API 层和外部调用方无需改变导入路径；内部模块不反向依赖门面。
 
 SQLite 启动升级以 Alembic 为唯一结构来源：空库执行完整 revision 链，已版本化数据库只执行待应用 revision。仅当检测到早期未版本化业务表时，才先执行 `create_all` 和 `ensure_sqlite_columns` 补齐历史兼容结构，再标记为基线并交给 `run_database_migrations`。有用户数据且存在待执行 revision 时，使用 SQLite backup API 在数据库同级 `backups/` 目录创建一致性备份，然后升级到 `head`。`0003_job_additional_info`、`0004_resume_favorite`、`0005_chat_assistant`、`0006_chat_conversation_flags` 依次增加岗位其他信息、简历收藏状态、助手会话/消息表以及会话置顶和收藏字段；`0006` 使用原生新增列操作，避免 SQLite 重建会话父表时触发外键级联并删除消息。升级保留既有业务记录并为新增字段提供默认值。降级会按 revision 移除对应的新字段或表，因此执行降级前必须另外备份。后续新增/删除列、改类型、约束变化和数据回填都必须新增 revision，不再扩大临时兼容层。
 
