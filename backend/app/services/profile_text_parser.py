@@ -8,450 +8,54 @@ import re
 from functools import lru_cache
 
 from ..schemas.profile import ProfileTextParseResult
+from .profile_parser.entry_constants import (
+    _BASIC_ENGLISH_NAME_RE,
+    _BASIC_NAME_RE,
+    _BASIC_UNLABELED_CITY_RE,
+    _DATE_RANGE_RE,
+    _DATE_RE,
+    _DEGREE_TERMS,
+    _EMAIL_RE,
+    _ENTRY_HEADER_PATTERNS,
+    _ENTRY_SEPARATOR_RE,
+    _ENGLISH_COMPANY_HINT_RE,
+    _HEADER_BOUNDARY_LABELS,
+    _HEADER_LABEL_ALIASES,
+    _HEADER_SEPARATOR_RE,
+    _INLINE_LABEL_SEPARATOR_RE,
+    _NON_NAME_MARKERS,
+    _NUMBERED_HEADING_RE,
+    _PHONE_RE,
+    _PROFILE_CHINESE_ROLE_RE,
+    _PROFILE_ENGLISH_TITLE_RE,
+    _URL_RE,
+)
+from .profile_parser.identity_constants import _BASIC_LABELS
+from .profile_parser.limits import (
+    _MAX_PARSED_SECTION_ITEMS,
+    _PARSED_BASIC_FIELD_LIMITS,
+    _PARSED_ENTRY_FIELD_LIMITS,
+)
+from .profile_parser.section_constants import _SECTION_ALIASES
+from .profile_parser.skill_constants import _SKILL_LEADING_LEVEL_RE, _SKILL_LEVEL_RE
+from .profile_parser.normalization import (
+    _COMPACT_RESET_ALIASES,
+    _clean_line,
+    _compact_heading,
+    _heading_key,
+    _heading_parts,
+    _normalize_lines,
+    _starts_with_field,
+)
 
 
-_SECTION_ALIASES = {
-    "educations": (
-        "教育经历",
-        "教育背景",
-        "学历经历",
-        "学习经历",
-        "教育信息",
-        "学历背景",
-        "教育履历",
-        "教育与培训",
-        "学历信息",
-        "education",
-        "education background",
-        "education and training",
-        "education & training",
-    ),
-    "experiences": (
-        "实习经历",
-        "工作经历",
-        "任职经历",
-        "工作履历",
-        "职业经历",
-        "工作经验",
-        "任职履历",
-        "工作与实习",
-        "经历概览",
-        "实践经历",
-        "科研经历",
-        "任职/实习经历",
-        "实习/工作经验",
-        "实习/工作经历",
-        "工作/实习经历",
-        "professional experience",
-        "experience",
-        "work experience",
-        "work history",
-        "professional history",
-        "internship experience",
-        "internships",
-        "employment history",
-        "employment",
-    ),
-    "campus_experiences": (
-        "校园经历",
-        "学生工作",
-        "社团经历",
-        "校内经历",
-        "校园实践",
-        "学生经历",
-        "校园活动",
-        "校园与社团",
-        "学生组织经历",
-        "社会实践",
-        "志愿服务",
-        "campus experience",
-        "campus activities",
-        "student activities",
-        "student leadership",
-        "leadership experience",
-        "extracurricular experience",
-        "extracurricular activities",
-        "campus involvement",
-    ),
-    "projects": (
-        "项目经历",
-        "项目经验",
-        "项目实践",
-        "项目履历",
-        "项目经验及实践",
-        "项目与实践",
-        "作品与项目",
-        "projects",
-        "projects & practice",
-        "projects and practice",
-        "project & practice",
-        "project experience",
-        "project and practice",
-        "portfolio projects",
-        "selected projects",
-        "project highlights",
-    ),
-    "skills": (
-        "专业技能",
-        "技能清单",
-        "技能",
-        "技术栈",
-        "技术能力",
-        "专业能力",
-        "核心技能",
-        "编程技能",
-        "工具技能",
-        "IT技能",
-        "能力特长",
-        "技能特长",
-        "专业特长",
-        "核心能力",
-        "职业技能",
-        "技术专长",
-        "语言能力",
-        "skills",
-        "technical skills",
-        "technical abilities",
-        "technical expertise",
-        "technical proficiencies",
-        "skills & certifications",
-        "skills and certifications",
-        "programming languages",
-        "tools & technologies",
-        "skills & tools",
-        "competencies",
-    ),
-    "awards": (
-        "荣誉奖项",
-        "获奖情况",
-        "获奖经历",
-        "奖项",
-        "荣誉",
-        "奖励情况",
-        "awards",
-        "honors",
-        "certifications",
-        "certificates",
-    ),
-    "summary": (
-        "个人总结",
-        "自我评价",
-        "个人总结/自我评价",
-        "个人总结 / 自我评价",
-        "个人简介",
-        "个人概述",
-        "职业简介",
-        "个人亮点",
-        "职业总结",
-        "职业目标",
-        "summary",
-        "profile",
-        "career summary",
-        "professional summary",
-        "professional profile",
-        "about me",
-    ),
-}
 
 # 这些标题不是表单分区，但出现时应结束上一分区，避免“基本信息”被
 # 当成上一条经历的正文。它们仍由全局字段/正文启发式解析。
-_RESET_SECTION_ALIASES = (
-    "基本信息",
-    "基本资料",
-    "个人信息",
-    "个人概况",
-    "联系方式",
-    "contact",
-    "personal information",
-)
-
-_BASIC_LABELS = {
-    "name": ("姓名", "名字", "真实姓名", "姓名拼音", "name", "full name", "candidate name"),
-    "gender": ("性别", "gender"),
-    "birth_year": ("出生年份", "出生年月", "出生日期", "生日", "出生信息", "birth"),
-    "phone": (
-        "手机号",
-        "手机号码",
-        "手机",
-        "电话",
-        "联系电话",
-        "联系方式",
-        "电话号",
-        "phone",
-        "mobile",
-        "phone number",
-        "telephone",
-        "contact number",
-    ),
-    "email": (
-        "邮箱",
-        "电子邮箱",
-        "电子邮件",
-        "Email",
-        "E-mail",
-        "email",
-        "mail",
-        "email address",
-    ),
-    "city": (
-        "所在城市",
-        "现居城市",
-        "所在地",
-        "现居地",
-        "现居",
-        "当前城市",
-        "居住地",
-        "居住城市",
-        "所在地城市",
-        "籍贯",
-        "出生地",
-        "city",
-        "current city",
-        "current location",
-        "location",
-    ),
-    "target_city": (
-        "意向城市",
-        "目标城市",
-        "期望城市",
-        "工作城市",
-        "目标地点",
-        "target city",
-        "preferred location",
-        "desired city",
-    ),
-    "job_intent": (
-        "求职意向",
-        "求职方向",
-        "目标职位",
-        "应聘职位",
-        "意向职位",
-        "目标岗位",
-        "期望岗位",
-        "期望职位",
-        "职位意向",
-        "career objective",
-        "target role",
-        "desired role",
-        "objective",
-    ),
-    "personal_website": ("个人网站", "个人主页", "博客", "作品集", "portfolio", "website"),
-    "github": ("GitHub", "Github", "github"),
-}
-
-_MONTH_NAME = (
-    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
-    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
-    r"Nov(?:ember)?|Dec(?:ember)?)"
-)
-_DATE_TOKEN = rf"(?:\d{{4}}(?:[./年-]\d{{1,2}})?(?:[./月-]\d{{1,2}})?|{_MONTH_NAME}\s+\d{{4}})"
-_DATE_RANGE_RE = re.compile(
-    rf"(?P<start>{_DATE_TOKEN})\s*"
-    rf"(?:至|到|[-—–－~～]|\bto\b)\s*"
-    rf"(?P<end>{_DATE_TOKEN}|至今|现在|present|current|now)",
-    re.IGNORECASE,
-)
-_DATE_RE = re.compile(_DATE_TOKEN, re.IGNORECASE)
-_PHONE_RE = re.compile(r"(?<!\d)(?:\+?86[\s-]?)?1[3-9](?:[\s-]?\d){9}(?!\d)")
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
-_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
-# 限制数字序号长度，避免把 ``2025.06-至今`` 的年份误当作列表编号剥掉。
-_BULLET_RE = re.compile(r"^\s*(?:[-*•·]|\d{1,3}[、.)）.]|[一二三四五六七八九十]+[、.)）.])\s*")
-_ENTRY_SEPARATOR_RE = re.compile(r"\s*(?:\||｜|丨|·|•|—|–|－|/|／|~|～|\s+-\s+)\s*")
-# 普通英文名称中可能含有连字符；仅把带空格的横线，或中文字段之间的
-# 无空格横线当作条目分隔符。日期范围已在调用方先移除。
-_HEADER_SEPARATOR_RE = re.compile(
-    r"\s*(?:\||｜|丨|·|•|—|–|－|/|／|~|～|\s+-\s+|(?<=[\u4e00-\u9fff])-(?=[\u4e00-\u9fffA-Za-z]))\s*"
-)
-
-_NUMBERED_HEADING_RE = re.compile(
-    r"^(?:第\s*)?(?:\d+|[一二三四五六七八九十百]+)\s*(?:[、.)）.]|、)\s*"
-)
-_INLINE_LABEL_SEPARATOR_RE = re.compile(r"\s*(?:\||｜|丨|;|；|,|，)\s*")
-_BASIC_UNLABELED_CITY_RE = re.compile(
-    r"(?:北京|上海|天津|重庆|深圳|广州|杭州|成都|武汉|西安|南京|苏州|长沙|厦门|合肥|郑州|青岛|济南|大连|宁波|东莞|佛山|珠海|无锡|福州|昆明|南昌|沈阳|石家庄|哈尔滨|香港|澳门|台北|兰州|太原|南宁|海口|贵阳|乌鲁木齐|呼和浩特|温州|常州|嘉兴|绍兴|扬州|Beijing|Shanghai|Tianjin|Chongqing|Shenzhen|Guangzhou|Hangzhou|Chengdu|Wuhan|Xi'an|Nanjing|Suzhou|Remote|Hybrid)",
-    re.IGNORECASE,
-)
-_BASIC_NAME_RE = re.compile(r"^[\u4e00-\u9fff]{2,6}(?:\s+[A-Za-z][A-Za-z .'-]{1,30})?$")
-_BASIC_ENGLISH_NAME_RE = re.compile(
-    r"^[A-Za-z][A-Za-z.'-]{1,30}(?:\s+[A-Za-z][A-Za-z.'-]{1,30}){1,3}$"
-)
-_PROFILE_ENGLISH_TITLE_RE = re.compile(
-    r"\b(?:engineer|developer|programmer|architect|analyst|designer|scientist|"
-    r"researcher|manager|consultant|specialist|intern|operator|lead|director|"
-    r"technician|support|sales|recruiter|secretary|president|treasurer|"
-    r"coordinator|administrator|volunteer|fellow)\b",
-    re.IGNORECASE,
-)
-_ENGLISH_COMPANY_HINT_RE = re.compile(
-    r"\b(?:inc(?:orporated)?|ltd|limited|llc|corp(?:oration)?|company|group|holdings?|"
-    r"technolog(?:y|ies)|tech|software|systems?|solutions?|studio|labs?|consulting)\b",
-    re.IGNORECASE,
-)
-_NON_NAME_MARKERS = (
-    "教育",
-    "经历",
-    "简历",
-    "求职",
-    "应聘",
-    "意向",
-    "工程师",
-    "开发",
-    "岗位",
-    "职位",
-    "联系方式",
-    "电话",
-    "邮箱",
-    "城市",
-    "地址",
-    "个人",
-    "基本",
-)
-_SKILL_LEVEL_RE = re.compile(
-    r"^(熟练掌握|熟练使用|熟练|精通|掌握|熟悉|了解|入门|精通使用|proficient|advanced|intermediate|beginner|basic)$",
-    re.IGNORECASE,
-)
-_SKILL_LEADING_LEVEL_RE = re.compile(
-    r"^(?P<level>熟练掌握|熟练使用|熟练|精通|掌握|熟悉|了解|入门|精通使用|proficient|advanced|intermediate|beginner|basic)\s*[:：、,，]?\s*(?P<skills>.+)$",
-    re.IGNORECASE,
-)
-
-_DEGREE_TERMS = (
-    "本科",
-    "大学本科",
-    "硕士",
-    "博士",
-    "专科",
-    "大专",
-    "学士",
-    "研究生",
-    "bachelor",
-    "master",
-    "phd",
-    "doctorate",
-    "associate",
-)
 
 
-def _normalize_lines(text: str) -> list[str]:
-    # 仅归一化全角拉丁字母/数字和不可见空白，保留中文标点的原始语义。
-    normalized_chars: list[str] = []
-    for char in text:
-        codepoint = ord(char)
-        if char == "\u3000":
-            normalized_chars.append(" ")
-        elif (
-            0xFF10 <= codepoint <= 0xFF19
-            or 0xFF21 <= codepoint <= 0xFF3A
-            or 0xFF41 <= codepoint <= 0xFF5A
-        ):
-            normalized_chars.append(chr(codepoint - 0xFEE0))
-        else:
-            normalized_chars.append(char)
-    normalized = "".join(normalized_chars)
-    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = normalized.replace("\u00a0", " ").replace("\u200b", "")
-    normalized = normalized.replace("\u2028", "\n").replace("\u2029", "\n")
-    lines: list[str] = []
-    previous_blank = False
-    for raw_line in normalized.split("\n"):
-        line = raw_line.strip()
-        if not line:
-            if lines and not previous_blank:
-                lines.append("")
-            previous_blank = True
-            continue
-        lines.append(line)
-        previous_blank = False
-    while lines and lines[-1] == "":
-        lines.pop()
-    return lines
 
 
-def _clean_line(line: str) -> str:
-    return _BULLET_RE.sub("", line.lstrip("# ")).strip()
-
-
-def _compact_heading(value: str) -> str:
-    """统一标题的编号、括号和中英文空白，容纳不同模板的复制结果。"""
-    candidate = _NUMBERED_HEADING_RE.sub("", value.strip())
-    candidate = candidate.rstrip("：:").strip()
-    # 常见模板会在中文标题后附 ``(Education)`` 或 ``/ English``。
-    english_section_words = (
-        r"education(?:\s+(?:background|and\s+training))?|"
-        r"(?:work|professional|campus|leadership|internship|extracurricular)\s+experience|"
-        r"(?:work|professional|employment)\s+history|"
-        r"projects?(?:\s+(?:and|&)\s+practice|\s+experience)?|"
-        r"portfolio\s+projects?|"
-        r"(?:technical\s+)?(?:skills?|expertise|proficiencies?)|"
-        r"skills?\s+(?:and|&)\s+certifications|"
-        r"programming\s+languages|tools\s+(?:and|&)\s+technologies|"
-        r"awards?|honors?|certificates?|certifications?|summary|profile"
-    )
-    candidate = re.sub(
-        rf"\s*[（(](?:{english_section_words})[）)]\s*$", "", candidate, flags=re.IGNORECASE
-    )
-    candidate = re.sub(
-        rf"\s*(?:/|｜|\|)\s*(?:{english_section_words})\s*$", "", candidate, flags=re.IGNORECASE
-    )
-    candidate = re.sub(
-        rf"^(?:{english_section_words})\s*(?:/|｜|\|)\s*", "", candidate, flags=re.IGNORECASE
-    )
-    return re.sub(r"[\s（）()【】\[\]·•_-]", "", candidate).casefold()
-
-
-_COMPACT_SECTION_ALIASES = {
-    key: {_compact_heading(alias) for alias in aliases} for key, aliases in _SECTION_ALIASES.items()
-}
-_COMPACT_RESET_ALIASES = {_compact_heading(alias) for alias in _RESET_SECTION_ALIASES}
-
-
-def _heading_parts(line: str) -> tuple[str | None, str]:
-    clean = _clean_line(line)
-    # 先尝试完整标题；随后处理“技能：Python、SQL”这种标题和内容同在一行。
-    compact = _compact_heading(clean)
-    for key, aliases in _COMPACT_SECTION_ALIASES.items():
-        if compact in aliases:
-            return key, ""
-
-    numbered_removed = _NUMBERED_HEADING_RE.sub("", clean, count=1)
-    for separator in ("：", ":"):
-        if separator not in numbered_removed:
-            continue
-        heading, content = numbered_removed.split(separator, 1)
-        heading_compact = _compact_heading(heading)
-        for key, aliases in _COMPACT_SECTION_ALIASES.items():
-            if heading_compact in aliases:
-                return key, content.strip()
-    # “教育背景 / Education” 和 “Projects - 项目经历” 等模板用横线连接
-    # 中英文标题；只有两侧都能映射到同一分区时才接受，避免误切普通正文。
-    for separator in ("/", "／", "|", "｜", "-", "—", "–"):
-        if separator not in numbered_removed:
-            continue
-        left, right = (part.strip() for part in numbered_removed.split(separator, 1))
-        left_key = next(
-            (
-                key
-                for key, aliases in _COMPACT_SECTION_ALIASES.items()
-                if _compact_heading(left) in aliases
-            ),
-            None,
-        )
-        right_key = next(
-            (
-                key
-                for key, aliases in _COMPACT_SECTION_ALIASES.items()
-                if _compact_heading(right) in aliases
-            ),
-            None,
-        )
-        if left_key and right_key and left_key == right_key:
-            return left_key, ""
-    return None, ""
-
-
-def _heading_key(line: str) -> str | None:
-    return _heading_parts(line)[0]
 
 
 def _is_project_detail_line(line: str) -> bool:
@@ -467,15 +71,6 @@ def _is_project_detail_line(line: str) -> bool:
     )
 
 
-@lru_cache(maxsize=64)
-def _field_start_pattern(labels: tuple[str, ...]) -> re.Pattern[str]:
-    """缓存字段起始匹配器，粘贴大段文本时避免逐行重复编译。"""
-    alternatives = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
-    return re.compile(rf"^(?:{alternatives})(?:\s*[:：]|\s+)", re.IGNORECASE)
-
-
-def _starts_with_field(line: str, labels: tuple[str, ...]) -> bool:
-    return bool(_field_start_pattern(labels).match(_clean_line(line)))
 
 
 def _infer_section_for_unlabeled_line(line: str) -> str | None:
@@ -1199,151 +794,6 @@ def _looks_like_entry_header(line: str, kind: str = "") -> bool:
     return False
 
 
-_HEADER_LABEL_ALIASES = {
-    "school": (
-        "学校",
-        "院校",
-        "学校名称",
-        "毕业院校",
-        "毕业学校",
-        "graduated from",
-        "school",
-        "university",
-        "college",
-    ),
-    "major": ("专业", "所学专业", "专业名称", "major", "field of study"),
-    "degree": ("学历", "学位", "学历学位", "degree", "education"),
-    "company": (
-        "公司",
-        "单位",
-        "公司名称",
-        "企业",
-        "企业名称",
-        "就职公司",
-        "任职单位",
-        "所在公司",
-        "雇主",
-        "employer name",
-        "company",
-        "company name",
-        "enterprise",
-        "employer",
-        "organization name",
-        "organization",
-    ),
-    "organization": (
-        "组织",
-        "组织/部门",
-        "组织名称",
-        "社团",
-        "社团名称",
-        "学生组织",
-        "所在组织",
-        "组织机构",
-        "学生会",
-        "团委",
-        "部门",
-        "organization",
-        "department",
-        "club",
-        "student union",
-        "organization name",
-    ),
-    "role": (
-        "职位",
-        "岗位",
-        "职位名称",
-        "岗位名称",
-        "职务",
-        "角色",
-        "担任角色",
-        "职称",
-        "工作职位",
-        "工作岗位",
-        "work position",
-        "job position",
-        "担任职务",
-        "职位名称",
-        "岗位名称",
-        "role",
-        "position",
-        "position name",
-        "job title",
-        "title",
-    ),
-    "project": (
-        "项目",
-        "项目名称",
-        "项目标题",
-        "项目名",
-        "project",
-        "project name",
-        "project title",
-    ),
-}
-
-# 按经历类型预编译条目起始字段，既与字段提取共用同一份别名，又避免在
-# 每一行粘贴文本上重复拼接大正则。
-_ENTRY_HEADER_FIELDS_BY_KIND = {
-    "education": ("school",),
-    "experience": ("company",),
-    "campus": ("organization",),
-    "project": ("project",),
-    "default": ("school", "company", "organization", "project"),
-}
-_ENTRY_HEADER_PATTERNS = {
-    kind: re.compile(
-        rf"^(?:{'|'.join(re.escape(label) for field in fields for label in sorted(_HEADER_LABEL_ALIASES[field], key=len, reverse=True))})\s*[:：]",
-        re.IGNORECASE,
-    )
-    for kind, fields in _ENTRY_HEADER_FIELDS_BY_KIND.items()
-}
-_HEADER_BOUNDARY_LABELS = (
-    *(label for labels in _HEADER_LABEL_ALIASES.values() for label in labels),
-    "时间",
-    "起止时间",
-    "任职时间",
-    "任职期间",
-    "任职周期",
-    "在职时间",
-    "工作时间",
-    "入职时间",
-    "入职日期",
-    "就业时间",
-    "就职时间",
-    "参与时间",
-    "参与日期",
-    "工作日期",
-    "就业日期",
-    "任职日期",
-    "项目期间",
-    "项目日期",
-    "学习期间",
-    "学习日期",
-    "项目周期",
-    "项目时间",
-    "项目起止时间",
-    "就读时间",
-    "学习时间",
-    "周期",
-    "日期",
-    "time",
-    "period",
-    "employment period",
-    "work period",
-    "duration",
-    "date",
-    "dates",
-    "employment dates",
-    "employment date",
-    "work dates",
-    "work date",
-    "job dates",
-    "study period",
-    "study dates",
-    "start date",
-    "end date",
-)
 
 
 def _header_labeled_value(line: str, field: str) -> str:
@@ -1505,11 +955,6 @@ def _find_date_range(lines: list[str], start: str, end: str) -> tuple[str, str]:
     return (match.group("start"), match.group("end")) if match else ("", "")
 
 
-_PROFILE_CHINESE_ROLE_RE = re.compile(
-    r"(?:工程师|开发|程序员|架构师|分析师|经理|负责人|主管|总监|专员|研究员|"
-    r"设计师|实习生|助理|顾问|运营|产品|测试|算法|部长|主席|团支书|书记|"
-    r"秘书|志愿者|干事|会长|班长|委员|老师|讲师)"
-)
 
 
 def _looks_like_profile_role_line(line: str) -> bool:
@@ -2063,66 +1508,6 @@ def _parse_awards(lines: list[str]) -> list[dict[str, str]]:
         description = "、".join(parts[1:]) if len(parts) > 1 else ""
         result.append({"name": name, "date": date, "description": description})
     return result
-
-
-_PARSED_BASIC_FIELD_LIMITS = {
-    "name": 64,
-    "gender": 64,
-    "birth_year": 32,
-    "phone": 32,
-    "email": 128,
-    "city": 64,
-    "target_city": 64,
-    "job_intent": 128,
-    "personal_website": 256,
-    "github": 256,
-}
-_PARSED_ENTRY_FIELD_LIMITS = {
-    "educations": {
-        "reference_file_name": 255,
-        "reference_content": 200_000,
-        "school": 128,
-        "major": 128,
-        "degree": 32,
-        "start_date": 32,
-        "end_date": 32,
-        "gpa": 64,
-        "courses": 200_000,
-        "achievements": 200_000,
-    },
-    "experiences": {
-        "reference_file_name": 255,
-        "reference_content": 200_000,
-        "company": 128,
-        "role": 128,
-        "start_date": 32,
-        "end_date": 32,
-        "description": 200_000,
-    },
-    "campus_experiences": {
-        "reference_file_name": 255,
-        "reference_content": 200_000,
-        "organization": 128,
-        "role": 128,
-        "start_date": 32,
-        "end_date": 32,
-        "description": 200_000,
-    },
-    "projects": {
-        "reference_file_name": 255,
-        "reference_content": 200_000,
-        "name": 128,
-        "role": 64,
-        "start_date": 32,
-        "end_date": 32,
-        "tech_stack": 10_000,
-        "description": 200_000,
-        "highlights": 200_000,
-    },
-    "skills": {"name": 64, "level": 32},
-    "awards": {"name": 128, "date": 32, "description": 2_000},
-}
-_MAX_PARSED_SECTION_ITEMS = 200
 
 
 def _bound_parse_result(
