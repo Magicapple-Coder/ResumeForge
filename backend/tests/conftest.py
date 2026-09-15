@@ -4,17 +4,16 @@
 """
 import os
 from pathlib import Path
+import tempfile
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_resume_forge.db"  # noqa: E402
+_TEST_DB = Path(tempfile.gettempdir()) / f"resume_forge_test_{os.getpid()}.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"  # noqa: E402
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import Base, SessionLocal, engine, get_db  # noqa: E402
 from app.main import app  # noqa: E402
-
-_TEST_DB = Path("test_resume_forge.db")
-
 
 @pytest.fixture(autouse=True)
 def clean_db():

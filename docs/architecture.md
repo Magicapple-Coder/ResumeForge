@@ -36,24 +36,43 @@ flowchart LR
 
 ```
 backend/app/
-├── main.py            # 应用入口：装配路由/中间件/建表与兼容升级
+├── main.py            # 兼容入口：重新导出应用实例与公共启动符号
+├── application.py     # FastAPI 应用工厂、路由/中间件与生命周期装配
 ├── config.py          # 服务端配置（.env）
 ├── database.py        # 数据库连接、会话与 SQLite 缺列补齐
+├── database_compat.py  # 早期未版本化 SQLite 的兼容字段定义
 ├── database_migrations.py # Alembic 编排与 SQLite 升级前备份
 ├── models/            # ORM 模型（profile/job/resume/setting/assistant）
 ├── schemas/           # Pydantic 数据结构（前后端契约）
 ├── api/               # 路由层：校验参数、编排服务、组装响应
 ├── middleware/        # 请求关联 ID 与请求体大小限制
 ├── services/          # 业务层：核心逻辑，与框架解耦
-│   ├── llm/           # 大模型抽象（base + openai_compat）
+│   ├── llm/           # 大模型抽象（base + openai_compat + structured_output）
 │   ├── profile_text_parser.py # 个人资料解析兼容门面
 │   ├── profile_parser/       # 个人资料分区、条目、技能与边界解析模块
-│   ├── job_text_parser.py    # 粘贴招聘文本解析为可编辑岗位草稿
-│   ├── jd_parser.py   # JD 规则解析（技能标签/学历/年限）
+│   ├── job_text_parser.py    # 粘贴招聘文本解析兼容门面
+│   ├── job_parser/            # 岗位文本字段、元数据、候选值与章节解析
+│   ├── text_extraction.py     # 岗位/资料 AI 结构化抽取与本地兜底
+│   ├── jd_parser.py           # JD 规则解析兼容门面（技能标签/学历/年限）
+│   ├── jd_parser_constants.py # JD 技能、学历、年限规则常量
+│   ├── jd_parser_matching.py  # 技能词典加载、别名匹配与文本规范化
+│   ├── jd_parser_filters.py   # 技能短词的上下文误报过滤
+│   ├── jd_parser_requirements.py # 学历与经验年限提取
 │   ├── job_analysis.py # 仅依据招聘原文生成岗位需求解读
 │   ├── assistant_service.py # 助手附件校验与模型消息组装
 │   ├── assistant_web_search.py # 受限 Bing RSS 摘要搜索
-│   ├── resume_generator.py  # 简历生成流水线
+│   ├── profile_relevance.py # 岗位相关性筛选兼容门面与流程编排
+│   ├── profile_relevance_constants.py # 相关性字段、信号、限制和数据类型
+│   ├── profile_context.py # 资料规范化与模型上下文构建
+│   ├── profile_matching.py # 岗位聚焦、条目评分与候选选择
+│   ├── profile_references.py # 总结文件清洗、分段和事实提取
+│   ├── profile_budget.py # Prompt 序列化与字符预算压缩
+│   ├── resume_generator.py  # 简历生成流式编排与兼容入口
+│   ├── resume_content.py # 模型 JSON 提取与 ResumeContent 规范化
+│   ├── resume_grounding.py # 结构化字段事实回填与兼容入口
+│   ├── resume_grounding_helpers.py # 事实匹配、证据和参考事实纯函数
+│   ├── resume_consistency.py # 生成结果与候选资料的一致性检查
+│   ├── resume_quality.py # 深度美化的确定性质量门槛
 │   ├── resume_suggestions.py # 按岗位生成简历修改建议
 │   ├── exporter.py    # 导出 JSON/Markdown/HTML
 │   ├── profile_service.py   # 个人资料读写
@@ -62,6 +81,12 @@ backend/app/
 ├── templates/         # 简历 HTML 模板（Jinja2）
 └── data/              # 技能词典
 ```
+
+## 模块化边界与兼容入口
+
+入口层只负责装配，不承载业务规则：`app/application.py` 提供 `create_app()`、生命周期、路由注册和统一异常响应，`app/main.py` 保留原有 `app.main:app` 启动路径及历史导出符号。早期 SQLite 兼容列集中在 `database_compat.py`，正式结构仍以 Alembic 为唯一来源。这样可以在测试中独立创建应用，同时避免路由、迁移和兼容逻辑互相耦合。
+
+前端页面按领域组件拆分：资料、设置、岗位和简历编辑器的字段编辑器位于各自 `components/*` 目录，共享类型位于 `types/`，样式按视觉域位于 `styles/`；`types/index.ts` 继续 re-export 旧路径，避免外部组件一次性迁移。Windows 启动器同样由公共函数、Python/Node 运行时和进程生命周期模块组成，主脚本只保留参数解析和装配。
 
 ## 岗位管理与个人资料
 
@@ -75,7 +100,7 @@ backend/app/
 - 用户编写简历时，编辑器右侧只读展示目标岗位职责、要求、技能和其他信息；该参考面板不参与保存。预览模板为可编辑字段输出 `data-resume-path`，前端在“编辑”模式下把纸面点击或键盘操作映射到统一结构化编辑器中的相应字段，保存后重新渲染 HTML。
 - 教育、实习/工作、校园和项目条目各可保存一份 UTF-8 Markdown/TXT 参考文件。浏览器只保存文件名与正文，不保存本机路径；生成器只把与目标 JD 相关的正文片段放入候选上下文。
 
-个人资料粘贴解析采用 `profile_text_parser.py` 兼容门面，具体规则按常量、规范化、分区识别、基本字段、条目头部、技能字段和结果边界拆分到 `services/profile_parser/`。门面继续导出原有符号，因此 API 层和外部调用方无需改变导入路径；内部模块不反向依赖门面。
+个人资料粘贴解析采用 `profile_text_parser.py` 兼容门面，具体规则按常量、规范化、分区识别、基本字段、条目头部、技能字段和结果边界拆分到 `services/profile_parser/`。岗位文本规则同样由 `job_text_parser.py` 门面和 `services/job_parser/` 组成。两个粘贴接口会先运行本地规则，再在已配置模型时调用 `text_extraction.py` 的结构化 Prompt 纠正字段分类；模型失败、超时或输出非法 JSON 时自动返回本地草稿，并通过 `recognition_source` 和 warnings 告知前端。门面继续导出原有符号，因此 API 层和外部调用方无需改变导入路径；内部模块不反向依赖门面。
 
 SQLite 启动升级以 Alembic 为唯一结构来源：空库执行完整 revision 链，已版本化数据库只执行待应用 revision。仅当检测到早期未版本化业务表时，才先执行 `create_all` 和 `ensure_sqlite_columns` 补齐历史兼容结构，再标记为基线并交给 `run_database_migrations`。有用户数据且存在待执行 revision 时，使用 SQLite backup API 在数据库同级 `backups/` 目录创建一致性备份，然后升级到 `head`。`0003_job_additional_info`、`0004_resume_favorite`、`0005_chat_assistant`、`0006_chat_conversation_flags` 依次增加岗位其他信息、简历收藏状态、助手会话/消息表以及会话置顶和收藏字段；`0006` 使用原生新增列操作，避免 SQLite 重建会话父表时触发外键级联并删除消息。升级保留既有业务记录并为新增字段提供默认值。降级会按 revision 移除对应的新字段或表，因此执行降级前必须另外备份。后续新增/删除列、改类型、约束变化和数据回填都必须新增 revision，不再扩大临时兼容层。
 
@@ -194,8 +219,8 @@ sequenceDiagram
 | 深度美化质量门槛               | 在事实回填前识别合法但空洞的附件项目，最多非流式重试一次，避免前端拼接两份 JSON；失败时保留首轮结果 |
 | 分级美化拓展                   | 关闭时严格回填资料原文；开启后允许基于资料与相关参考片段重组表达，但结构事实和数字仍受校验          |
 | 一致性校验（防 AI 虚构）       | 固定名称、角色、时间、技能等结构事实，并拦截资料或参考文件未支持的量化结果                          |
-| 跨行业岗位文本使用本地规则解析 | 粘贴内容不发送给大模型；不同领域的字段、技能与资质映射到统一草稿，低确定性结果仍由用户确认          |
-| 招聘信息采用粘贴文本导入     | 岗位粘贴识别只在本地运行规则并生成可编辑草稿，不读取远程岗位详情或调用网络；投递链接由用户手动核对并填写 |
+| 粘贴文本采用 AI 优先、本地兜底 | 本地规则保证离线可用，大模型负责跨行业语义分区和字段纠错；结果经过来源锚定、白名单和 Pydantic 校验，模型异常不阻断现有流程 |
+| 招聘信息采用粘贴文本导入     | 岗位粘贴识别先在本地生成可编辑草稿；已配置模型时，使用结构化 Prompt 校正字段分类并通过原文锚点验证，模型失败则回退本地草稿。不读取远程岗位详情，投递链接由用户手动核对并填写 |
 | “其他信息”独立保存             | 避免把福利、团队介绍、职位 ID、流程等内容强塞进职责/要求，同时让搜索和岗位化生成仍能使用这些信息    |
 | 招聘发布时间保持原始语义       | `posted_at` 只接收明确发布语义；无法可靠识别时留空，不用本地更新时间替代                            |
 | 收藏是独立轻量状态             | 岗位复用既有部分更新，简历使用专用 PATCH，避免收藏操作覆盖正文；收藏夹只组合两种过滤列表            |
@@ -223,14 +248,15 @@ sequenceDiagram
 ## 扩展点
 
 1. **新增模型提供商**：非 OpenAI 兼容协议时，在 `services/llm/` 新增 Provider 类，并在 `create_provider` 中按 `provider` 字段分发。
-2. **扩展岗位文本识别规则**：在 `services/job_text_parser.py` 增加字段标签或章节规则，并补充对应离线测试。
-3. **新增导出格式**：在 `services/exporter.py` 加导出函数，`api/resumes.py` 的 `_EXPORT_FORMATS` 加一行。
-4. **调整美化拓展策略**：后端 `resume_generator.py` 的分级指令与前端 `config.ts` 的 `RESUME_ENHANCEMENT_LEVELS` 保持一致，并补充生成器测试。
-5. **扩展助手附件格式**：在 `assistant_service.py` 同时增加扩展名、MIME、内容校验和上下文转换，并补充边界测试；不要只改前端 `accept`。
+2. **扩展岗位文本识别规则**：在 `services/job_parser/` 对应职责模块增加字段标签、候选值或章节规则，并补充 `tests/test_job_text_parser.py` 或 `tests/test_job_text_parser_edge_cases.py` 离线测试；`services/job_text_parser.py` 仅保留兼容门面和解析流程装配。
+3. **扩展 JD 标签规则**：在 `services/jd_parser_constants.py` 增加学历、年限或技能别名，在 `jd_parser_filters.py` 增加必要的上下文过滤，并补充 `tests/test_jd_parser.py`；`services/jd_parser.py` 仅负责公共入口和流程编排。
+4. **新增导出格式**：在 `services/exporter.py` 加导出函数，`api/resumes.py` 的 `_EXPORT_FORMATS` 加一行。
+5. **调整美化拓展策略**：后端 `resume_generator.py` 的分级指令与前端 `config.ts` 的 `RESUME_ENHANCEMENT_LEVELS` 保持一致，并补充 `tests/test_resume_generator.py` 或 `tests/test_resume_quality_retry.py` 测试。
+6. **扩展助手附件格式**：在 `assistant_service.py` 同时增加扩展名、MIME、内容校验和上下文转换，并补充边界测试；不要只改前端 `accept`。
 
 ## 测试策略
 
-- 后端核心业务（跨行业岗位文本/JD 解析、资料参考文件、岗位相关片段筛选、分级生成、照片校验与渲染、岗位解读、助手附件/历史/搜索摘要解析、导出、防虚构校验）有单元测试；模型链路使用模拟传输或假 Provider，默认不依赖真实网络。
+- 后端核心业务（跨行业岗位文本/JD 解析、资料参考文件、岗位相关片段筛选、分级生成、照片校验与渲染、岗位解读、助手附件/历史/搜索摘要解析、导出、防虚构校验）有单元测试；模型链路使用模拟传输或假 Provider，默认不依赖真实网络。较长测试已按主题拆分为 `test_job_text_parser_edge_cases.py`、`test_job_text_parser_metadata.py`、`test_profile_text_parser_inference.py`、`test_assistant_search.py` 和 `test_resume_quality_retry.py`，岗位元数据/英文标题/分隔符规则与核心字段测试分别维护，便于定向回归。
 - API 层有冒烟测试（TestClient），覆盖岗位文本草稿、岗位备注与其他信息搜索、收藏过滤、批量操作原子性、简历收藏、岗位分析、助手会话/SSE、照片往返与其他核心链路。
 - SQLite 升级测试使用临时旧库验证兼容补列、`0003` 至 `0006` revision 链、索引/外键迁移、幂等执行、备份和原数据保留，不接触真实用户数据库。
 - 前端使用 Vitest 覆盖关键请求封装和核心交互，TypeScript strict、ESLint、Prettier 与生产构建提供静态门禁；复杂用户链路仍需按风险逐步补齐组件或端到端测试。

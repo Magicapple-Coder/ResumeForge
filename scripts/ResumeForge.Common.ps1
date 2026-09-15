@@ -1,0 +1,86 @@
+# ResumeForge launcher: process probes, health checks and shared lifecycle helpers.
+
+function Test-TcpPortInUse {
+    param([int]$Port)
+
+    return $null -ne (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+            Select-Object -First 1)
+}
+
+function Invoke-LocalRequest {
+    param([string]$Url)
+
+    try {
+        return Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-ResumeForgeBackend {
+    param([string]$Url)
+
+    $response = Invoke-LocalRequest "$Url/api/health"
+    if ($null -eq $response -or $response.StatusCode -ne 200) {
+        return $false
+    }
+
+    try {
+        return ($response.Content | ConvertFrom-Json).status -eq "ok"
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ResumeForgeFrontend {
+    param([string]$Url)
+
+    # Check the proxied health route as well as the port. A different Vite project
+    # can otherwise look healthy while sending ResumeForge requests to the wrong API.
+    return Test-ResumeForgeBackend -Url $Url
+}
+
+function Wait-ForCondition {
+    param(
+        [scriptblock]$Condition,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (& $Condition) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+function Save-ProcessRecord {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Path
+    )
+
+    @{
+        process_id = $Process.Id
+        started_at = $Process.StartTime.ToUniversalTime().ToString("o")
+    } | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Stop-StartedProcess {
+    param(
+        [AllowNull()]
+        [System.Diagnostics.Process]$Process
+    )
+
+    if ($null -eq $Process) {
+        return
+    }
+    if (-not $Process.HasExited) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    }
+}

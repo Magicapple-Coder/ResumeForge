@@ -1,4 +1,7 @@
-"""API 冒烟测试：资料、岗位、搜索与统计核心链路。"""
+"""岗位、搜索与统计 API 冒烟测试。"""
+
+import pytest
+
 
 SAMPLE_JOB_TEXT = """AI应用客户端开发工程师 - 剪映CapCut
 深圳、广州
@@ -18,147 +21,6 @@ SAMPLE_JOB_TEXT = """AI应用客户端开发工程师 - 剪映CapCut
 3、熟练掌握数据结构与算法、计算机网络、操作系统、编译原理等课程，熟练掌握C++/C/Java/JavaScript等一种或多种语言；
 4、充满技术热情，有较强的自驱力和学习能力；
 5、业余爱好视频拍摄、视频编辑，有移动端、桌面端视频编辑软件使用经验者优先。"""
-
-
-def test_profile_roundtrip(client):
-    payload = {
-        "name": "张三",
-        "email": "zhangsan@example.com",
-        "job_intent": "后端开发工程师",
-        "educations": [{"school": "天津工业大学", "major": "软件工程", "degree": "本科"}],
-        "experiences": [{"company": "某科技公司", "role": "实习生", "description": "开发\n测试"}],
-        "campus_experiences": [
-            {
-                "organization": "学生会",
-                "role": "宣传部部长",
-                "start_date": "2023.09",
-                "end_date": "2024.06",
-                "description": "策划校园活动\n管理宣传渠道",
-            }
-        ],
-        "projects": [],
-        "skills": [{"name": "Python", "level": "熟练"}],
-        "awards": [],
-        "section_order": ["projects", "basic_info"],
-    }
-    response = client.put("/api/profile", json=payload)
-    assert response.status_code == 200
-    saved = response.json()
-    assert saved["name"] == "张三" and len(saved["educations"]) == 1
-    assert saved["campus_experiences"][0]["organization"] == "学生会"
-    assert saved["section_order"][:2] == ["projects", "basic_info"]
-
-    response = client.get("/api/profile")
-    assert response.json()["educations"][0]["school"] == "天津工业大学"
-    assert response.json()["campus_experiences"][0]["role"] == "宣传部部长"
-
-    # 再次 PUT 是整体替换：清空教育经历
-    payload["educations"] = []
-    payload["campus_experiences"] = []
-    response = client.put("/api/profile", json=payload)
-    assert response.json()["educations"] == []
-    assert response.json()["campus_experiences"] == []
-
-
-def test_profile_parse_text_returns_draft_without_saving(client):
-    response = client.post(
-        "/api/profile/parse-text",
-        json={
-            "text": "姓名：李四\n\n项目经历\n简历工具｜核心开发｜2025.01-至今\n技术栈：Python、FastAPI\n项目描述：搭建平台",
-        },
-    )
-
-    assert response.status_code == 200
-    draft = response.json()
-    assert draft["name"] == "李四"
-    assert draft["projects"][0]["name"] == "简历工具"
-    assert draft["projects"][0]["tech_stack"] == "Python、FastAPI"
-    assert client.get("/api/profile").json()["name"] == ""
-
-
-def test_profile_parse_text_accepts_full_width_and_english_variants(client):
-    response = client.post(
-        "/api/profile/parse-text",
-        json={
-            "text": (
-                "Ｆｕｌｌ Ｎａｍｅ: Alice\n"
-                "Ｐｈｏｎｅ Ｎｕｍｂｅｒ: +86 138-0000-0000\n"
-                "Ｅｍａｉｌ Ａｄｄｒｅｓｓ: alice@example.com\n"
-                "Work History\n"
-                "Company: Example Inc | Position: Backend Engineer | Period: Jan 2024 - Present\n"
-                "Technical Expertise\n"
-                "Python, JavaScript and SQL"
-            )
-        },
-    )
-
-    assert response.status_code == 200
-    draft = response.json()
-    assert draft["name"] == "Alice"
-    assert draft["phone"] == "13800000000"
-    assert draft["email"] == "alice@example.com"
-    assert draft["experiences"][0]["role"] == "Backend Engineer"
-    assert {skill["name"] for skill in draft["skills"]} >= {"Python", "JavaScript", "SQL"}
-
-
-def test_profile_parse_text_accepts_employment_dates_alias(client):
-    response = client.post(
-        "/api/profile/parse-text",
-        json={
-            "text": (
-                "Name: Li Ming\n"
-                "Enterprise: Acme\n"
-                "Work Position: Backend Engineer\n"
-                "Employment Dates: 2024 - Present\n"
-                "Work Content: Build APIs"
-            )
-        },
-    )
-
-    assert response.status_code == 200
-    draft = response.json()
-    assert len(draft["experiences"]) == 1
-    experience = draft["experiences"][0]
-    assert experience["company"] == "Acme"
-    assert experience["role"] == "Backend Engineer"
-    assert experience["start_date"] == "2024"
-    assert experience["end_date"] == "Present"
-    assert experience["description"] == "Build APIs"
-
-
-def test_profile_parse_text_infers_unlabeled_company_role_date_block(client):
-    response = client.post(
-        "/api/profile/parse-text",
-        json={
-            "text": (
-                "Name: Wang Wu\n"
-                "Example Technology\n"
-                "Machine Learning Intern\n"
-                "2024-2025\n"
-                "Trained ranking models"
-            )
-        },
-    )
-
-    assert response.status_code == 200
-    draft = response.json()
-    assert len(draft["experiences"]) == 1
-    experience = draft["experiences"][0]
-    assert experience["company"] == "Example Technology"
-    assert experience["role"] == "Machine Learning Intern"
-    assert experience["start_date"] == "2024"
-    assert experience["end_date"] == "2025"
-    assert experience["description"] == "Trained ranking models"
-
-
-def test_profile_parse_text_bounds_overlong_fields_instead_of_returning_500(client):
-    response = client.post(
-        "/api/profile/parse-text",
-        json={"text": f"项目名称：{'x' * 200}\n角色：开发"},
-    )
-
-    assert response.status_code == 200
-    assert len(response.json()["projects"][0]["name"]) == 128
 
 
 def test_job_crud_and_keywords(client):
@@ -293,3 +155,88 @@ def test_create_job_normalizes_common_skill_aliases(client):
     assert response.status_code == 201
     keyword_names = {tag["name"] for tag in response.json()["keywords"]}
     assert {"Python", "Vue", "Kubernetes", "RAG"} <= keyword_names
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        "javascript:alert(1)",
+        "file:///C:/secret.txt",
+        "/relative/apply",
+        "not-a-url",
+    ],
+)
+def test_job_rejects_unsafe_source_urls(client, source_url):
+    response = client.post(
+        "/api/jobs",
+        json={"title": "安全测试岗位", "source_url": source_url},
+    )
+
+    assert response.status_code == 422
+
+
+def test_job_accepts_and_normalizes_https_source_url(client):
+    response = client.post(
+        "/api/jobs",
+        json={
+            "title": "后端开发工程师",
+            "source_url": "  https://careers.example.com/jobs/123?from=campus  ",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["source_url"] == "https://careers.example.com/jobs/123?from=campus"
+
+
+def test_representative_request_size_limits(client):
+    assert client.post("/api/jobs", json={"title": "岗" * 129}).status_code == 422
+    assert client.post("/api/jobs/parse-text", json={"text": "A" * 50_001}).status_code == 422
+    assert (
+        client.post("/api/jobs/batch-delete", json={"job_ids": list(range(1, 502))}).status_code
+        == 422
+    )
+    assert (
+        client.put(
+            "/api/profile",
+            json={"skills": [{"name": f"skill-{index}"} for index in range(201)]},
+        ).status_code
+        == 422
+    )
+
+
+@pytest.mark.parametrize("text", ["", "   \r\n\t"])
+def test_parse_job_text_rejects_blank_input(client, text):
+    response = client.post("/api/jobs/parse-text", json={"text": text})
+
+    assert response.status_code == 422
+
+
+def test_job_list_search_and_pagination(client):
+    client.post(
+        "/api/jobs", json={"title": "后端开发工程师", "company": "A公司", "description": "Python"}
+    )
+    client.post(
+        "/api/jobs", json={"title": "前端开发工程师", "company": "B公司", "description": "React"}
+    )
+    response = client.get("/api/jobs", params={"keyword": "后端"})
+    body = response.json()
+    assert body["total"] == 1 and body["items"][0]["company"] == "A公司"
+    response = client.get("/api/jobs", params={"page": 2, "page_size": 1})
+    assert response.json()["total"] == 2 and len(response.json()["items"]) == 1
+
+
+def test_search_across_jobs(client):
+    client.post(
+        "/api/jobs", json={"title": "算法工程师", "company": "C公司", "description": "机器学习"}
+    )
+    response = client.get("/api/search", params={"q": "机器学习"})
+    body = response.json()
+    assert len(body["jobs"]) == 1 and body["jobs"][0]["company"] == "C公司"
+
+
+def test_stats(client):
+    client.post("/api/jobs", json={"title": "算法工程师", "company": "C公司"})
+    response = client.get("/api/stats")
+    body = response.json()
+    assert body["job_count"] == 1 and body["open_job_count"] == 1
+    assert body["resume_count"] == 0

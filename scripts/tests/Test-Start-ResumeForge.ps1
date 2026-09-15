@@ -26,6 +26,25 @@ function Assert-LauncherTest {
     }
 }
 
+function Send-TestDirectoryToRecycleBin {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+    try {
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+            $Path,
+            [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+            [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+        )
+    }
+    catch {
+        Write-Warning "Could not move launcher test data to the recycle bin; leaving it in place: $($_.Exception.Message)"
+    }
+}
+
 $tokens = $null
 $parseErrors = $null
 $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -47,13 +66,32 @@ foreach ($requiredSetting in @(
 }
 
 # Load function definitions without executing the launcher's service startup.
-$functionDefinitions = $launcherAst.FindAll(
-    {
-        param($node)
-        return $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
-    },
-    $true
+# Helpers now live in focused dot-sourced modules; parse each module directly so
+# this characterization test remains independent from network/process startup.
+$launcherScriptPaths = @($LauncherPath) + @(
+    Get-ChildItem -LiteralPath (Join-Path $ProjectRoot "scripts") -Filter "ResumeForge.*.ps1" -File |
+        Select-Object -ExpandProperty FullName
 )
+$functionDefinitions = @()
+foreach ($scriptPath in $launcherScriptPaths) {
+    $scriptTokens = $null
+    $scriptErrors = $null
+    $scriptAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $scriptPath,
+        [ref]$scriptTokens,
+        [ref]$scriptErrors
+    )
+    Assert-LauncherTest `
+        -Condition ($scriptErrors.Count -eq 0) `
+        -Message "Launcher module has PowerShell syntax errors: $scriptPath"
+    $functionDefinitions += $scriptAst.FindAll(
+        {
+            param($node)
+            return $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+        },
+        $true
+    )
+}
 foreach ($functionDefinition in $functionDefinitions) {
     Invoke-Expression $functionDefinition.Extent.Text
 }
@@ -126,5 +164,5 @@ try {
     Write-Host "Windows launcher tests passed."
 }
 finally {
-    Remove-Item -LiteralPath $RuntimeDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    Send-TestDirectoryToRecycleBin -Path $RuntimeDirectory
 }
