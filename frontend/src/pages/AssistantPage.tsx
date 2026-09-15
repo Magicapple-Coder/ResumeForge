@@ -79,6 +79,7 @@ export default function AssistantPage() {
     pendingUserAttachments,
     streamingText,
     streamingSources,
+    streamingTools,
     progressText,
     streamError,
     send,
@@ -126,6 +127,7 @@ export default function AssistantPage() {
     sending,
     streamError,
     streamingSources,
+    streamingTools,
     streamingText,
   ]);
 
@@ -157,6 +159,7 @@ export default function AssistantPage() {
           pendingUserAttachments={pendingUserAttachments}
           streamingText={streamingText}
           streamingSources={streamingSources}
+          streamingTools={streamingTools}
           progressText={progressText}
           streamError={streamError}
           messageEndRef={messageEndRef}

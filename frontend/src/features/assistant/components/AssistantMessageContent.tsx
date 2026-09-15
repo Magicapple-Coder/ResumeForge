@@ -1,10 +1,16 @@
 /** 助手消息的安全 Markdown 子集、附件和来源展示。 */
 
-import { FileTextOutlined, PushpinFilled, StarFilled } from "@ant-design/icons";
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  FileTextOutlined,
+  PushpinFilled,
+  StarFilled,
+} from "@ant-design/icons";
 import { Collapse, Image, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AssistantAttachment, AssistantSource } from "../../../types";
+import type { AssistantAttachment, AssistantSource, AssistantToolCall } from "../../../types";
 import {
   attachmentStyle,
   isMarkdownTableDivider,
@@ -184,6 +190,52 @@ export function MessageAttachments({
         );
       })}
     </div>
+  );
+}
+
+/** 工具名的中文说法；没列到的直接显示原名。 */
+const TOOL_LABELS: Record<string, string> = {
+  get_overview: "查看整体概览",
+  list_jobs: "查询岗位",
+  get_job: "查看岗位详情",
+  list_resumes: "查询简历",
+  get_resume: "查看简历详情",
+  get_profile: "查看个人资料",
+  create_job: "新增岗位",
+  update_job: "修改岗位",
+  update_profile: "更新个人资料",
+};
+
+export function MessageToolCalls({ calls }: { calls: AssistantToolCall[] }) {
+  if (!calls.length) return null;
+  // 刻意不做成折叠面板：助手动了用户的数据，这件事必须一眼可见，而不是藏起来
+  // 等用户点开（对比下面的参考来源，那才是可以折叠的次要信息）。
+  return (
+    <ul className="assistant-tool-calls">
+      {calls.map((call, index) => (
+        <li key={`${call.name}-${index}`}>
+          {call.ok ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+          <Typography.Text strong style={{ marginLeft: 6 }}>
+            {TOOL_LABELS[call.name] ?? call.name}
+          </Typography.Text>
+          {call.ok ? (
+            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+              {call.summary}
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="danger" style={{ marginLeft: 8 }}>
+              失败：{call.error}
+            </Typography.Text>
+          )}
+          {call.ok && call.link && (
+            // 用 href 而不是 router Link：这个组件也会被单独渲染在测试里。
+            <Typography.Link href={call.link} style={{ marginLeft: 8 }}>
+              前往查看
+            </Typography.Link>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

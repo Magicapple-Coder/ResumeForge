@@ -458,4 +458,65 @@ describe("AssistantPage", () => {
     expect(screen.queryByText("resume.exe")).not.toBeInTheDocument();
     expect(apiMocks.sendAssistantMessage).not.toHaveBeenCalled();
   });
+  it("shows what the assistant did with tools while the reply is streaming", async () => {
+    const stream = deferred<void>();
+    apiMocks.sendAssistantMessage.mockImplementation(
+      async (_id: number, _payload: unknown, onEvent: (event: AssistantStreamEvent) => void) => {
+        onEvent({
+          type: "start",
+          user_message_id: 1,
+          assistant_message_id: 2,
+          conversation_title: "新对话",
+        });
+        onEvent({
+          type: "tool",
+          name: "create_job",
+          arguments: { title: "字节跳动后端实习" },
+          summary: "新增岗位「字节跳动后端实习」",
+          link: "/jobs",
+          ok: true,
+          error: "",
+        });
+        await stream.promise;
+      },
+    );
+
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
+      target: { value: "帮我把这个岗位存进去" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    // 助手改动了数据这件事必须直接可见，不需要用户点开折叠面板
+    expect(await screen.findByText("新增岗位")).toBeInTheDocument();
+    expect(screen.getByText("新增岗位「字节跳动后端实习」")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往查看" })).toHaveAttribute("href", "/jobs");
+  });
+
+  it("flags a tool that failed", async () => {
+    const stream = deferred<void>();
+    apiMocks.sendAssistantMessage.mockImplementation(
+      async (_id: number, _payload: unknown, onEvent: (event: AssistantStreamEvent) => void) => {
+        onEvent({
+          type: "tool",
+          name: "get_job",
+          arguments: { job_id: 999 },
+          summary: "",
+          link: "",
+          ok: false,
+          error: "岗位 999 不存在",
+        });
+        await stream.promise;
+      },
+    );
+
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
+      target: { value: "看看 999 号岗位" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByText(/失败：岗位 999 不存在/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "前往查看" })).not.toBeInTheDocument();
+  });
 });

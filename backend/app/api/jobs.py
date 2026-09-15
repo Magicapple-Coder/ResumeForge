@@ -21,8 +21,8 @@ from ..schemas.job import (
     JobUpdate,
 )
 from ..schemas.job_analysis import JobAnalysisResult
-from ..services.jd_parser import parse_jd
 from ..services.job_analysis import generate_job_analysis
+from ..services.job_service import create_job_record, update_job_record
 from ..services.job_text_parser import parse_job_text
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
@@ -95,18 +95,7 @@ def list_jobs(
 
 @router.post("", response_model=JobOut, status_code=201)
 def create_job(payload: JobCreate, db: Session = Depends(get_db)):
-    job = Job(**payload.model_dump())
-    # 入库时解析一次技能标签，列表页/详情页直接读取
-    job.keywords = [
-        tag.model_dump()
-        for tag in parse_jd(
-            f"{job.description}\n{job.requirements}\n{job.additional_info}"
-        )["skills"]
-    ]
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-    return _to_out(job)
+    return _to_out(create_job_record(db, payload))
 
 
 @router.post("/parse-text", response_model=JobTextParseResult)
@@ -185,20 +174,7 @@ def update_job(job_id: int, payload: JobUpdate, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
-    data = payload.model_dump(exclude_unset=True)
-    for field, value in data.items():
-        setattr(job, field, value)
-    # JD 内容变化时重新解析技能标签
-    if {"description", "requirements", "additional_info"}.intersection(data):
-        job.keywords = [
-            tag.model_dump()
-            for tag in parse_jd(
-                f"{job.description}\n{job.requirements}\n{job.additional_info}"
-            )["skills"]
-        ]
-    db.commit()
-    db.refresh(job)
-    return _to_out(job)
+    return _to_out(update_job_record(db, job, payload))
 
 
 @router.delete("/{job_id}", status_code=204)

@@ -35,6 +35,8 @@ def test_web_search_results_are_cited_context_and_search_does_not_create_jobs(cl
     assert sources_event["sources"][0]["url"] == "https://careers.example.com/jobs/1"
     assert "[来源1]" in captured["messages"][-1]["content"]
     assert "不得将结果称为刚发布或最新招聘" in captured["messages"][-1]["content"]
+    # 助手只在被明确要求时才写数据；这轮对话没有让它写入，假 Provider 也没产出
+    # 工具调用，所以岗位表应当仍是空的。
     assert client.get("/api/jobs").json()["total"] == 0
 
     context = client.get(f"/api/assistant/conversations/{conversation['id']}").json()["messages"][

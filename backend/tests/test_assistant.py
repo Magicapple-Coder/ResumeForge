@@ -5,10 +5,11 @@ import json
 import pytest
 
 from app.api.assistant import send_message
+from app.api.assistant_stream import MAX_TOOL_ROUNDS
 from app.models.assistant import ChatConversation, ChatMessage
 from app.schemas.assistant import AssistantMessageCreate
 from app.schemas.setting import LLMConfig
-from app.services.llm.base import LLMError
+from app.services.llm.base import BaseLLMProvider, LLMDelta, LLMError
 
 
 def _configure_llm(client) -> None:
@@ -35,8 +36,22 @@ def _events(response) -> list[dict]:
     ]
 
 
+class _FakeProvider(BaseLLMProvider):
+    """测试用假 Provider。
+
+    继承基类是为了拿到默认的 ``stream_chat_events``（它退化成纯文本流），这样
+    只想验证普通对话的用例不必重复实现工具调用那一套。
+    """
+
+    def __init__(self, _config=None):  # 假 Provider 不使用配置
+        pass
+
+    async def chat(self, _messages):  # pragma: no cover - 助手只走流式
+        raise NotImplementedError
+
+
 def _successful_provider(monkeypatch, captured: dict | None = None, reply: str = "建议内容"):
-    class Provider:
+    class Provider(_FakeProvider):
         async def stream_chat(self, messages):
             if captured is not None:
                 captured["messages"] = messages
@@ -220,7 +235,7 @@ def test_missing_selected_context_returns_404(client, request_body, message):
 def test_model_failure_emits_error_and_persists_failed_message(client, monkeypatch):
     _configure_llm(client)
 
-    class FailingProvider:
+    class FailingProvider(_FakeProvider):
         async def stream_chat(self, _messages):
             raise LLMError("模型服务暂时不可用")
             yield ""  # pragma: no cover
@@ -264,3 +279,132 @@ async def test_closing_stream_after_start_marks_pending_message_cancelled(client
     ][1]
     assert assistant["status"] == "cancelled"
     assert assistant["error"] == "回复已中断"
+
+
+class _ScriptedProvider(_FakeProvider):
+    """按预设脚本逐轮返回：先给工具调用，再给正文。"""
+
+    def __init__(self, rounds):
+        self.rounds = rounds
+        self.requests = []
+
+    async def stream_chat_events(self, messages, tools=None):
+        self.requests.append({"messages": list(messages), "tools": tools})
+        index = min(len(self.requests) - 1, len(self.rounds) - 1)
+        for delta in self.rounds[index]:
+            yield delta
+
+    async def stream_chat(self, messages):
+        async for delta in self.stream_chat_events(messages):
+            if delta.text:
+                yield delta.text
+
+
+def _tool_call(name, arguments, call_id="call_1"):
+    return LLMDelta(
+        tool_calls=[
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": json.dumps(arguments, ensure_ascii=False),
+                },
+            }
+        ],
+        finish_reason="tool_calls",
+    )
+
+
+def test_tool_call_runs_and_its_result_reaches_the_model(client, monkeypatch):
+    _configure_llm(client)
+    provider = _ScriptedProvider(
+        [
+            [LLMDelta(text="我来查一下。"), _tool_call("list_jobs", {})],
+            [LLMDelta(text="你目前有 0 个岗位。")],
+        ]
+    )
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    response = client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "我一共有几个岗位？"},
+    )
+
+    events = _events(response)
+    tool_events = [event for event in events if event["type"] == "tool"]
+    assert len(tool_events) == 1
+    assert tool_events[0]["name"] == "list_jobs" and tool_events[0]["ok"] is True
+    # 工具声明发出去了，结果也作为 role=tool 的消息回给了模型
+    assert provider.requests[0]["tools"]
+    second_round = provider.requests[1]["messages"]
+    assert second_round[-1]["role"] == "tool"
+    assert "总数" in second_round[-1]["content"]
+    # 记录进消息的 context，历史回看时能看到助手做了什么
+    assistant = client.get(f"/api/assistant/conversations/{conversation['id']}").json()["messages"][
+        1
+    ]
+    assert assistant["context"]["tool_calls"][0]["name"] == "list_jobs"
+
+
+def test_assistant_writes_only_when_asked(client, monkeypatch):
+    _configure_llm(client)
+    provider = _ScriptedProvider(
+        [
+            [_tool_call("create_job", {"title": "字节跳动后端实习"})],
+            [LLMDelta(text="已经帮你存好了。")],
+        ]
+    )
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "帮我把字节跳动的后端实习岗位存进去"},
+    )
+
+    assert client.get("/api/jobs").json()["total"] == 1
+
+
+def test_a_failing_tool_does_not_break_the_reply(client, monkeypatch):
+    _configure_llm(client)
+    provider = _ScriptedProvider(
+        [
+            [_tool_call("get_job", {"job_id": 999})],
+            [LLMDelta(text="没找到这个岗位。")],
+        ]
+    )
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    response = client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "看看 999 号岗位"},
+    )
+
+    events = _events(response)
+    tool_event = next(event for event in events if event["type"] == "tool")
+    assert tool_event["ok"] is False and "不存在" in tool_event["error"]
+    # 失败信息作为工具结果回给模型，整轮对话继续而不是中断
+    assert "工具执行失败" in provider.requests[1]["messages"][-1]["content"]
+    assert any(event["type"] == "delta" for event in events)
+
+
+def test_tool_rounds_are_capped(client, monkeypatch):
+    _configure_llm(client)
+    # 每一轮都要求调用工具，永不收敛
+    provider = _ScriptedProvider([[_tool_call("get_overview", {})]])
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "一直查下去"},
+    )
+
+    assert len(provider.requests) == MAX_TOOL_ROUNDS
+    assistant = client.get(f"/api/assistant/conversations/{conversation['id']}").json()["messages"][
+        1
+    ]
+    assert "先停在这里" in assistant["content"]

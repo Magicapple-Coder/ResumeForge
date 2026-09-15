@@ -191,3 +191,131 @@ async def test_http_error_log_does_not_include_upstream_body(caplog):
 
 async def _collect_stream(provider: OpenAICompatProvider) -> list[str]:
     return [part async for part in provider.stream_chat([{"role": "user", "content": "test"}])]
+
+
+async def _collect_events(provider: OpenAICompatProvider, tools=None) -> list:
+    return [
+        delta
+        async for delta in provider.stream_chat_events(
+            [{"role": "user", "content": "test"}], tools
+        )
+    ]
+
+
+def _sse(choices: list[dict]) -> str:
+    return "".join(f"data: {json.dumps({'choices': [choice]})}\n\n" for choice in choices)
+
+
+def _stream_response(body: str) -> httpx.Response:
+    return httpx.Response(200, text=body, headers={"Content-Type": "text/event-stream"})
+
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {"name": "create_job", "description": "新增岗位", "parameters": {}},
+    }
+]
+
+
+async def test_stream_events_assembles_fragmented_tool_calls():
+    """工具参数是一个字符一个字符到达的，必须拼成完整 JSON 再交给调用方。"""
+    fragment = '{"title": "后端开发实习生", "company": "字节跳动"}'
+    frames = [{"delta": {"tool_calls": [
+        {"index": 0, "id": "call_1", "type": "function", "function": {"name": "create_job", "arguments": ""}}
+    ]}}]
+    frames += [
+        {"delta": {"tool_calls": [{"index": 0, "function": {"arguments": character}}]}}
+        for character in fragment
+    ]
+    frames.append({"delta": {}, "finish_reason": "tool_calls"})
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider, TOOLS)
+
+    calls = [call for delta in deltas for call in delta.tool_calls]
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "create_job"
+    assert json.loads(calls[0]["function"]["arguments"]) == {
+        "title": "后端开发实习生",
+        "company": "字节跳动",
+    }
+    assert deltas[-1].finish_reason == "tool_calls"
+
+
+async def test_stream_events_keeps_parallel_tool_calls_apart():
+    """同一次响应里的多个调用靠 index 区分，不能拼接串台。"""
+    frames = [
+        {"delta": {"tool_calls": [{"index": 0, "id": "a", "function": {"name": "get_job", "arguments": '{"id"'}}]}},
+        {"delta": {"tool_calls": [{"index": 1, "id": "b", "function": {"name": "list_jobs", "arguments": ""}}]}},
+        {"delta": {"tool_calls": [{"index": 0, "function": {"arguments": ": 1}"}}]}},
+        {"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{}"}}]}},
+        {"delta": {}, "finish_reason": "tool_calls"},
+    ]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider, TOOLS)
+
+    calls = [call for delta in deltas for call in delta.tool_calls]
+    assert [call["function"]["name"] for call in calls] == ["get_job", "list_jobs"]
+    assert calls[0]["function"]["arguments"] == '{"id": 1}'
+
+
+async def test_stream_events_yields_text_alongside_tool_calls():
+    frames = [
+        {"delta": {"content": "我来查一下。"}},
+        {"delta": {"tool_calls": [{"index": 0, "id": "a", "function": {"name": "list_jobs", "arguments": "{}"}}]}},
+        {"delta": {}, "finish_reason": "tool_calls"},
+    ]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider, TOOLS)
+
+    assert "".join(delta.text for delta in deltas) == "我来查一下。"
+    assert len([call for delta in deltas for call in delta.tool_calls]) == 1
+
+
+async def test_stream_events_finalizes_tool_calls_without_a_finish_reason():
+    """有的端点不发 finish_reason 就结束，工具调用同样要产出。"""
+    frames = [
+        {"delta": {"tool_calls": [{"index": 0, "id": "a", "function": {"name": "list_jobs", "arguments": "{}"}}]}},
+    ]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider, TOOLS)
+
+    assert len([call for delta in deltas for call in delta.tool_calls]) == 1
+
+
+async def test_stream_events_sends_tools_only_when_asked():
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return _stream_response(_sse([{"delta": {"content": "ok"}}]) + "data: [DONE]\n\n")
+
+    await _collect_events(_provider(handler), TOOLS)
+    await _collect_events(_provider(handler))
+
+    assert bodies[0]["tools"] == TOOLS
+    assert bodies[0]["tool_choice"] == "auto"
+    assert "tools" not in bodies[1]
+
+
+async def test_stream_events_falls_back_when_the_provider_rejects_tools():
+    """不支持 tools 的端点会直接 400；此时去掉工具重试一次，而不是整体失败。"""
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        bodies.append(body)
+        if "tools" in body:
+            return httpx.Response(400, json={"error": {"message": "tools is not supported"}})
+        return _stream_response(_sse([{"delta": {"content": "降级后的回答"}}]) + "data: [DONE]\n\n")
+
+    deltas = await _collect_events(_provider(handler), TOOLS)
+
+    assert len(bodies) == 2
+    assert "tools" in bodies[0] and "tools" not in bodies[1]
+    assert "".join(delta.text for delta in deltas) == "降级后的回答"

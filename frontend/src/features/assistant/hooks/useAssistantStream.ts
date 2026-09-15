@@ -3,7 +3,7 @@
 import type { MutableRefObject } from "react";
 import { useCallback, useRef, useState } from "react";
 import { sendAssistantMessage } from "../../../api/assistant";
-import type { AssistantSource, AssistantStreamEvent } from "../../../types";
+import type { AssistantSource, AssistantStreamEvent, AssistantToolCall } from "../../../types";
 import type { PendingAttachment } from "../assistantUtils";
 
 interface Options {
@@ -41,6 +41,7 @@ export function useAssistantStream({
   const [pendingUserAttachments, setPendingUserAttachments] = useState<PendingAttachment[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [streamingSources, setStreamingSources] = useState<AssistantSource[]>([]);
+  const [streamingTools, setStreamingTools] = useState<AssistantToolCall[]>([]);
   const [progressText, setProgressText] = useState("");
   const [streamError, setStreamError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -77,6 +78,7 @@ export function useAssistantStream({
       setPendingUserAttachments(optimisticAttachments);
       setStreamingText("");
       setStreamingSources([]);
+      setStreamingTools([]);
       setProgressText("");
       setStreamError("");
       setSendingConversationId(conversationId);
@@ -102,6 +104,20 @@ export function useAssistantStream({
               setStreamingSources(event.sources);
               if (event.error) setProgressText(event.error);
             }
+            if (event.type === "tool") {
+              // 显式挑字段，而不是解构剔除 type：仓库的 lint 不允许未使用的变量。
+              setStreamingTools((current) => [
+                ...current,
+                {
+                  name: event.name,
+                  arguments: event.arguments,
+                  summary: event.summary,
+                  link: event.link,
+                  ok: event.ok,
+                  error: event.error,
+                },
+              ]);
+            }
             if (event.type === "error") setStreamError(event.message);
             if (event.type === "start") void reloadConversations();
           },
@@ -119,6 +135,7 @@ export function useAssistantStream({
           setPendingUserText("");
           setPendingUserAttachments([]);
           setStreamingText("");
+          setStreamingTools([]);
           const refreshes: Promise<unknown>[] = [reloadConversations()];
           if (activeIdRef.current === conversationId) refreshes.push(loadDetail(conversationId));
           await Promise.all(refreshes);
@@ -148,6 +165,7 @@ export function useAssistantStream({
     pendingUserAttachments,
     streamingText,
     streamingSources,
+    streamingTools,
     progressText,
     streamError,
     abortRef,

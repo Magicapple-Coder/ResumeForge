@@ -12,9 +12,53 @@ from urllib.parse import urlsplit
 import httpx
 
 from ...schemas.setting import LLMConfig
-from .base import BaseLLMProvider, LLMError
+from .base import BaseLLMProvider, LLMDelta, LLMError
 
 logger = logging.getLogger(__name__)
+
+
+def _accumulate_tool_calls(pending: dict[int, dict], fragments: object) -> None:
+    """把碎片化的 tool_calls 增量按 index 累积起来。
+
+    协议里一个调用的 id / name / arguments 可能分散在多个帧里，帧与帧之间是
+    **拼接**关系而不是覆盖关系；index 用来区分同一次响应里的多个并行调用。
+    实测一个很短的 JSON 参数会用二十多帧、每帧一到两个字符地到达。
+    """
+    if not isinstance(fragments, list):
+        return
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        try:
+            index = int(fragment.get("index", 0))
+        except (TypeError, ValueError):
+            index = 0
+        slot = pending.setdefault(
+            index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+        )
+        if isinstance(fragment.get("id"), str) and fragment["id"]:
+            slot["id"] = fragment["id"]
+        if isinstance(fragment.get("type"), str) and fragment["type"]:
+            slot["type"] = fragment["type"]
+        function = fragment.get("function")
+        if isinstance(function, dict):
+            if isinstance(function.get("name"), str):
+                slot["function"]["name"] += function["name"]
+            if isinstance(function.get("arguments"), str):
+                slot["function"]["arguments"] += function["arguments"]
+
+
+def _finalize_tool_calls(pending: dict[int, dict]) -> list[dict]:
+    return [pending[index] for index in sorted(pending)]
+
+
+def _looks_like_unsupported_tools(error: LLMError) -> bool:
+    """判断这次失败是否因为服务商不认识 tools 参数。
+
+    ``_http_error`` 刻意不把上游正文带进错误消息（可能回显敏感资料），所以这里
+    只能依据状态码。400 也可能是别的原因，但退化成不带工具再试一次是无害的。
+    """
+    return "（HTTP 400）" in str(error)
 
 # HTTP 状态码 -> 面向用户的中文提示
 _STATUS_MESSAGES = {
@@ -69,7 +113,36 @@ class OpenAICompatProvider(BaseLLMProvider):
         return self._extract_content(data)
 
     async def stream_chat(self, messages: list[dict]) -> AsyncIterator[str]:
-        payload = self._build_payload(messages, stream=True)
+        async for delta in self.stream_chat_events(messages):
+            if delta.text:
+                yield delta.text
+
+    async def stream_chat_events(
+        self, messages: list[dict], tools: list[dict] | None = None
+    ) -> AsyncIterator[LLMDelta]:
+        """带工具调用的流式对话。
+
+        工具调用的参数在协议里是**碎片化**到达的（实测一个短 JSON 会用二十多帧、
+        每帧一两个字符），必须按 index 累积拼接；拼接结果才是可直接 json 解析的
+        字符串，这一点由本方法保证，调用方不必关心。
+        """
+        try:
+            async for delta in self._stream_deltas(messages, tools):
+                yield delta
+        except LLMError as exc:
+            # 不少 OpenAI 兼容端点（本地小模型等）不支持 tools，会直接返回 400。
+            # 这里降级成不带工具的普通对话重试一次，而不是让整个功能不可用。
+            if tools and _looks_like_unsupported_tools(exc):
+                logger.warning("模型不支持工具调用，已降级为普通对话：%s", exc)
+                async for delta in self._stream_deltas(messages, None):
+                    yield delta
+                return
+            raise
+
+    async def _stream_deltas(
+        self, messages: list[dict], tools: list[dict] | None
+    ) -> AsyncIterator[LLMDelta]:
+        payload = self._build_payload(messages, stream=True, tools=tools)
         try:
             async with self._client() as client:
                 async with client.stream(
@@ -78,6 +151,9 @@ class OpenAICompatProvider(BaseLLMProvider):
                     if response.status_code != 200:
                         raise self._http_error(response)
                     total_chars = 0
+                    pending: dict[int, dict] = {}
+                    finish_reason: str | None = None
+                    emitted = False
                     async for line in response.aiter_lines():
                         # SSE 格式：每行 "data: {json}"，流结束标志 "data: [DONE]"
                         if not line.startswith("data:"):
@@ -96,21 +172,34 @@ class OpenAICompatProvider(BaseLLMProvider):
                         choices = data.get("choices") or []
                         if not isinstance(choices, list):
                             raise LLMError("模型返回了无法解析的流式响应")
-                        if choices:
-                            choice = choices[0]
-                            if not isinstance(choice, dict):
-                                raise LLMError("模型返回了无法解析的流式响应")
-                            delta = choice.get("delta") or {}
-                            if not isinstance(delta, dict):
-                                raise LLMError("模型返回了无法解析的流式响应")
-                            text = delta.get("content")
-                            if text is not None and not isinstance(text, str):
-                                raise LLMError("模型返回了无法解析的流式响应")
-                            if text:
-                                total_chars += len(text)
-                                if total_chars > self._stream_char_limit():
-                                    raise LLMError("模型流式输出过大，请调低最大输出长度")
-                                yield text
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        if not isinstance(choice, dict):
+                            raise LLMError("模型返回了无法解析的流式响应")
+                        if choice.get("finish_reason"):
+                            finish_reason = choice["finish_reason"]
+                        delta = choice.get("delta") or {}
+                        if not isinstance(delta, dict):
+                            raise LLMError("模型返回了无法解析的流式响应")
+                        text = delta.get("content")
+                        if text is not None and not isinstance(text, str):
+                            raise LLMError("模型返回了无法解析的流式响应")
+                        if text:
+                            total_chars += len(text)
+                            if total_chars > self._stream_char_limit():
+                                raise LLMError("模型流式输出过大，请调低最大输出长度")
+                            yield LLMDelta(text=text)
+                        _accumulate_tool_calls(pending, delta.get("tool_calls"))
+                        # 有的端点不发 finish_reason 就结束，所以下面还要兜一次。
+                        if finish_reason and pending and not emitted:
+                            emitted = True
+                            yield LLMDelta(
+                                tool_calls=_finalize_tool_calls(pending),
+                                finish_reason=finish_reason,
+                            )
+                    if pending and not emitted:
+                        yield LLMDelta(tool_calls=_finalize_tool_calls(pending))
         except httpx.TimeoutException as exc:
             raise LLMError("模型响应超时，请稍后重试或调大超时时间") from exc
         except httpx.RequestError as exc:
@@ -179,7 +268,9 @@ class OpenAICompatProvider(BaseLLMProvider):
             pool=10.0,
         )
 
-    def _build_payload(self, messages: list[dict], stream: bool) -> dict:
+    def _build_payload(
+        self, messages: list[dict], stream: bool, tools: list[dict] | None = None
+    ) -> dict:
         payload = {
             "model": self.config.model,
             "messages": messages,
@@ -191,6 +282,9 @@ class OpenAICompatProvider(BaseLLMProvider):
         # 默认值可能小于用户此前手动设置的值。
         if not self.config.uses_unlimited_output:
             payload["max_tokens"] = self.config.max_tokens
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
         return payload
 
     @staticmethod

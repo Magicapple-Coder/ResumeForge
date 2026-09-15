@@ -2,12 +2,17 @@
 
 import { Alert, Skeleton, Typography } from "antd";
 import type { RefObject } from "react";
-import type { AssistantConversationDetail, AssistantSource } from "../../../types";
+import type {
+  AssistantConversationDetail,
+  AssistantSource,
+  AssistantToolCall,
+} from "../../../types";
 import AssistantEmptyState from "./AssistantEmptyState";
 import {
   AssistantMessageContent,
   MessageAttachments,
   MessageSources,
+  MessageToolCalls,
   StreamingStatus,
 } from "./AssistantMessageContent";
 import type { PendingAttachment } from "../assistantUtils";
@@ -22,6 +27,7 @@ interface Props {
   pendingUserAttachments: PendingAttachment[];
   streamingText: string;
   streamingSources: AssistantSource[];
+  streamingTools: AssistantToolCall[];
   progressText: string;
   streamError: string;
   messageEndRef: RefObject<HTMLDivElement>;
@@ -37,6 +43,7 @@ export default function AssistantMessageList({
   pendingUserAttachments,
   streamingText,
   streamingSources,
+  streamingTools,
   progressText,
   streamError,
   messageEndRef,
@@ -56,6 +63,7 @@ export default function AssistantMessageList({
             <AssistantMessageContent content={item.content} />
             <MessageAttachments attachments={item.attachments} />
             <MessageSources sources={item.context.sources ?? []} />
+            <MessageToolCalls calls={item.context.tool_calls ?? []} />
             {item.status === "error" && item.error && <Alert type="error" message={item.error} />}
           </article>
         ))
@@ -75,6 +83,7 @@ export default function AssistantMessageList({
             message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}
           />
           <MessageSources sources={streamingSources} />
+          <MessageToolCalls calls={streamingTools} />
         </article>
       )}
       {activeStream && streamError && <Alert type="error" showIcon message={streamError} />}
