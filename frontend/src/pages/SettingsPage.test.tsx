@@ -21,6 +21,15 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../api/settings", () => apiMocks);
 
+const skillMocks = vi.hoisted(() => ({
+  deleteSkill: vi.fn(),
+  importSkill: vi.fn(),
+  listSkills: vi.fn(),
+  setSkillEnabled: vi.fn(),
+}));
+
+vi.mock("../api/skill", () => skillMocks);
+
 const navigationMocks = vi.hoisted(() => ({ reloadPage: vi.fn() }));
 
 // 整页重载在 jsdom 里不可用，换成可断言的替身。
@@ -58,6 +67,7 @@ beforeEach(() => {
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
   apiMocks.listDatasets.mockResolvedValue([mainDataset]);
   apiMocks.revealLLMApiKey.mockResolvedValue({ api_key: "sk-revealed" });
+  skillMocks.listSkills.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -438,7 +448,10 @@ describe("SettingsPage datasets", () => {
   };
 
   function chooseBackupFile(container: HTMLElement) {
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    // 设置页上有多个上传入口（技能、数据集），按 aria-label 定位而不是取第一个。
+    const input = container.querySelector(
+      'input[type="file"][aria-label="选择备份文件"]',
+    ) as HTMLInputElement;
     const file = new File(["zip-bytes"], "backup.zip", { type: "application/zip" });
     fireEvent.change(input, { target: { files: [file] } });
     return file;
@@ -556,5 +569,98 @@ describe("SettingsPage datasets", () => {
     expect(screen.getByRole("button", { name: /切换/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "删除数据集 主数据" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重命名 主数据" })).toBeDisabled();
+  });
+});
+
+describe("SettingsPage skills", () => {
+  const interviewSkill = {
+    id: 1,
+    name: "面试模拟官",
+    description: "练面试时使用",
+    enabled: true,
+    source_name: "面试模拟官.zip",
+    prompt_chars: 120,
+    files: ["题库.md", "模板.txt"],
+    updated_at: "2026-09-15T10:00:00+08:00",
+  };
+
+  // 不带知识文件的技能，用来覆盖「仅提示词」那一支的展示。
+  const disabledSkill = {
+    ...interviewSkill,
+    id: 2,
+    name: "简历诊断",
+    enabled: false,
+    prompt_chars: 80,
+    files: [],
+  };
+
+  async function renderPage(skills = [interviewSkill]) {
+    skillMocks.listSkills.mockResolvedValue(skills);
+    const view = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(skillMocks.listSkills).toHaveBeenCalled());
+    return view;
+  }
+
+  it("lists skills with their status and knowledge file count", async () => {
+    await renderPage([interviewSkill, disabledSkill]);
+
+    expect(await screen.findByText("面试模拟官")).toBeInTheDocument();
+    expect(screen.getByText("启用中")).toBeInTheDocument();
+    expect(screen.getByText("已停用")).toBeInTheDocument();
+    expect(screen.getByText(/2 份知识文件/)).toBeInTheDocument();
+    expect(screen.getByText(/仅提示词/)).toBeInTheDocument();
+  });
+
+  it("shows an empty state before anything is imported", async () => {
+    await renderPage([]);
+
+    expect(await screen.findByText("还没有导入技能")).toBeInTheDocument();
+  });
+
+  it("imports the chosen file and refreshes the list", async () => {
+    skillMocks.importSkill.mockResolvedValue(interviewSkill);
+    const { container } = await renderPage([]);
+    const input = container.querySelector(
+      'input[type="file"][aria-label="选择技能文件"]',
+    ) as HTMLInputElement;
+    const file = new File(["skill-bytes"], "面试模拟官.zip", { type: "application/zip" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(skillMocks.importSkill).toHaveBeenCalledOnce());
+    // 类型判定在后端，前端只负责把文件原样送过去。
+    expect((skillMocks.importSkill.mock.calls[0][0] as File).name).toBe(file.name);
+    // 导入成功后重新拉一次列表，让新技能出现在界面上。
+    await waitFor(() => expect(skillMocks.listSkills).toHaveBeenCalledTimes(2));
+  });
+
+  it("toggles a skill without reloading the list", async () => {
+    skillMocks.setSkillEnabled.mockResolvedValue(disabledSkill);
+    await renderPage([interviewSkill, disabledSkill]);
+
+    fireEvent.click(screen.getByRole("switch", { name: "停用技能 面试模拟官" }));
+
+    await waitFor(() => expect(skillMocks.setSkillEnabled).toHaveBeenCalledWith(1, false));
+    expect(await screen.findByText("已停用")).toBeInTheDocument();
+  });
+
+  it("deletes a skill only after confirmation", async () => {
+    skillMocks.deleteSkill.mockResolvedValue(undefined);
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "删除技能 面试模拟官" }));
+
+    expect(skillMocks.deleteSkill).not.toHaveBeenCalled();
+    const confirm = await waitFor(() =>
+      document.querySelector<HTMLButtonElement>(".ant-popconfirm-buttons .ant-btn-primary")!,
+    );
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(skillMocks.deleteSkill).toHaveBeenCalledWith(1));
+    // 删除后就地移除，不需要再拉一次列表。
+    await waitFor(() => expect(screen.queryByText("面试模拟官")).not.toBeInTheDocument());
   });
 });

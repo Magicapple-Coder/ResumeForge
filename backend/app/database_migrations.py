@@ -33,6 +33,8 @@ _APPLICATION_TABLES = (
     "llm_config_record",
     "chat_conversation",
     "chat_message",
+    "assistant_skill",
+    "assistant_skill_file",
 )
 _USER_DATA_TABLES = _APPLICATION_TABLES
 
@@ -93,8 +95,15 @@ def backup_sqlite_database(bind: Engine, output_dir: Path | None = None) -> Path
     logger.info("SQLite 备份已创建 path=%s", destination)
     return destination
 
-def run_database_migrations(bind: Engine) -> Path | None:
-    """Upgrade an empty or legacy database to the current Alembic head."""
+def run_database_migrations(bind: Engine, *, backup: bool = True) -> Path | None:
+    """Upgrade an empty or legacy database to the current Alembic head.
+
+    ``backup=False`` is for migrating a throwaway copy of somebody else's data:
+    the archive validation path in ``services/data_backup`` extracts a candidate
+    and migrates it only to see whether the archive is importable. Backing that
+    up would drop a full copy of the user's database into a staging directory
+    that nothing ever prunes.
+    """
     config = build_alembic_config(bind)
     scripts = ScriptDirectory.from_config(config)
     head_revision = scripts.get_current_head()
@@ -104,7 +113,9 @@ def run_database_migrations(bind: Engine) -> Path | None:
         return None
 
     legacy_database = current_revision is None and _database_has_application_tables(bind)
-    backup_path = backup_sqlite_database(bind) if _database_has_user_data(bind) else None
+    backup_path = (
+        backup_sqlite_database(bind) if backup and _database_has_user_data(bind) else None
+    )
     # Reuse the application's connection so sqlite:///:memory: is migrated in
     # place instead of creating and discarding a second in-memory database.
     with bind.begin() as connection:

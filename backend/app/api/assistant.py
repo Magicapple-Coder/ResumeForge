@@ -21,6 +21,7 @@ from ..services.assistant_service import (
     conversation_title,
     normalize_attachments,
 )
+from ..services.assistant_skills import build_skill_prompt
 from ..services.assistant_web_search import search_web
 from ..services.llm import create_provider
 from ..services.settings_service import get_llm_config
@@ -40,7 +41,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "assistant_system.md"
-_SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _system_prompt(db: Session) -> str:
+    """基础系统提示 + 用户启用的技能。
+
+    每次请求重读、并按要求拼接技能，而不是在导入时固化成常量——否则改提示词要重启，
+    启用的技能也不会即时生效。
+    """
+    base = _PROMPT_PATH.read_text(encoding="utf-8")
+    skill_prompt = build_skill_prompt(db)
+    return f"{base}\n\n{skill_prompt}" if skill_prompt else base
 
 
 @router.post("/conversations", response_model=ChatConversationBrief, status_code=201)
@@ -133,7 +144,7 @@ async def send_message(
             user_message_id=user_message_id,
             assistant_message_id=assistant_message_id,
             generated_title=generated_title,
-            system_prompt=_SYSTEM_PROMPT,
+            system_prompt=_system_prompt(db),
             search_web_fn=search_web,
         ),
         media_type="text/event-stream",

@@ -1,6 +1,8 @@
 """AI 求职助手会话、附件、上下文与联网搜索的离线测试。"""
 
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -26,6 +28,13 @@ def _create_conversation(client, title: str = "") -> dict:
     response = client.post("/api/assistant/conversations", json={"title": title})
     assert response.status_code == 201
     return response.json()
+
+
+def _send(client, conversation_id: int, content: str) -> None:
+    response = client.post(
+        f"/api/assistant/conversations/{conversation_id}/messages", json={"content": content}
+    )
+    assert response.status_code == 200
 
 
 def _events(response) -> list[dict]:
@@ -389,6 +398,59 @@ def test_a_failing_tool_does_not_break_the_reply(client, monkeypatch):
     # 失败信息作为工具结果回给模型，整轮对话继续而不是中断
     assert "工具执行失败" in provider.requests[1]["messages"][-1]["content"]
     assert any(event["type"] == "delta" for event in events)
+
+
+def _import_skill(client, name: str, prompt: str, files: dict[str, str] | None = None) -> dict:
+    if files is None:
+        content = f"---\nname: {name}\n---\n\n{prompt}\n".encode()
+        content_type = "text/markdown"
+    else:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("SKILL.md", f"---\nname: {name}\n---\n\n{prompt}\n")
+            for path, body in files.items():
+                archive.writestr(path, body)
+        content, content_type = buffer.getvalue(), "application/zip"
+    response = client.post(
+        "/api/assistant/skills/import", content=content, headers={"Content-Type": content_type}
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_enabled_skills_reach_the_system_prompt(client, monkeypatch):
+    """技能提示词必须真的进到发给模型的 system 消息里，而不是只躺在库里。"""
+    _configure_llm(client)
+    provider = _ScriptedProvider([[LLMDelta(text="好。")]])
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+    skill = _import_skill(client, "面试模拟官", "先连问三道八股题，再逐条点评。")
+    _send(client, conversation["id"], "我们开始吧")
+
+    system = provider.requests[0]["messages"][0]
+    assert system["role"] == "system"
+    assert "面试模拟官" in system["content"]
+    assert "先连问三道八股题，再逐条点评。" in system["content"]
+
+    # 停用之后下一轮就不再注入：系统提示是每条消息现拼的，改技能不需要重启应用。
+    client.patch(f"/api/assistant/skills/{skill['id']}", json={"enabled": False})
+    _send(client, conversation["id"], "继续")
+
+    assert "面试模拟官" not in provider.requests[1]["messages"][0]["content"]
+
+
+def test_knowledge_files_are_listed_but_not_preloaded(client, monkeypatch):
+    """知识文件只列清单，正文由模型按需读——否则一个技能包就能塞满上下文。"""
+    _configure_llm(client)
+    provider = _ScriptedProvider([[LLMDelta(text="好。")]])
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+    _import_skill(client, "面试模拟官", "照题库提问。", files={"题库.md": "压舱石级别的独特句子"})
+    _send(client, conversation["id"], "开始")
+
+    system = provider.requests[0]["messages"][0]["content"]
+    assert "题库.md" in system
+    assert "压舱石级别的独特句子" not in system
 
 
 def test_tool_rounds_are_capped(client, monkeypatch):

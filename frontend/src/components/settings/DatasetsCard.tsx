@@ -103,6 +103,8 @@ export default function DatasetsCard({
           accept=".zip,application/zip"
           showUploadList={false}
           disabled={busy}
+          // 设置页上有多个上传入口，这个 aria-label 让它们（以及测试）都能精确定位。
+          aria-label="选择备份文件"
           beforeUpload={(file) => {
             const name = (file.name || "").replace(/\.zip$/i, "") || "导入的数据集";
             onImport(file as File, name);

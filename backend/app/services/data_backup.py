@@ -30,6 +30,7 @@ from ..database_migrations import (
     _APPLICATION_TABLES,
     backup_sqlite_database,
     build_alembic_config,
+    run_database_migrations,
 )
 from .settings_service import API_KEY_MASK, _LLM_CONFIG_KEY
 
@@ -236,8 +237,60 @@ def _read_manifest(archive: zipfile.ZipFile) -> dict[str, Any]:
     return manifest
 
 
-def _database_info(database: Path, bind: Engine, manifest: dict[str, Any]) -> dict[str, Any]:
-    """校验解出来的数据库，返回其中的 revision 与各表行数。"""
+def _read_candidate_revision(database: Path) -> str | None:
+    with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if "alembic_version" not in tables:
+            return None
+        row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+        return row[0] if row else None
+
+
+def _check_candidate_revision(database: Path, bind: Engine, manifest: dict[str, Any]) -> None:
+    """迁移**之前**核对版本：既挡住来自更新版本的备份，也挡住被改过清单的包。
+
+    这一步必须排在 ``_upgrade_candidate`` 前面。迁移会把候选库的 revision 改写成当前
+    head，之后再比就永远对不上——一份完全合法的旧备份会被判成"清单与实际内容不一致"
+    而拒收，等于把新增数据表这件事重新变成一次不兼容改动。
+    """
+    revision = _read_candidate_revision(database)
+    if revision is not None and revision not in _revision_chain(bind):
+        raise BackupError(
+            "备份来自更新版本的 ResumeForge，当前版本无法恢复；请先升级应用再导入"
+        )
+    declared = manifest.get("alembic_revision")
+    if declared and revision and declared != revision:
+        raise BackupError("备份包的清单与实际数据库内容不一致，已拒绝恢复")
+
+
+def _upgrade_candidate(database: Path) -> None:
+    """把解出来的候选库升到当前 head，再交给表结构校验。
+
+    旧版本导出的备份不含后来新增的表，而校验要求表集合与代码一致——不先迁移的话，
+    一份完全合法的旧备份会被判成"不是 ResumeForge 的备份"而拒收。切换数据集的路径
+    本来就会重跑迁移，这里保持一致。
+
+    迁移前不生成备份：候选库只是压缩包解出来的一次性副本，原始压缩包还在手上，
+    而预迁移备份会落在 restore 目录里越积越多。
+    """
+    from ..database import build_engine, database_url_for
+
+    engine = build_engine(database_url_for(database))
+    try:
+        run_database_migrations(engine, backup=False)
+    finally:
+        engine.dispose()
+
+
+def _database_info(database: Path, bind: Engine) -> dict[str, Any]:
+    """校验解出来的数据库，返回其中的 revision 与各表行数。
+
+    版本与清单的一致性由 ``_check_candidate_revision`` 在迁移前核对过了；走到这里
+    候选库已经在当前 head 上，再比一次只会是永远成立的空检查。
+    """
     with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as connection:
         try:
             if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -263,14 +316,6 @@ def _database_info(database: Path, bind: Engine, manifest: dict[str, Any]) -> di
             row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
             revision = row[0] if row else None
 
-        if revision is not None and revision not in _revision_chain(bind):
-            raise BackupError(
-                "备份来自更新版本的 ResumeForge，当前版本无法恢复；请先升级应用再导入"
-            )
-        declared = manifest.get("alembic_revision")
-        if declared and revision and declared != revision:
-            raise BackupError("备份包的清单与实际数据库内容不一致，已拒绝恢复")
-
         counts = {
             name: connection.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
             for name in _APPLICATION_TABLES
@@ -295,7 +340,10 @@ def inspect_archive(archive_path: Path, bind: Engine, staging_dir: Path) -> dict
     candidate = staging_dir / f"inspect-{secrets.token_hex(8)}.db"
     try:
         extract_database(archive_path, candidate)
-        info = _database_info(candidate, bind, manifest)
+        # 顺序不能调换：先按原始 revision 核对版本，再迁移，最后才校验表结构。
+        _check_candidate_revision(candidate, bind, manifest)
+        _upgrade_candidate(candidate)
+        info = _database_info(candidate, bind)
     finally:
         candidate.unlink(missing_ok=True)
 

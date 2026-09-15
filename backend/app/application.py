@@ -16,6 +16,7 @@ from .api import (
     resumes,
     search,
     settings as settings_api,
+    skills,
     stats,
 )
 from . import database
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
         # 备份上传的体积随用户数据增长，且是流式落盘；其余接口维持原上限。
         larger_body_paths={
             datasets.IMPORT_PATH: settings.max_backup_upload_mb * 1024 * 1024,
+            skills.IMPORT_PATH: settings.max_backup_upload_mb * 1024 * 1024,
         },
     )
     app.add_middleware(
@@ -95,6 +97,7 @@ def create_app() -> FastAPI:
         profile.router,
         settings_api.router,
         datasets.router,
+        skills.router,
         search.router,
         stats.router,
         assistant.router,

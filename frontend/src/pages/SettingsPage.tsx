@@ -17,10 +17,12 @@ import {
   saveLLMConfigRecord,
   testLLM,
 } from "../api/settings";
+import { deleteSkill, importSkill, listSkills, setSkillEnabled } from "../api/skill";
 import { LLM_PRESETS } from "../config";
 import DatasetsCard from "../components/settings/DatasetsCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
+import SkillsCard from "../components/settings/SkillsCard";
 import {
   API_KEY_MASK,
   CUSTOM_PRESET,
@@ -31,7 +33,13 @@ import {
   sameConfig,
   type SettingsFormValues,
 } from "../components/settings/SettingsConfig";
-import type { DatasetInfo, LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
+import type {
+  AssistantSkill,
+  DatasetInfo,
+  LLMConfig,
+  LLMConfigRecord,
+  LLMTestResult,
+} from "../types";
 import { downloadBlob } from "../utils/download";
 import { reloadPage } from "../utils/navigation";
 
@@ -54,6 +62,69 @@ export default function SettingsPage() {
   const [apiKeyResetToken, setApiKeyResetToken] = useState(0);
 
   const resetRevealedApiKey = useCallback(() => setApiKeyResetToken((current) => current + 1), []);
+
+  const [skills, setSkills] = useState<AssistantSkill[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [skillImporting, setSkillImporting] = useState(false);
+  const [skillTogglingId, setSkillTogglingId] = useState<number | null>(null);
+  const [skillDeletingId, setSkillDeletingId] = useState<number | null>(null);
+
+  const loadSkillList = useCallback(async () => {
+    setSkillsLoading(true);
+    try {
+      setSkills(await listSkills());
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "加载技能失败");
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => {
+    void loadSkillList();
+  }, [loadSkillList]);
+
+  const importSkillFile = async (file: File) => {
+    if (skillImporting) return;
+    setSkillImporting(true);
+    try {
+      const saved = await importSkill(file);
+      await loadSkillList();
+      message.success(`已导入技能「${saved.name}」`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "导入技能失败");
+    } finally {
+      setSkillImporting(false);
+    }
+  };
+
+  const toggleSkill = async (skill: AssistantSkill, enabled: boolean) => {
+    if (skillTogglingId !== null) return;
+    setSkillTogglingId(skill.id);
+    try {
+      const updated = await setSkillEnabled(skill.id, enabled);
+      setSkills((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      message.success(`已${enabled ? "启用" : "停用"}「${skill.name}」`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "切换技能状态失败");
+    } finally {
+      setSkillTogglingId(null);
+    }
+  };
+
+  const removeSkill = async (skill: AssistantSkill) => {
+    if (skillDeletingId !== null) return;
+    setSkillDeletingId(skill.id);
+    try {
+      await deleteSkill(skill.id);
+      setSkills((current) => current.filter((item) => item.id !== skill.id));
+      message.success(`已删除技能「${skill.name}」`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "删除技能失败");
+    } finally {
+      setSkillDeletingId(null);
+    }
+  };
 
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
   const [datasetsLoading, setDatasetsLoading] = useState(true);
@@ -409,6 +480,17 @@ export default function SettingsPage() {
         onCloseRecordModal={() => {
           if (!recordSaving) setRecordModalOpen(false);
         }}
+      />
+
+      <SkillsCard
+        skills={skills}
+        loading={skillsLoading}
+        importing={skillImporting}
+        togglingId={skillTogglingId}
+        deletingId={skillDeletingId}
+        onImport={(file) => void importSkillFile(file)}
+        onToggle={(skill, enabled) => void toggleSkill(skill, enabled)}
+        onDelete={(skill) => void removeSkill(skill)}
       />
 
       <DatasetsCard

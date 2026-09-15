@@ -23,6 +23,8 @@ _APPLICATION_TABLES = {
     "llm_config_record",
     "chat_conversation",
     "chat_message",
+    "assistant_skill",
+    "assistant_skill_file",
 }
 
 
@@ -57,7 +59,7 @@ def _assert_head_schema(bind) -> None:
     )
     with bind.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0006_chat_conversation_flags"
+        assert revision == "0007_assistant_skills"
 
 
 def test_ensure_sqlite_columns_preserves_legacy_rows(tmp_path):
@@ -236,7 +238,7 @@ def test_alembic_migration_preserves_rows_repairs_fk_and_is_idempotent(tmp_path)
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert rows == [(1, "有效简历", 1, 0), (2, "孤立简历", None, 0)]
         assert additional_info == ""
-        assert revision == "0006_chat_conversation_flags"
+        assert revision == "0007_assistant_skills"
         assert run_database_migrations(legacy_engine) is None
     finally:
         legacy_engine.dispose()
