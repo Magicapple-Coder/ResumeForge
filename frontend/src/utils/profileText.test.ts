@@ -34,6 +34,7 @@ const parsed: ProfileTextParseResult = {
   projects: [],
   skills: [],
   warnings: [],
+  recognition_source: "local",
 };
 
 describe("mergeParsedProfileValues", () => {

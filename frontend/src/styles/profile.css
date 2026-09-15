@@ -1,0 +1,227 @@
+.profile-page-header,
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.profile-page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-top-card {
+  height: 100%;
+}
+
+.profile-photo-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-photo-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 132px;
+  height: 176px;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #f5f5f5;
+}
+
+.profile-photo-frame .ant-image,
+.profile-photo-frame img {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-photo-frame img {
+  object-fit: cover;
+}
+
+.profile-photo-placeholder {
+  color: #8c8c8c;
+  font-size: 52px;
+}
+
+.profile-section-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-section-stack.is-section-reordering {
+  gap: 8px;
+}
+
+.profile-section-sortable {
+  position: relative;
+  min-width: 0;
+  /* 长资料页只绘制当前视口附近的分区，避免滚动时反复绘制整棵表单树。 */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 420px;
+}
+
+.profile-section-sortable.is-section-reordering {
+  /* 拖动时必须让所有标题条参与布局，不能被屏幕外延迟绘制隐藏。 */
+  content-visibility: visible;
+  min-height: 50px;
+  border: 1px solid #d9e5f5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.profile-section-compact-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+  gap: 12px;
+  padding: 0 76px 0 16px;
+}
+
+.profile-section-compact-label .ant-typography:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-section-sortable.is-section-reordering .profile-section-content.is-collapsed {
+  display: none;
+}
+
+.profile-section-sortable.is-drag-over > .ant-card,
+.profile-section-sortable.is-drag-over > .profile-top-card,
+.profile-section-sortable.is-drag-over > .ant-row,
+.profile-section-sortable.is-drag-over {
+  outline: 2px dashed #1677ff;
+  outline-offset: 3px;
+}
+
+.profile-section-drag-handle {
+  position: absolute;
+  z-index: 3;
+  top: 9px;
+  right: 38px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8c8c8c;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.profile-page.is-editing .profile-section-drag-handle {
+  display: inline-flex;
+}
+
+.profile-section-drag-handle:hover {
+  background: #eef5ff;
+  color: #1677ff;
+}
+
+.profile-section-drag-handle:active {
+  cursor: grabbing;
+}
+
+.profile-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-list-item {
+  position: relative;
+  min-width: 0;
+  padding: 16px 76px 4px 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.profile-list-item.is-drag-over {
+  border-color: #1677ff;
+  outline: 2px dashed #1677ff;
+  outline-offset: 2px;
+}
+
+.profile-list-item-drag-handle,
+.profile-list-item-delete {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+}
+
+.profile-list-item-drag-handle {
+  right: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8c8c8c;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.profile-list-item-drag-handle:hover {
+  background: #eef5ff;
+  color: #1677ff;
+}
+
+.profile-list-item-drag-handle:active {
+  cursor: grabbing;
+}
+
+.profile-list-item-delete {
+  right: 8px;
+}
+
+.profile-list-item-summary {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding-right: 4px;
+}
+
+.profile-list-item-summary .ant-typography {
+  min-width: 0;
+}
+
+.profile-list-item-content.is-collapsed {
+  display: none;
+}
+
+.profile-reference-preview {
+  max-height: 60vh;
+  margin: 12px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+}

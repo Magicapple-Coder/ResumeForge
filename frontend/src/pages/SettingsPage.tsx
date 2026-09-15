@@ -1,34 +1,6 @@
 /** 设置页：大模型配置（含预设与连通测试）。 */
-import {
-  ApiOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  LoadingOutlined,
-  SaveOutlined,
-  SwapOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Col,
-  Empty,
-  Form,
-  Input,
-  InputNumber,
-  List,
-  Modal,
-  Popconfirm,
-  Row,
-  Select,
-  Slider,
-  Space,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons";
+import { App, Button, Form, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteLLMConfigRecord,
@@ -40,195 +12,19 @@ import {
   testLLM,
 } from "../api/settings";
 import { LLM_PRESETS } from "../config";
+import LLMConfigCard from "../components/settings/LLMConfigCard";
+import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
+import {
+  API_KEY_MASK,
+  CUSTOM_PRESET,
+  configFromFormValues,
+  configFromRecord,
+  formValuesFromConfig,
+  isMaskedApiKey,
+  sameConfig,
+  type SettingsFormValues,
+} from "../components/settings/SettingsConfig";
 import type { LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
-import { formatDateTime } from "../utils/format";
-
-const CUSTOM_PRESET = "custom";
-const CUSTOM_PRESET_LABEL = "自定义模型（OpenAI 兼容）";
-const API_KEY_MASK = "********";
-const PRESET_OPTIONS = [
-  ...LLM_PRESETS.map((preset) => ({ value: preset.provider, label: preset.label })),
-  { value: CUSTOM_PRESET, label: CUSTOM_PRESET_LABEL },
-];
-
-type SettingsFormValues = LLMConfig & { preset: string };
-
-function normalizePresetBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  try {
-    const url = new URL(trimmed);
-    if (url.username || url.password || url.search || url.hash) return trimmed;
-    const defaultPort =
-      (url.protocol === "https:" && url.port === "443") ||
-      (url.protocol === "http:" && url.port === "80");
-    const port = url.port && !defaultPort ? `:${url.port}` : "";
-    const path = url.pathname.replace(/\/+$/, "");
-    return `${url.protocol.toLowerCase()}//${url.hostname.toLowerCase()}${port}${path}`;
-  } catch {
-    return trimmed;
-  }
-}
-
-function matchingPreset(config: Pick<LLMConfig, "provider" | "base_url">) {
-  const normalizedUrl = normalizePresetBaseUrl(config.base_url);
-  const exact = LLM_PRESETS.find(
-    (preset) =>
-      preset.provider === config.provider &&
-      normalizePresetBaseUrl(preset.base_url) === normalizedUrl,
-  );
-  if (exact || config.provider !== CUSTOM_PRESET) return exact;
-  // 早期自定义配置没有保存正确的展示标识；官方地址足以无歧义地恢复预设名称。
-  return LLM_PRESETS.find((preset) => normalizePresetBaseUrl(preset.base_url) === normalizedUrl);
-}
-
-function isMaskedApiKey(value: string): boolean {
-  return value === API_KEY_MASK || value.startsWith(`${API_KEY_MASK}:record:`);
-}
-
-interface ApiKeyInputProps {
-  id?: string;
-  value?: string;
-  onChange?: (value: string) => void;
-  editing: boolean;
-  disabled: boolean;
-  resetToken: number;
-  onReveal: () => Promise<string>;
-  onRevealError: (message: string) => void;
-}
-
-function ApiKeyInput({
-  id,
-  value = "",
-  onChange,
-  editing,
-  disabled,
-  resetToken,
-  onReveal,
-  onRevealError,
-}: ApiKeyInputProps) {
-  const [visible, setVisible] = useState(false);
-  const [revealedKey, setRevealedKey] = useState("");
-  const [revealing, setRevealing] = useState(false);
-  const revealRequestId = useRef(0);
-  const maskedReference = isMaskedApiKey(value) ? value : "";
-
-  useEffect(() => {
-    revealRequestId.current += 1;
-    setVisible(false);
-    setRevealedKey("");
-    setRevealing(false);
-  }, [editing, resetToken]);
-
-  useEffect(
-    () => () => {
-      revealRequestId.current += 1;
-    },
-    [],
-  );
-
-  const changeVisibility = async (nextVisible: boolean) => {
-    if (!nextVisible) {
-      revealRequestId.current += 1;
-      setVisible(false);
-      setRevealedKey("");
-      setRevealing(false);
-      return;
-    }
-    if (!maskedReference) {
-      setVisible(true);
-      return;
-    }
-    if (revealing) return;
-
-    const requestId = ++revealRequestId.current;
-    setRevealing(true);
-    try {
-      const apiKey = await onReveal();
-      if (requestId !== revealRequestId.current) return;
-      setRevealedKey(apiKey);
-      setVisible(true);
-    } catch (error) {
-      if (requestId !== revealRequestId.current) return;
-      setVisible(false);
-      setRevealedKey("");
-      onRevealError(error instanceof Error ? error.message : "读取 API Key 失败");
-    } finally {
-      if (requestId === revealRequestId.current) setRevealing(false);
-    }
-  };
-
-  const displayedValue = maskedReference ? (visible ? revealedKey : API_KEY_MASK) : value;
-
-  return (
-    <Input.Password
-      id={id}
-      value={displayedValue}
-      placeholder="sk-...（无需鉴权时可留空）"
-      autoComplete="off"
-      readOnly={!editing || Boolean(maskedReference && visible)}
-      disabled={disabled || revealing}
-      suffix={revealing ? <LoadingOutlined spin /> : undefined}
-      visibilityToggle={{
-        visible,
-        onVisibleChange: (nextVisible) => void changeVisibility(nextVisible),
-      }}
-      onChange={(event) => {
-        if (!editing || (maskedReference && visible)) return;
-        onChange?.(event.target.value);
-      }}
-    />
-  );
-}
-
-function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
-  const matched = matchingPreset(config);
-  return {
-    provider: config.provider,
-    base_url: config.base_url,
-    api_key: config.api_key,
-    model: config.model,
-    temperature: config.temperature,
-    timeout_seconds: config.timeout_seconds,
-    max_tokens: config.max_tokens,
-    preset: matched?.provider ?? CUSTOM_PRESET,
-  };
-}
-
-function configFromFormValues(values: SettingsFormValues): LLMConfig {
-  return {
-    provider: values.provider,
-    base_url: values.base_url,
-    api_key: values.api_key,
-    model: values.model,
-    temperature: values.temperature,
-    timeout_seconds: values.timeout_seconds,
-    max_tokens: values.max_tokens,
-  };
-}
-
-function configFromRecord(record: LLMConfigRecord): LLMConfig {
-  return {
-    provider: record.provider,
-    base_url: record.base_url,
-    api_key: record.api_key,
-    model: record.model,
-    temperature: record.temperature,
-    timeout_seconds: record.timeout_seconds,
-    max_tokens: record.max_tokens,
-  };
-}
-
-function sameConfig(left: LLMConfig, right: LLMConfig): boolean {
-  return (
-    left.provider === right.provider &&
-    left.base_url === right.base_url &&
-    left.api_key === right.api_key &&
-    left.model === right.model &&
-    left.temperature === right.temperature &&
-    left.timeout_seconds === right.timeout_seconds &&
-    left.max_tokens === right.max_tokens
-  );
-}
 
 export default function SettingsPage() {
   const [form] = Form.useForm<SettingsFormValues>();
@@ -474,243 +270,41 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <Card title="大模型 API 配置" className="settings-card">
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、智谱、OpenAI、Ollama 等。API Key 保存在本地数据库中，仅本机可访问。"
-        />
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={!editing || saving || testing}
-          onValuesChange={(changedValues) => {
-            if ("base_url" in changedValues) resetRevealedApiKey();
-          }}
-        >
-          <Form.Item name="provider" hidden>
-            <Input />
-          </Form.Item>
-          <Form.Item name="preset" label="快速预设（选择后自动填充 Base URL 与模型名）">
-            <Select options={PRESET_OPTIONS} onChange={applyPreset} />
-          </Form.Item>
-          <Row gutter={[16, 0]}>
-            <Col xs={24} lg={16}>
-              <Form.Item
-                name="base_url"
-                label="Base URL"
-                rules={[{ required: true, message: "必填" }]}
-                tooltip="服务地址，通常形如 https://api.xxx.com 或 https://api.xxx.com/v1"
-              >
-                <Input placeholder="https://api.deepseek.com" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={8}>
-              <Form.Item
-                name="model"
-                label="模型名称"
-                rules={[{ required: true, message: "必填" }]}
-                tooltip="各厂商模型名不同，请以官方文档为准"
-              >
-                <Input placeholder="deepseek-chat" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item
-            name="api_key"
-            label="API Key（选填）"
-            tooltip="多数云模型服务需要填写；Ollama 等无需鉴权的本地兼容服务可留空。点击眼睛时才会从本机后端临时读取已保存密钥，隐藏后立即清除显示值。"
-          >
-            <ApiKeyInput
-              editing={editing}
-              disabled={saving || testing}
-              resetToken={apiKeyResetToken}
-              onReveal={revealSavedApiKey}
-              onRevealError={(error) => message.error(error)}
-            />
-          </Form.Item>
-          <Row gutter={[16, 0]}>
-            <Col xs={24} md={8}>
-              <Form.Item
-                name="temperature"
-                label="创意度 temperature"
-                tooltip="控制输出的随机性。值越低越稳定，适合事实型简历；值越高表达更发散，也会增加内容不一致或虚构风险。"
-              >
-                <Slider min={0} max={2} step={0.1} marks={{ 0: "严谨", 1: "均衡", 2: "发散" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item
-                name="timeout_seconds"
-                label="超时时间（秒）"
-                tooltip="等待模型返回响应数据的最长时间；超过后请求会终止。网络较慢或生成内容较长时可适当调大，但调大不会让模型生成得更快。"
-              >
-                <InputNumber min={10} max={600} style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item
-                name="max_tokens"
-                label="最大输出 Token"
-                tooltip="限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。"
-              >
-                <InputNumber min={256} max={65536} step={512} style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-        <Button
-          icon={<ApiOutlined />}
-          loading={testing}
-          disabled={saving}
-          onClick={() => void test()}
-        >
-          测试连接
-        </Button>
-        {testResult && (
-          <Alert
-            style={{ marginTop: 16 }}
-            type={testResult.ok ? "success" : "error"}
-            showIcon
-            message={
-              testResult.ok
-                ? `${testResult.message}（耗时 ${testResult.latency_ms}ms）`
-                : `连接失败：${testResult.message}`
-            }
-          />
-        )}
-      </Card>
+      <LLMConfigCard
+        form={form}
+        editing={editing}
+        saving={saving}
+        testing={testing}
+        testResult={testResult}
+        apiKeyResetToken={apiKeyResetToken}
+        onPresetChange={applyPreset}
+        onResetApiKey={resetRevealedApiKey}
+        onRevealApiKey={revealSavedApiKey}
+        onRevealError={(error) => message.error(error)}
+        onTest={() => void test()}
+      />
 
-      <Card
-        title="配置记录"
-        className="settings-card"
-        extra={
-          <Button
-            icon={<SaveOutlined />}
-            disabled={
-              editing ||
-              saving ||
-              testing ||
-              recordSaving ||
-              recordApplyingId !== null ||
-              recordsLoading
-            }
-            onClick={openRecordModal}
-          >
-            保存当前配置
-          </Button>
-        }
-      >
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          将当前已保存的配置命名后加入记录；切换记录会直接更新当前使用的配置。
-        </Typography.Paragraph>
-        <List
-          itemLayout="horizontal"
-          loading={recordsLoading}
-          dataSource={records}
-          locale={{
-            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无配置记录" />,
-          }}
-          renderItem={(record) => (
-            <List.Item
-              actions={[
-                <Button
-                  key="apply"
-                  type="link"
-                  icon={<SwapOutlined />}
-                  disabled={
-                    editing ||
-                    saving ||
-                    testing ||
-                    recordApplyingId !== null ||
-                    recordDeletingId !== null
-                  }
-                  loading={recordApplyingId === record.id}
-                  onClick={() => void applyRecord(record)}
-                >
-                  使用
-                </Button>,
-                <Popconfirm
-                  key="delete"
-                  title={`确定删除配置记录“${record.name}”？`}
-                  description="删除记录不会影响当前正在使用的配置"
-                  okText="删除"
-                  cancelText="取消"
-                  okButtonProps={{ danger: true }}
-                  disabled={editing || recordApplyingId !== null || recordDeletingId !== null}
-                  onConfirm={() => void removeRecord(record)}
-                >
-                  <Tooltip title="删除记录">
-                    <Button
-                      type="text"
-                      danger
-                      aria-label={`删除配置记录 ${record.name}`}
-                      icon={<DeleteOutlined />}
-                      loading={recordDeletingId === record.id}
-                    />
-                  </Tooltip>
-                </Popconfirm>,
-              ]}
-            >
-              <List.Item.Meta
-                title={
-                  <Space size={8} wrap>
-                    <Typography.Text strong>{record.name}</Typography.Text>
-                    {activeRecordId === record.id && <Tag color="green">当前</Tag>}
-                  </Space>
-                }
-                description={
-                  <Space size={[8, 4]} wrap>
-                    <Tag>{matchingPreset(record)?.label ?? CUSTOM_PRESET_LABEL}</Tag>
-                    <Typography.Text type="secondary">
-                      {record.model || "未填写模型"}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      温度 {record.temperature.toFixed(1)}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {record.base_url || "未填写地址"}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      更新于 {formatDateTime(record.updated_at)}
-                    </Typography.Text>
-                  </Space>
-                }
-              />
-            </List.Item>
-          )}
-        />
-      </Card>
-
-      <Modal
-        title="保存为配置记录"
-        open={recordModalOpen}
-        confirmLoading={recordSaving}
-        okText="保存记录"
-        cancelText="取消"
-        onOk={() => void saveRecord()}
-        onCancel={() => {
+      <LLMConfigRecordsCard
+        records={records}
+        recordsLoading={recordsLoading}
+        activeRecordId={activeRecordId}
+        editing={editing}
+        saving={saving}
+        testing={testing}
+        recordSaving={recordSaving}
+        recordApplyingId={recordApplyingId}
+        recordDeletingId={recordDeletingId}
+        recordModalOpen={recordModalOpen}
+        recordName={recordName}
+        onOpenRecordModal={openRecordModal}
+        onApplyRecord={(record) => void applyRecord(record)}
+        onRemoveRecord={(record) => void removeRecord(record)}
+        onRecordNameChange={setRecordName}
+        onSaveRecord={() => void saveRecord()}
+        onCloseRecordModal={() => {
           if (!recordSaving) setRecordModalOpen(false);
         }}
-      >
-        <Form layout="vertical">
-          <Form.Item label="记录名称" required style={{ marginBottom: 8 }}>
-            <Input
-              autoFocus
-              maxLength={64}
-              showCount
-              value={recordName}
-              placeholder="如：DeepSeek 校招、Ollama 本地模型"
-              onChange={(event) => setRecordName(event.target.value)}
-              onPressEnter={() => void saveRecord()}
-            />
-          </Form.Item>
-          <Typography.Text type="secondary">
-            只保存当前已保存的配置，不会保存未点击“保存配置”的编辑内容。
-          </Typography.Text>
-        </Form>
-      </Modal>
+      />
     </div>
   );
 }

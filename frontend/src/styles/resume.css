@@ -1,0 +1,165 @@
+/* 简历预览按窗口缩放到完整可见，放大后由外层区域承载滚动。 */
+.resume-preview-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 30px;
+  margin-bottom: 4px;
+}
+
+.resume-preview-zoom-label {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.resume-preview-viewport {
+  display: block;
+  width: 100%;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f5f7fa;
+  cursor: grab;
+  touch-action: none;
+}
+
+.resume-preview-viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.resume-preview-viewport.is-editing {
+  cursor: default;
+  touch-action: auto;
+}
+
+.resume-preview-scale-box {
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.resume-iframe {
+  display: block;
+  border: none;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.resume-iframe[data-interaction-mode="edit"] {
+  pointer-events: auto;
+}
+
+/* 手写简历在桌面端并排显示岗位参考；参考栏跟随弹窗内部滚动保持可见。 */
+.resume-editor-layout--with-reference {
+  display: grid;
+  grid-template-areas: "editor reference";
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: start;
+  gap: 20px;
+}
+
+.resume-editor-main {
+  grid-area: editor;
+  min-width: 0;
+}
+
+.resume-editor-description {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.resume-editor-reference {
+  grid-area: reference;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 210px);
+  overflow-y: auto;
+}
+
+.job-reference-panel {
+  padding-left: 18px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.job-reference-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.job-reference-eyebrow {
+  display: block;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.job-reference-title.ant-typography {
+  margin: 4px 0 2px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.job-reference-meta {
+  margin-top: 12px;
+}
+
+.job-reference-meta .ant-descriptions-item {
+  padding-bottom: 4px;
+}
+
+.job-reference-meta .ant-descriptions-item-label {
+  width: 44px;
+  color: #6b7280;
+}
+
+.job-reference-section {
+  padding: 14px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.job-reference-section:last-child {
+  border-bottom: none;
+}
+
+.job-reference-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.job-reference-section-icon {
+  color: #1677ff;
+  line-height: 1;
+}
+
+.job-reference-section-content.ant-typography {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+/* 生成过程的流式文本区域：等宽字体、可滚动 */
+.stream-text {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.profile-page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.settings-page {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.settings-card {
+  margin-bottom: 16px;
+}

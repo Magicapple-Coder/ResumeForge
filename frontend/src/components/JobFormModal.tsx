@@ -54,12 +54,18 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
     setParsing(true);
     const requestId = ++parseRequestId.current;
     try {
-      const { warnings, ...draft } = await parseJobText({ text: value });
+      const {
+        warnings,
+        recognition_source: recognitionSource,
+        ...draft
+      } = await parseJobText({ text: value });
       if (requestId !== parseRequestId.current) return;
       // 空字段也要回填，避免连续识别两段文本时残留上一段的薪资、链接等数据。
       form.setFieldsValue(draft);
       setParseWarnings(warnings);
-      message.success("已识别并填入表单，请核对后再保存");
+      message.success(
+        `${recognitionSource === "ai" ? "已使用 AI" : "已使用本地规则"}识别并填入表单，请核对后再保存`,
+      );
     } catch (err) {
       if (requestId !== parseRequestId.current) return;
       setParseWarnings([]);

@@ -1,0 +1,84 @@
+/** 对话消息、流式回复和加载状态展示。 */
+
+import { Alert, Skeleton, Typography } from "antd";
+import type { RefObject } from "react";
+import type { AssistantConversationDetail, AssistantSource } from "../../../types";
+import AssistantEmptyState from "./AssistantEmptyState";
+import {
+  AssistantMessageContent,
+  MessageAttachments,
+  MessageSources,
+  StreamingStatus,
+} from "./AssistantMessageContent";
+import type { PendingAttachment } from "../assistantUtils";
+import type { StarterPrompt } from "../assistantTypes";
+
+interface Props {
+  detail: AssistantConversationDetail | null;
+  showLoading: boolean;
+  activeStream: boolean;
+  sending: boolean;
+  pendingUserText: string;
+  pendingUserAttachments: PendingAttachment[];
+  streamingText: string;
+  streamingSources: AssistantSource[];
+  progressText: string;
+  streamError: string;
+  messageEndRef: RefObject<HTMLDivElement>;
+  onChoosePrompt: (prompt: StarterPrompt) => void;
+}
+
+export default function AssistantMessageList({
+  detail,
+  showLoading,
+  activeStream,
+  sending,
+  pendingUserText,
+  pendingUserAttachments,
+  streamingText,
+  streamingSources,
+  progressText,
+  streamError,
+  messageEndRef,
+  onChoosePrompt,
+}: Props) {
+  const historyMessages = detail?.messages ?? [];
+  return (
+    <div className="assistant-messages" aria-live="polite">
+      {showLoading ? (
+        <Skeleton active paragraph={{ rows: 6 }} />
+      ) : historyMessages.length === 0 && !(sending && activeStream) ? (
+        <AssistantEmptyState onChoosePrompt={onChoosePrompt} />
+      ) : (
+        historyMessages.map((item) => (
+          <article key={item.id} className={`assistant-message assistant-message--${item.role}`}>
+            <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
+            <AssistantMessageContent content={item.content} />
+            <MessageAttachments attachments={item.attachments} />
+            <MessageSources sources={item.context.sources ?? []} />
+            {item.status === "error" && item.error && <Alert type="error" message={item.error} />}
+          </article>
+        ))
+      )}
+      {activeStream && (pendingUserText || pendingUserAttachments.length > 0) && (
+        <article className="assistant-message assistant-message--user">
+          <Typography.Text strong>你</Typography.Text>
+          <AssistantMessageContent content={pendingUserText} />
+          <MessageAttachments attachments={pendingUserAttachments} />
+        </article>
+      )}
+      {activeStream && sending && (
+        <article className="assistant-message assistant-message--assistant">
+          <Typography.Text strong>求职助手</Typography.Text>
+          <AssistantMessageContent content={streamingText || progressText || "正在思考…"} />
+          <StreamingStatus
+            message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}
+          />
+          <MessageSources sources={streamingSources} />
+        </article>
+      )}
+      {activeStream && streamError && <Alert type="error" showIcon message={streamError} />}
+      <div ref={messageEndRef} />
+    </div>
+  );
+}

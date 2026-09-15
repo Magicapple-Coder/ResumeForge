@@ -1,0 +1,33 @@
+.profile-page:not(.is-editing) .ant-input::placeholder,
+.settings-page:not(.is-editing) .ant-input::placeholder,
+.profile-page:not(.is-editing) .ant-input-number-input::placeholder,
+.settings-page:not(.is-editing) .ant-input-number-input::placeholder {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  opacity: 0 !important;
+}
+
+.profile-page:not(.is-editing) .ant-select-selection-placeholder,
+.settings-page:not(.is-editing) .ant-select-selection-placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+.profile-page:not(.is-editing) .ant-input-disabled,
+.settings-page:not(.is-editing) .ant-input-disabled,
+.settings-page:not(.is-editing) .ant-input-number-disabled .ant-input-number-input {
+  color: #262626 !important;
+  -webkit-text-fill-color: #262626;
+  opacity: 1;
+}
+
+/* 文本域调整大小时只重排当前输入控件，避免拖动手柄牵连整页表单。 */
+.profile-page textarea.ant-input {
+  max-height: 360px;
+  contain: layout;
+  resize: vertical;
+}
+
+.settings-page:not(.is-editing) .ant-select-disabled .ant-select-selection-item {
+  color: #262626 !important;
+}

@@ -1,0 +1,153 @@
+@media (max-width: 575px) {
+  .assistant-empty-state {
+    padding-inline: 8px;
+  }
+
+  .assistant-context-selects {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-composer-actions {
+    align-items: flex-end;
+  }
+
+  .assistant-composer-utility {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .assistant-context-toggles {
+    width: 100%;
+    padding-top: 8px;
+    padding-left: 0;
+    border-top: 1px solid #e5e7eb;
+    border-left: 0;
+  }
+
+  .assistant-message {
+    width: 94%;
+  }
+
+  .jobs-filter-bar > .ant-space-item:first-child,
+  .jobs-search-input {
+    width: 100%;
+  }
+
+  .profile-page-header,
+  .settings-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .profile-page-header-actions {
+    width: 100%;
+  }
+
+  .profile-page-header-actions > button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 991px) {
+  .assistant-page {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .assistant-sidebar {
+    max-height: 220px;
+    padding-right: 0;
+    padding-bottom: 12px;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .assistant-workspace {
+    max-height: none;
+  }
+
+  .assistant-context-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .resume-editor-layout--with-reference {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .resume-editor-reference {
+    position: static;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .resume-editor-reference .ant-collapse {
+    background: #f8fafc;
+  }
+
+  .job-reference-panel {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .app-main {
+    margin-left: 64px;
+  }
+
+  .app-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .app-brand-copy {
+    display: none;
+  }
+
+  .app-header-repo {
+    display: none;
+  }
+
+  .app-nav-menu {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .app-sider-footer {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .ant-layout-sider-collapsed .app-guide-button {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .ant-layout-sider-collapsed .app-guide-label {
+    display: none;
+  }
+
+  .app-header {
+    padding: 0 16px;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .user-guide-footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .user-guide-footer > .ant-space {
+    justify-content: flex-end;
+  }
+
+  .user-guide-step-content {
+    gap: 12px;
+    padding-inline: 0;
+  }
+}

@@ -1,0 +1,238 @@
+/* 全局基础样式（组件样式由 antd 管理，这里只做布局兜底） */
+body {
+  margin: 0;
+  font-family:
+    -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100vh;
+  overflow: hidden;
+  background: #f6f8fb;
+}
+
+.app-sider {
+  position: fixed !important;
+  z-index: 20;
+  inset: 0 auto 0 0;
+  height: 100vh !important;
+  overflow: hidden;
+  background: #fff !important;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 2px 0 12px rgb(15 23 42 / 4%);
+}
+
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.app-main {
+  height: 100vh;
+  min-height: 0;
+  min-width: 0;
+  margin-left: 200px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  background: #f6f8fb;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 0 18px;
+  border-bottom: 1px solid #eef0f3;
+  color: #16365c;
+  white-space: nowrap;
+}
+
+.app-brand-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eaf1f8;
+}
+
+.app-brand-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.app-brand-name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.app-brand-caption {
+  color: #8a94a3;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.app-nav-menu {
+  flex: 1;
+  padding: 12px 10px;
+  border-inline-end: 0 !important;
+  background: transparent !important;
+}
+
+.app-nav-menu .ant-menu-item {
+  height: 44px;
+  margin: 4px 0;
+  border-radius: 8px;
+  color: #5f6b7a;
+  font-weight: 500;
+}
+
+.app-nav-menu .ant-menu-item .anticon {
+  color: #8b96a5;
+  font-size: 17px;
+}
+
+.app-nav-menu .ant-menu-item-selected {
+  background: #eaf1f8;
+  color: #16365c;
+  font-weight: 600;
+}
+
+.app-nav-menu .ant-menu-item-selected .anticon {
+  color: #16365c;
+}
+
+.app-nav-menu .ant-menu-item::after {
+  display: none;
+}
+
+.app-sider-footer {
+  padding: 10px 10px 16px;
+  border-top: 1px solid #eef0f3;
+}
+
+.app-guide-button {
+  width: 100%;
+  height: 40px;
+  justify-content: flex-start;
+  color: #5f6b7a;
+  font-weight: 500;
+}
+
+.app-guide-button:hover {
+  color: #16365c !important;
+  background: #f3f7fb !important;
+}
+
+.user-guide-brand-image {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.user-guide-steps {
+  margin-inline: 4px;
+}
+
+.user-guide-step-content {
+  display: flex;
+  gap: 20px;
+  min-height: 190px;
+  padding: 8px 8px 18px;
+}
+
+.user-guide-step-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #eaf1f8;
+  color: #16365c;
+  font-size: 26px;
+}
+
+.user-guide-step-copy {
+  min-width: 0;
+}
+
+.user-guide-step-copy .ant-typography {
+  max-width: 560px;
+}
+
+.user-guide-points {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #4b5563;
+  line-height: 1.9;
+}
+
+.user-guide-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #e7ebf0;
+  box-shadow: 0 1px 8px rgb(15 23 42 / 3%);
+}
+
+.app-header-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header-repo {
+  flex: 0 0 auto;
+}
+
+.app-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(100vh - 64px);
+  padding: 24px;
+  overflow-x: hidden;
+}

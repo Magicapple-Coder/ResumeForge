@@ -6,22 +6,8 @@ import {
   CloseCircleOutlined,
   DeleteOutlined,
   PlusOutlined,
-  StarFilled,
-  StarOutlined,
 } from "@ant-design/icons";
-import {
-  App,
-  Button,
-  Input,
-  Popconfirm,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { App, Button, Input, Popconfirm, Select, Space, Typography } from "antd";
 import type { TableRowSelection } from "antd/es/table/interface";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -38,18 +24,12 @@ import JobAnalysisModal from "../components/JobAnalysisModal";
 import JobDetailDrawer from "../components/JobDetailDrawer";
 import JobFormModal from "../components/JobFormModal";
 import ManualResumeModal from "../components/ManualResumeModal";
-import SkillTags from "../components/SkillTags";
+import JobTable from "../components/jobs/JobTable";
 import { useApi } from "../hooks/useApi";
 import type { Job } from "../types";
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
-const STATUS_COLORS: Record<string, string> = {
-  开放中: "green",
-  已截止: "default",
-  已投递: "blue",
-};
-
 type BatchAction = "status" | "delete" | null;
 
 export default function JobsPage() {
@@ -209,142 +189,6 @@ export default function JobsPage() {
     getCheckboxProps: () => ({ disabled: batchAction !== null }),
   };
 
-  const columns: ColumnsType<Job> = [
-    {
-      title: "收藏",
-      key: "favorite",
-      width: 64,
-      align: "center",
-      render: (_, job) => (
-        <Tooltip title={job.favorite ? "取消收藏" : "收藏岗位"}>
-          <Button
-            type="text"
-            size="small"
-            aria-label={job.favorite ? "取消收藏" : "收藏岗位"}
-            className={`job-favorite-button${job.favorite ? " is-favorite" : ""}`}
-            icon={job.favorite ? <StarFilled /> : <StarOutlined />}
-            loading={favoriteJobId === job.id}
-            disabled={batchAction !== null || favoriteJobId !== null}
-            onClick={() => void toggleFavorite(job)}
-          />
-        </Tooltip>
-      ),
-    },
-    {
-      title: "职位",
-      dataIndex: "title",
-      width: 260,
-      render: (_, job) => (
-        <div>
-          <Button
-            type="link"
-            className="table-text-link"
-            disabled={batchAction !== null}
-            onClick={batchAction === null ? () => setDetailJob(job) : undefined}
-          >
-            {job.title}
-          </Button>
-          <div style={{ marginTop: 4 }}>
-            <SkillTags tags={job.keywords} max={4} />
-          </div>
-        </div>
-      ),
-    },
-    { title: "公司", dataIndex: "company", width: 130, render: (value) => value || "-" },
-    { title: "城市", dataIndex: "location", width: 90, render: (value) => value || "-" },
-    { title: "薪资", dataIndex: "salary", width: 130, render: (value) => value || "-" },
-    { title: "类型", dataIndex: "job_type", width: 80 },
-    {
-      title: "状态",
-      dataIndex: "status",
-      width: 90,
-      render: (value: string) => (
-        <Tag color={STATUS_COLORS[value] ?? "default"}>{value || "-"}</Tag>
-      ),
-    },
-    {
-      title: "备注",
-      dataIndex: "note",
-      width: 180,
-      render: (value: string) => (
-        <Typography.Text
-          type={value ? undefined : "secondary"}
-          ellipsis={value ? { tooltip: value } : undefined}
-          style={{ display: "block", maxWidth: 160 }}
-        >
-          {value || "-"}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: "发布时间",
-      dataIndex: "posted_at",
-      width: 150,
-      render: (value: string) => value || "-",
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 290,
-      render: (_, job) => (
-        <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => setDetailJob(job)}
-          >
-            详情
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => setGenerateJob(job)}
-          >
-            生成简历
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => setManualResumeJob(job)}
-          >
-            自行编写
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => navigate(`/resumes?job_id=${job.id}`)}
-          >
-            相关简历
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => {
-              setEditingJob(job);
-              setFormOpen(true);
-            }}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该岗位？"
-            disabled={batchAction !== null}
-            onConfirm={() => void removeJob(job.id)}
-          >
-            <Button type="link" size="small" danger disabled={batchAction !== null}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
@@ -462,24 +306,28 @@ export default function JobsPage() {
         </Space>
       )}
 
-      <Table
-        rowKey="id"
-        rowSelection={selectionMode ? rowSelection : undefined}
-        columns={columns}
-        dataSource={jobs?.items ?? []}
+      <JobTable
+        jobs={jobs}
         loading={loading}
-        scroll={{ x: 1330 }}
-        pagination={{
-          current: page,
-          pageSize,
-          total: jobs?.total ?? 0,
-          disabled: batchAction !== null,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 个岗位`,
-          onChange: (nextPage, nextPageSize) => {
-            setPage(nextPage);
-            setPageSize(nextPageSize);
-          },
+        selectionMode={selectionMode}
+        rowSelection={rowSelection}
+        batchAction={batchAction}
+        favoriteJobId={favoriteJobId}
+        page={page}
+        pageSize={pageSize}
+        onToggleFavorite={(job) => void toggleFavorite(job)}
+        onOpenDetail={setDetailJob}
+        onGenerate={setGenerateJob}
+        onWrite={setManualResumeJob}
+        onViewResumes={(job) => navigate("/resumes?job_id=" + job.id)}
+        onEdit={(job) => {
+          setEditingJob(job);
+          setFormOpen(true);
+        }}
+        onDelete={(job) => void removeJob(job.id)}
+        onPageChange={(nextPage, nextPageSize) => {
+          setPage(nextPage);
+          setPageSize(nextPageSize);
         }}
       />
 

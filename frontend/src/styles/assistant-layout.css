@@ -1,0 +1,167 @@
+/* AI 求职助手：历史侧栏固定宽度，主区将消息与输入区分层。 */
+.assistant-page {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 20px;
+  min-height: calc(100vh - 116px);
+}
+
+.assistant-sidebar {
+  min-width: 0;
+  padding-right: 12px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.assistant-conversation-list {
+  margin-top: 12px;
+}
+
+.assistant-conversation-filter {
+  margin-top: 12px;
+}
+
+.assistant-conversation-list .ant-list-item {
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 6px;
+}
+
+.assistant-conversation-list .ant-list-item.is-active {
+  background: #eef4ff;
+}
+
+.assistant-conversation-list.ant-list .ant-list-item .ant-list-item-action {
+  margin-inline-start: 0;
+}
+
+.assistant-conversation-list .ant-list-item-action > li {
+  padding: 0;
+}
+
+.assistant-conversation-more-button {
+  color: #98a2b3;
+}
+
+.assistant-conversation-more-button:hover,
+.assistant-conversation-list .ant-list-item.is-active .assistant-conversation-more-button {
+  color: #1677ff;
+}
+
+.assistant-conversation-button {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: #262626;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.assistant-conversation-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.assistant-conversation-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  color: #d89614;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+
+.assistant-conversation-flags .anticon-pushpin {
+  color: #1677ff;
+}
+
+.assistant-conversation-title.is-overflowing {
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 30px), transparent);
+}
+
+.assistant-conversation-title > span {
+  display: inline-block;
+  min-width: 100%;
+  will-change: transform;
+}
+
+.assistant-conversation-button:hover .assistant-conversation-title.is-overflowing > span,
+.assistant-conversation-button:focus-visible .assistant-conversation-title.is-overflowing > span {
+  animation: assistant-conversation-title-scroll 3.6s ease-in-out 0.55s infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-conversation-button:hover .assistant-conversation-title.is-overflowing > span,
+  .assistant-conversation-button:focus-visible .assistant-conversation-title.is-overflowing > span {
+    animation: none;
+  }
+}
+
+.assistant-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) auto;
+  min-width: 0;
+  max-height: calc(100vh - 116px);
+}
+
+.assistant-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.assistant-header .ant-typography {
+  margin: 0;
+}
+
+.assistant-messages {
+  min-height: 320px;
+  padding: 18px 4px;
+  overflow-y: auto;
+}
+
+.assistant-empty-state {
+  display: grid;
+  min-height: 100%;
+  padding: 32px 20px;
+  place-items: center;
+  text-align: center;
+}
+
+.assistant-empty-state .ant-empty {
+  margin-block: 0;
+}
+
+.assistant-empty-state-copy {
+  display: grid;
+  gap: 4px;
+  max-width: 440px;
+}
+
+.assistant-starter-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 560px;
+  margin-top: 16px;
+}
+
+.assistant-starter-prompt.ant-btn {
+  height: auto;
+  padding: 5px 10px;
+  color: #1554ad;
+  border-color: #cfe0fa;
+  background: #f7faff;
+}
+
+.assistant-starter-prompt.ant-btn:hover {
+  color: #003eb3;
+  border-color: #91caff;
+  background: #edf5ff;
+}

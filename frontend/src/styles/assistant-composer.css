@@ -1,0 +1,116 @@
+.assistant-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.assistant-composer-image-item {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.assistant-composer-image-item .assistant-message-image {
+  width: 96px;
+  height: 72px;
+}
+
+.assistant-message-attachments .ant-image {
+  display: block;
+  flex: 0 0 120px;
+  width: 120px !important;
+  height: 90px;
+  max-width: 120px;
+  overflow: hidden;
+}
+
+/* Ant Design applies width: 100% to the nested img, so constrain both layers. */
+.assistant-message-attachments .ant-image-img,
+.assistant-message-attachments .assistant-message-image {
+  display: block;
+  width: 120px !important;
+  height: 90px !important;
+  object-fit: contain;
+}
+
+.assistant-conversation-actions-menu {
+  display: grid;
+  min-width: 132px;
+  gap: 2px;
+}
+
+.assistant-conversation-actions-menu .ant-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.assistant-composer {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+}
+
+.assistant-context-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+.assistant-context-selects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.assistant-context-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-left: 14px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.assistant-context-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #344054;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.assistant-composer .ant-input-textarea textarea.ant-input {
+  min-height: 104px !important;
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
+.assistant-composer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.assistant-composer-utility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+@keyframes assistant-conversation-title-scroll {
+  to {
+    transform: translateX(var(--assistant-title-scroll-distance));
+  }
+}
