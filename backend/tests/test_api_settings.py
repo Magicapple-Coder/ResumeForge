@@ -1,6 +1,6 @@
 """设置 API 与 API Key 脱敏边界测试。"""
 
-from app.schemas.setting import LLMConfig
+from app.schemas.setting import UNLIMITED_MAX_TOKENS, LLMConfig
 from app.services.settings_service import API_KEY_MASK, get_llm_config
 
 def test_settings_roundtrip(client, db_session):
@@ -26,6 +26,23 @@ def test_settings_roundtrip(client, db_session):
     # 测试连接：未填配置或配置无效时应友好返回而非抛 500
     response = client.post("/api/settings/llm/test", json=LLMConfig().model_dump())
     assert response.status_code == 200 and response.json()["ok"] is False
+
+
+def test_settings_accepts_unlimited_output_and_keeps_the_minimum_bound(client):
+    config = LLMConfig(base_url="https://api.example.com/v1", model="test-model")
+
+    unlimited = client.put(
+        "/api/settings/llm", json={**config.model_dump(), "max_tokens": UNLIMITED_MAX_TOKENS}
+    )
+    assert unlimited.status_code == 200
+    assert unlimited.json()["max_tokens"] == UNLIMITED_MAX_TOKENS
+
+    # 放行 0 之后仍须拒绝 1..255：它们既不是“不限制”，也低于可用的下界。
+    for rejected in (1, 128, 255):
+        response = client.put(
+            "/api/settings/llm", json={**config.model_dump(), "max_tokens": rejected}
+        )
+        assert response.status_code == 422, rejected
 
 
 def test_settings_api_key_reveal_is_explicit_and_not_cached(client):

@@ -55,7 +55,7 @@ describe("SettingsPage parameter help", () => {
     ],
     [
       "最大输出 Token",
-      "限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。",
+      "限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。勾选「不限制」后不再发送该参数，改由服务商决定上限，但并非真的无限——部分服务商的默认值可能比手动设置的值更小。",
     ],
   ])("shows help for %s on hover", async (label, helpText) => {
     render(
@@ -316,5 +316,90 @@ describe("SettingsPage configuration record lifecycle", () => {
     );
     expect(screen.queryByText("DeepSeek 校招")).not.toBeInTheDocument();
     expect(screen.getByLabelText("API Key（选填）")).toHaveValue("********");
+  });
+});
+
+describe("SettingsPage output limit", () => {
+  it("saves the unlimited value and disables the input when the checkbox is ticked", async () => {
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    // 非编辑态必须仍然只读：InputNumber 的 disabled 只在为 true 时覆盖 Form 的
+    // disabled 上下文，写成 disabled={unlimitedTokens} 传 false 会让这里可编辑。
+    const limitInput = screen.getByLabelText("最大输出 Token");
+    expect(limitInput).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    expect(limitInput).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /不限制/ }));
+    expect(limitInput).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ max_tokens: 0 }),
+      ),
+    );
+  });
+
+  it("restores the default limit when the checkbox is cleared", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({ ...llmConfig, max_tokens: 0 });
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    const checkbox = screen.getByRole("checkbox", { name: /不限制/ });
+    await waitFor(() => expect(checkbox).toBeChecked());
+    expect(screen.getByLabelText("最大输出 Token")).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.click(checkbox);
+    expect(screen.getByLabelText("最大输出 Token")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ max_tokens: 4096 }),
+      ),
+    );
+  });
+
+  it("restores the value the user had before ticking the checkbox", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({ ...llmConfig, max_tokens: 8192 });
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    const checkbox = screen.getByRole("checkbox", { name: /不限制/ });
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ max_tokens: 8192 }),
+      ),
+    );
   });
 });

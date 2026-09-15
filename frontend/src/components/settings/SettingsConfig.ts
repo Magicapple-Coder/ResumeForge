@@ -7,6 +7,13 @@ export const CUSTOM_PRESET = "custom";
 export const CUSTOM_PRESET_LABEL = "自定义模型（OpenAI 兼容）";
 export const API_KEY_MASK = "********";
 
+/** max_tokens 取该值表示“不限制”：请求体里不发送该字段，由服务商决定上限。 */
+export const UNLIMITED_MAX_TOKENS = 0;
+/** 取消“不限制”时回填的值，与后端 LLMConfig 的默认值保持一致。 */
+export const DEFAULT_MAX_TOKENS = 4096;
+export const MIN_MAX_TOKENS = 256;
+export const MAX_MAX_TOKENS = 65536;
+
 export const PRESET_OPTIONS = [
   ...LLM_PRESETS.map((preset) => ({ value: preset.provider, label: preset.label })),
   { value: CUSTOM_PRESET, label: CUSTOM_PRESET_LABEL },

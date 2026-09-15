@@ -1,11 +1,31 @@
 /** 大模型配置表单与连接测试入口。 */
 
 import { ApiOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Select, Slider } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Row,
+  Select,
+  Slider,
+} from "antd";
 import type { FormInstance } from "antd/es/form";
+import { useRef } from "react";
 import type { LLMTestResult } from "../../types";
 import ApiKeyInput from "./ApiKeyInput";
-import { PRESET_OPTIONS, type SettingsFormValues } from "./SettingsConfig";
+import {
+  DEFAULT_MAX_TOKENS,
+  MAX_MAX_TOKENS,
+  MIN_MAX_TOKENS,
+  PRESET_OPTIONS,
+  UNLIMITED_MAX_TOKENS,
+  type SettingsFormValues,
+} from "./SettingsConfig";
 
 interface Props {
   form: FormInstance<SettingsFormValues>;
@@ -34,6 +54,22 @@ export default function LLMConfigCard({
   onRevealError,
   onTest,
 }: Props) {
+  const maxTokens = Form.useWatch("max_tokens", form);
+  const unlimitedTokens = maxTokens === UNLIMITED_MAX_TOKENS;
+  // 记住勾选「不限制」之前的值，取消勾选时原样还回去，免得用户重填。
+  const lastLimitedTokens = useRef(DEFAULT_MAX_TOKENS);
+
+  const setUnlimitedTokens = (unlimited: boolean) => {
+    if (unlimited) {
+      // 只在写入 0 之前读取：此时字段里还是用户原本填的有限值。
+      const current = form.getFieldValue("max_tokens");
+      if (typeof current === "number" && current >= MIN_MAX_TOKENS) {
+        lastLimitedTokens.current = current;
+      }
+    }
+    form.setFieldValue("max_tokens", unlimited ? UNLIMITED_MAX_TOKENS : lastLimitedTokens.current);
+  };
+
   return (
     <Card title="大模型 API 配置" className="settings-card">
       <Alert
@@ -114,9 +150,25 @@ export default function LLMConfigCard({
             <Form.Item
               name="max_tokens"
               label="最大输出 Token"
-              tooltip="限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。"
+              tooltip="限制模型单次回复的最大输出 Token 数。值越大可能增加费用；过小可能导致内容被截断。它不是模型的上下文长度上限。勾选「不限制」后不再发送该参数，改由服务商决定上限，但并非真的无限——部分服务商的默认值可能比手动设置的值更小。"
             >
-              <InputNumber min={256} max={65536} step={512} style={{ width: "100%" }} />
+              <InputNumber
+                min={MIN_MAX_TOKENS}
+                max={MAX_MAX_TOKENS}
+                step={512}
+                // 要传 undefined 而不是 false：antd 只在 prop 为 null/undefined 时
+                // 才回退到 Form 的 disabled 上下文，传 false 会让非编辑态也能改。
+                disabled={unlimitedTokens ? true : undefined}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Checkbox
+                checked={unlimitedTokens}
+                onChange={(event) => setUnlimitedTokens(event.target.checked)}
+              >
+                不限制（由服务商决定上限）
+              </Checkbox>
             </Form.Item>
           </Col>
         </Row>

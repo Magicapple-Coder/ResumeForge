@@ -162,6 +162,10 @@ class OpenAICompatProvider(BaseLLMProvider):
         return httpx.AsyncClient(timeout=self._timeout(), transport=self._transport)
 
     def _stream_char_limit(self) -> int:
+        # 不限制输出时 max_tokens 为 0，按乘法派生会落到下界，反而成为最严格的
+        # 限制；这种情况直接用允许的最大值。
+        if self.config.uses_unlimited_output:
+            return _MAX_STREAM_CHARS
         return min(
             _MAX_STREAM_CHARS,
             max(_MIN_STREAM_CHARS, self.config.max_tokens * 8),
@@ -176,13 +180,18 @@ class OpenAICompatProvider(BaseLLMProvider):
         )
 
     def _build_payload(self, messages: list[dict], stream: bool) -> dict:
-        return {
+        payload = {
             "model": self.config.model,
             "messages": messages,
             "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
             "stream": stream,
         }
+        # 不限制输出时省略该字段，由服务商/模型决定上限；发送 0 或 -1 在部分
+        # 服务商上会被当作非法参数拒绝。注意这不是“真的无限”，有些服务商的
+        # 默认值可能小于用户此前手动设置的值。
+        if not self.config.uses_unlimited_output:
+            payload["max_tokens"] = self.config.max_tokens
+        return payload
 
     @staticmethod
     def _extract_content(data: dict) -> str:
