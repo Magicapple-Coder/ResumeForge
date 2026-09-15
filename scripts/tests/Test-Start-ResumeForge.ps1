@@ -14,6 +14,24 @@ $NodeBootstrapX64Sha256 = "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00
 $NodeBootstrapArm64Url = "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-arm64.zip"
 $NodeBootstrapArm64Sha256 = "8502f4a50b458d4cc38ed8f2001556c2cd239d464920f74017926ccb1e1c157f"
 $NodeToolsDirectory = Join-Path $RuntimeDirectory "tools"
+# Mirrors of the constants the launcher defines. The functions loaded below read
+# these from the caller's scope, and the assertions further down pin the
+# launcher's own copies so the two cannot drift.
+$MinimumPythonVersion = [Version]"3.10"
+$MaximumPythonVersion = [Version]"3.13"
+$PythonVersionProbe = 'import sys; raise SystemExit(0 if ({0}, {1}) <= sys.version_info[:2] <= ({2}, {3}) else 1)' -f `
+    $MinimumPythonVersion.Major, $MinimumPythonVersion.Minor, `
+    $MaximumPythonVersion.Major, $MaximumPythonVersion.Minor
+$PythonSupportedSelectors = @("-3.12", "-3.13", "-3.11", "-3.10")
+$BackendStartTimeoutSeconds = 90
+$FrontendStartTimeoutSeconds = 120
+$NodeBootstrapMirrorBaseUrls = @(
+    "https://mirrors.huaweicloud.com/nodejs",
+    "https://cdn.npmmirror.com/binaries/node",
+    "https://mirrors.cloud.tencent.com/nodejs-release"
+)
+$NodeDownloadAttemptTimeoutSeconds = 600
+$NodeDownloadTotalBudgetSeconds = 1800
 
 function Assert-LauncherTest {
     param(
@@ -58,12 +76,42 @@ foreach ($requiredSetting in @(
         '$MinimumNodeVersion = [Version]"20.19.0"',
         '$NodeBootstrapVersion = "24.19.0"',
         '$NodeBootstrapX64Sha256 = "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73"',
-        '$NodeBootstrapArm64Sha256 = "8502f4a50b458d4cc38ed8f2001556c2cd239d464920f74017926ccb1e1c157f"'
+        '$NodeBootstrapArm64Sha256 = "8502f4a50b458d4cc38ed8f2001556c2cd239d464920f74017926ccb1e1c157f"',
+        '$MinimumPythonVersion = [Version]"3.10"',
+        '$MaximumPythonVersion = [Version]"3.13"',
+        '$BackendStartTimeoutSeconds = 90',
+        '$FrontendStartTimeoutSeconds = 120',
+        '$NodeDownloadTotalBudgetSeconds = 1800'
     )) {
     Assert-LauncherTest `
         -Condition $launcherContent.Contains($requiredSetting) `
         -Message "The launcher bootstrap setting is missing or unexpected: $requiredSetting"
 }
+
+# UTF-8 mode must be on before the launcher does any work, because pip 24.x
+# decodes a BOM-less requirements file with the locale codec.
+$utf8Index = $launcherContent.IndexOf('$env:PYTHONUTF8')
+$startCallIndex = $launcherContent.IndexOf("`nStart-ResumeForge")
+Assert-LauncherTest `
+    -Condition ($utf8Index -ge 0 -and $startCallIndex -gt $utf8Index) `
+    -Message "The launcher must set PYTHONUTF8 before it starts doing work, so venv creation, pip and uvicorn all inherit it."
+
+# This is the test that would have caught the GBK failure: CI runs under a UTF-8
+# locale, so nothing there ever reproduces it.
+foreach ($asciiOnlyName in @("requirements.txt", "requirements-dev.txt")) {
+    $asciiOnlyPath = Join-Path $ProjectRoot "backend\$asciiOnlyName"
+    $nonAsciiCount = @([IO.File]::ReadAllBytes($asciiOnlyPath) | Where-Object { $_ -gt 0x7F }).Count
+    Assert-LauncherTest `
+        -Condition ($nonAsciiCount -eq 0) `
+        -Message "$asciiOnlyName must stay pure ASCII: pip decodes it with the locale codec (cp936 on Chinese Windows) when the file has no BOM."
+}
+
+# start.cmd must forward its arguments; the launcher's own port-conflict message
+# tells the user to pass -BackendPort, which is impossible without this.
+$startCmdContent = Get-Content -LiteralPath (Join-Path $ProjectRoot "start.cmd") -Raw
+Assert-LauncherTest `
+    -Condition ($startCmdContent -match 'Start-ResumeForge\.ps1"\s+%\*') `
+    -Message "start.cmd must forward its arguments with %*."
 
 # Load function definitions without executing the launcher's service startup.
 # Helpers now live in focused dot-sourced modules; parse each module directly so
@@ -160,6 +208,168 @@ try {
     Assert-LauncherTest `
         -Condition ($portableRuntime.NodePath -eq "portable-node.exe" -and $script:portableInstalled) `
         -Message "A missing Node.js runtime must use the portable fallback when winget is unavailable."
+
+    # --- Python version window and interpreter selection ---
+
+    # A venv built outside the window can never install the pins, so it must not
+    # be reused. Driven by a crafted pyvenv.cfg, so no interpreter is needed.
+    $staleVenvConfig = Join-Path $RuntimeDirectory "pyvenv-314.cfg"
+    Set-Content -LiteralPath $staleVenvConfig -Encoding ascii -Value @("home = C:\Python314", "version = 3.14.7")
+    Assert-LauncherTest `
+        -Condition (-not (Test-VenvVersionSupported -ConfigPath $staleVenvConfig)) `
+        -Message "A virtual environment built by Python 3.14 must be treated as unusable."
+    Set-Content -LiteralPath $staleVenvConfig -Encoding ascii -Value @("home = D:\Python\Python312", "version = 3.12.2")
+    Assert-LauncherTest `
+        -Condition (Test-VenvVersionSupported -ConfigPath $staleVenvConfig) `
+        -Message "A Python 3.12 virtual environment must be reusable."
+    Set-Content -LiteralPath $staleVenvConfig -Encoding ascii -Value @("home = C:\Python313")
+    Assert-LauncherTest `
+        -Condition (-not (Test-VenvVersionSupported -ConfigPath $staleVenvConfig)) `
+        -Message "A pyvenv.cfg without a version line must be treated as unusable."
+
+    # The probe must agree with whatever interpreter runs it.
+    $hostPython = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($null -ne $hostPython -and $hostPython.Source -notmatch "\\WindowsApps\\") {
+        $reportedVersion = & $hostPython.Source -c "import sys; print('%d.%d' % sys.version_info[:2])"
+        & $hostPython.Source -c $PythonVersionProbe *> $null
+        $expectedAccepted = $reportedVersion -in @("3.10", "3.11", "3.12", "3.13")
+        Assert-LauncherTest `
+            -Condition (($LASTEXITCODE -eq 0) -eq $expectedAccepted) `
+            -Message "The Python version probe disagrees with the interpreter it ran on ($reportedVersion)."
+    }
+
+    $script:probedSelectors = @()
+    function Get-Command {
+        param($Name, $ErrorAction)
+        if ($Name -eq "py.exe") { return [pscustomobject]@{ Source = "C:\Windows\py.exe" } }
+        return $null
+    }
+    function Test-PythonCandidate {
+        param([string]$Path, [string[]]$PrefixArguments = @())
+        $selector = ($PrefixArguments -join " ")
+        $script:probedSelectors += $selector
+        return $selector -eq "-3.12"
+    }
+    $selectedPython = Find-SystemPython
+    Assert-LauncherTest `
+        -Condition (($selectedPython.PrefixArguments -join " ") -eq "-3.12") `
+        -Message "A supported interpreter must be selected from the launcher."
+    Assert-LauncherTest `
+        -Condition ($script:probedSelectors[0] -eq "-3.12" -and $script:probedSelectors.Count -eq 1) `
+        -Message "Probing must start at 3.12 and stop at the first supported runtime."
+
+    # --- launching npm.cmd from a path that contains spaces ---
+
+    # The frontend used to go through a hand-written "cmd /s /c ""<path>" args"
+    # line. Start-Process joins -ArgumentList with spaces and adds no quoting
+    # while cmd /s /c strips the outer quotes, so a Node install under
+    # "C:\Program Files\nodejs" (the official MSI default) never started. The
+    # launcher now hands npm.cmd to Start-Process directly and lets PowerShell
+    # build the cmd.exe wrapper, so this runs the same shape against a stub in a
+    # directory with a space in its name.
+    $spacedDirectory = Join-Path $RuntimeDirectory "program files node"
+    New-Item -ItemType Directory -Path $spacedDirectory -Force | Out-Null
+    $stubNpmPath = Join-Path $spacedDirectory "npm.cmd"
+    $stubMarkerPath = Join-Path $RuntimeDirectory "stub-arguments.txt"
+    Set-Content -LiteralPath $stubNpmPath -Encoding ascii -Value @(
+        "@echo off",
+        "echo %* > `"$stubMarkerPath`"",
+        "exit /b 0"
+    )
+
+    $stubOutputPath = Join-Path $RuntimeDirectory "stub.stdout.log"
+    $stubErrorPath = Join-Path $RuntimeDirectory "stub.stderr.log"
+    $spacedProcess = Start-Process -FilePath $stubNpmPath `
+        -ArgumentList @("run", "dev", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort") `
+        -WorkingDirectory $RuntimeDirectory -WindowStyle Hidden -Wait -PassThru `
+        -RedirectStandardOutput $stubOutputPath -RedirectStandardError $stubErrorPath
+    Assert-LauncherTest `
+        -Condition ($spacedProcess.ExitCode -eq 0) `
+        -Message "npm.cmd could not be started from a path containing a space (exit $($spacedProcess.ExitCode))."
+    Assert-LauncherTest `
+        -Condition (Test-Path -LiteralPath $stubMarkerPath) `
+        -Message "The npm.cmd stub never ran, so the command line was misparsed."
+    Assert-LauncherTest `
+        -Condition ((Get-Content -LiteralPath $stubMarkerPath -Raw) -match "run dev -- --host 127\.0\.0\.1 --port 5173 --strictPort") `
+        -Message "Arguments were mangled on the way to npm.cmd."
+
+    # stop.cmd finds the frontend by matching the recorded command line, so the
+    # wrapper PowerShell builds must still contain the npm.cmd invocation. Use
+    # the same spaced npm.cmd stub, kept alive long enough to be inspected, and
+    # stop it before asserting so a failure cannot strand the process tree.
+    Set-Content -LiteralPath $stubNpmPath -Encoding ascii -Value @("@echo off", "ping -n 60 127.0.0.1 > nul")
+    $longStubProcess = Start-Process -FilePath $stubNpmPath -ArgumentList @("run", "dev") `
+        -WorkingDirectory $RuntimeDirectory -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $RuntimeDirectory "tree.stdout.log") `
+        -RedirectStandardError (Join-Path $RuntimeDirectory "tree.stderr.log")
+    Start-Sleep -Seconds 2
+    $stubRecord = Get-CimInstance Win32_Process -Filter "ProcessId = $($longStubProcess.Id)"
+    $stubProcessName = $stubRecord.Name
+    $stubCommandLine = $stubRecord.CommandLine
+    Stop-StartedProcess -Process $longStubProcess
+    Start-Sleep -Milliseconds 800
+
+    Assert-LauncherTest `
+        -Condition ($stubProcessName -eq "cmd.exe") `
+        -Message "The recorded frontend process must stay cmd.exe, or stop.cmd will not recognise it."
+    Assert-LauncherTest `
+        -Condition ($stubCommandLine -match "npm\.cmd.*\brun\s+dev") `
+        -Message "stop.cmd identifies the frontend by matching its command line; that match broke."
+
+    # --- Node download candidates ---
+
+    function Get-WindowsArchitecture { return "AMD64" }
+    $x64Package = Get-NodeBootstrapPackage
+    Assert-LauncherTest `
+        -Condition ($x64Package.Urls.Count -ge 2) `
+        -Message "A mirror list plus the official fallback is expected."
+    Assert-LauncherTest `
+        -Condition ($x64Package.Urls[-1] -eq $NodeBootstrapX64Url) `
+        -Message "nodejs.org must remain the last download candidate."
+    Assert-LauncherTest `
+        -Condition ($x64Package.Urls[0] -notmatch "nodejs\.org") `
+        -Message "A domestic mirror must be tried before nodejs.org."
+    Assert-LauncherTest `
+        -Condition (@($x64Package.Urls | Where-Object { $_ -notmatch "^https://" }).Count -eq 0) `
+        -Message "Every download candidate must use https."
+    Assert-LauncherTest `
+        -Condition (@($x64Package.Urls | Where-Object { $_ -notmatch "node-v24\.19\.0-win-x64\.zip$" }).Count -eq 0) `
+        -Message "Every candidate must point at the archive the pinned SHA-256 covers."
+
+    # --- wait/stop behaviour ---
+
+    $exitedProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "exit 0") -WindowStyle Hidden -Wait -PassThru
+    $waitWatch = [Diagnostics.Stopwatch]::StartNew()
+    $waitResult = Wait-ForCondition -Condition { $false } -TimeoutSeconds 30 -FailFastProcess $exitedProcess
+    $waitWatch.Stop()
+    Assert-LauncherTest `
+        -Condition (-not $waitResult -and $waitWatch.Elapsed.TotalSeconds -lt 5) `
+        -Message "Wait-ForCondition must stop as soon as the child has exited (took $($waitWatch.Elapsed.TotalSeconds) s)."
+
+    $liveProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "ping -n 30 127.0.0.1 > nul") -WindowStyle Hidden -PassThru
+    $waitWatch.Restart()
+    $timeoutResult = Wait-ForCondition -Condition { $false } -TimeoutSeconds 5 -FailFastProcess $liveProcess
+    $waitWatch.Stop()
+    Assert-LauncherTest `
+        -Condition (-not $timeoutResult -and $waitWatch.Elapsed.TotalSeconds -ge 4.5) `
+        -Message "The TimeoutSeconds parameter must be honoured."
+
+    $treeStubPath = Join-Path $RuntimeDirectory "tree.cmd"
+    Set-Content -LiteralPath $treeStubPath -Encoding ascii -Value @(
+        "@echo off",
+        "start /b cmd.exe /c `"ping -n 300 127.0.0.1 > nul`"",
+        "ping -n 300 127.0.0.1 > nul"
+    )
+    $treeProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/s", "/c", $treeStubPath) -WindowStyle Hidden -PassThru
+    Start-Sleep -Seconds 3
+    $treeChildren = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $($treeProcess.Id)")
+    Stop-StartedProcess -Process $treeProcess
+    Stop-StartedProcess -Process $liveProcess
+    Start-Sleep -Milliseconds 1500
+    $treeSurvivors = @($treeChildren | Where-Object { $null -ne (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue) })
+    Assert-LauncherTest `
+        -Condition ($treeSurvivors.Count -eq 0) `
+        -Message "Stop-StartedProcess left the cmd tree running; the port would stay bound."
 
     Write-Host "Windows launcher tests passed."
 }

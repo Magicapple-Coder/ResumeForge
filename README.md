@@ -70,7 +70,7 @@ cd ResumeForge
 
 ### 环境要求
 
-- Python ≥ 3.10（Windows 一键启动器可自动准备）
+- Python 3.10 – 3.13（Windows 一键启动器可自动准备）。**3.14 暂不支持**：锁定的后端依赖还没有对应的 cp314 轮子，装的时候会退化成源码编译并失败
 - Node.js ≥ 20.19.0（含 npm；Windows 一键启动器可自动准备）
 
 ### 1. Windows 一键启动（推荐）
@@ -83,11 +83,19 @@ http://127.0.0.1:5173
 
 之后再次双击 `start.cmd` 即可打开项目，无需分别启动前端和后端。需要完全关闭服务时，双击 [stop.cmd](stop.cmd)；它只会结束由启动器记录并验证过的 ResumeForge 进程，不会结束其他项目。
 
-一键启动器默认将后端监听在 `http://127.0.0.1:8005`，并自动把前端代理指向本次启动的端口；手动开发流程仍默认使用 8000。若 8005 已被占用，可在项目根目录用 `-BackendPort` 指定其他端口，例如 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ResumeForge.ps1 -BackendPort 8010`。
+一键启动器默认将后端监听在 `http://127.0.0.1:8005`，并自动把前端代理指向本次启动的端口；手动开发流程仍默认使用 8000。若 8005 已被占用，可以指定其他端口——`start.cmd` 会把参数原样转给启动器：
+
+```bat
+start.cmd -BackendPort 8010
+start.cmd -BackendPort 8010 -FrontendPort 5174
+start.cmd -NoBrowser
+```
+
+参数用空格分隔（`-BackendPort=8010` 这种等号写法不会被识别）。等价的高级写法是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ResumeForge.ps1 -BackendPort 8010`。
 
 启动器会固定前端代理到本次启动的本地后端。若提示端口被其他程序占用，请先关闭旧的 ResumeForge 服务或冲突程序，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
 
-如果电脑尚未安装可用的 Python 3.10+，启动器会先尝试通过 Windows `winget` 以当前用户身份静默安装；`winget` 不可用或安装失败时，会从固定的 [Python 官方安装器](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) 下载并校验 SHA-256 后再安装。
+如果电脑尚未安装可用的 Python（3.10 – 3.13），启动器会先尝试通过 Windows `winget` 以当前用户身份静默安装；`winget` 不可用或安装失败时，会从固定的 [Python 官方安装器](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) 下载并校验 SHA-256 后再安装。只装了 Python 3.14 的电脑也会走这条自动准备路径——3.14 目前装不上锁定的依赖。
 
 如果没有 Node.js 20.19.0+ 或配套的 npm，启动器同样优先使用 `winget` 安装固定的 Node.js LTS；失败时下载并校验 Node.js 官方便携 ZIP（支持 Windows x64 和 ARM64），解压到被 Git 忽略的 `runtime/tools/`，仅供当前项目使用。已有且版本满足要求的 Node.js/npm 会直接复用，不会重复安装或覆盖。自动准备过程需要网络，首次下载可能需要较长时间，但不会修改 `backend/data/` 或 `.env`；若网络、系统策略或架构不受支持，按错误提示从 [python.org](https://www.python.org/downloads/windows/) 或 [nodejs.org](https://nodejs.org/) 手动安装后重新双击 `start.cmd`。
 

@@ -107,6 +107,17 @@ npm audit --registry=https://registry.npmjs.org
 - 导出格式、简历生成逻辑和用户可见交互；
 - 安全边界、隐私处理和部署要求。
 
+## 启动链路（`start.cmd` / `scripts/`）
+
+首次启动必须能在**什么都没装**的电脑上跑通，这是它的唯一职责。改这几个文件时注意：
+
+- **`scripts/*.ps1` 必须保持纯 ASCII。** Windows PowerShell 5.1 会把无 BOM 的 UTF-8 脚本按 ANSI/GBK 读，中文注释会导致解析失败。`scripts/tests/Test-Start-ResumeForge.ps1` 会逐个字节校验这条。
+- **`backend/requirements.txt` 必须保持纯 ASCII。** pip 24.x 在文件无 BOM 时会用 locale 编码（中文 Windows 是 cp936）解码，一个中文注释就会让首次 `pip install` 直接抛 `UnicodeDecodeError`。同一条校验也在启动器测试里。
+- **接受的 Python 版本是 3.10 – 3.13**，常量在 `scripts/Start-ResumeForge.ps1`（`$MinimumPythonVersion` / `$MaximumPythonVersion`）。上限存在的原因是依赖锁定版本还没有新解释器的轮子；升级依赖后要同步改这里和 README、`docs/upgrading.md` 的说明。
+- **不要手写 `cmd /c "…"` 命令行。** 把 `.cmd` 直接交给 `Start-Process -FilePath`，它会自己套好 `cmd.exe` 的引号；手写的话 `-ArgumentList` 不加引号而 `/s /c` 会剥掉首尾引号，路径含空格就起不来。
+- **启动器里调用原生命令要看 stderr。** `$ErrorActionPreference = "Stop"` 下，任何原生命令写到 stderr 的输出都会变成终止性错误——"预期会失败"的探测（比如在空 venv 上 `import`）必须先把它降成 `Continue` 再读 `$LASTEXITCODE`。
+- 改完必须跑 `scripts/tests/Test-Start-ResumeForge.ps1`；它无法覆盖的（真机首次安装、镜像可用性）要在交付说明里写清楚验证到什么程度。
+
 ## 版本与发布
 
 - **不要手工逐个文件改版本号。** 在仓库根目录执行 `python scripts/bump_version.py`：它按自上一个 `v*` 标签以来的提交类型判定幅度，并同步全部位置。加 `--dry-run` 只预览不改文件；自动判定不满意时用 `--bump major|minor|patch` 覆盖。

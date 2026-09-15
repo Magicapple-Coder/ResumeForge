@@ -39,6 +39,18 @@
 
 ### Fixed
 
+- **修复了三个会让"干净电脑双击 start.cmd"直接失败的问题**（全部在真机上复现；CI 因为跑在英文 locale、无空格路径、固定 Python 3.12 上，一个都抓不到）：
+  - **中文 Windows 上 `pip install` 直接崩**：`backend/requirements.txt` 首行是中文注释，而 pip 24.x 对无 BOM 的 requirements 文件会回退到 locale 编码（中文 Windows 是 cp936），抛 `UnicodeDecodeError` 后首次安装即中止。现在该文件保持纯 ASCII，且启动器在**任何 Python 子进程启动之前**就设好 `PYTHONUTF8=1`（原来是装完依赖才设，只保护了 uvicorn）。同一文件也影响 `pip install -r requirements-dev.txt`，因为它是 `-r requirements.txt`。
+  - **路径含空格时前端永远起不来**：前端启动手写了 `cmd /s /c ""<npm.cmd>" run dev …"`，而 `Start-Process -ArgumentList` 不加引号、`/s /c` 又会剥掉首尾引号，于是 `C:\Program Files\nodejs\npm.cmd` 变成裸路径，cmd 报 `'C:\Program' is not recognized`。现在把 `npm.cmd` 直接交给 `Start-Process -FilePath`，由它自己套好 cmd 包装——记到的进程仍是 `cmd.exe`，`stop.cmd` 的识别不受影响。
+  - **Python 3.14 装不上锁定的依赖**：`py -3` 会挑最新的解释器，而 `pydantic-core==2.33.1` 没有 cp314 轮子（`No matching distribution found`）。现在支持的版本窗口是 **3.10 – 3.13**，按 `-3.12`、`-3.13`、`-3.11`、`-3.10` 依次探测（3.12 优先，与启动器自身安装的版本和 CI 一致）；只有 3.14 的机器会明确提示版本窗口并走既有的自动准备路径装一个 3.12。若 `.venv` 是超出窗口的解释器建的，会移到 `runtime/venv-unsupported-<时间戳>/` 后重建，而不是反复用同一个坏环境失败。
+- 启动链路的其它修复：
+  - `start.cmd` 现在用 `%*` 转发参数，`start.cmd -BackendPort 8010` 可用（此前 README 文档化了这些参数，而端口被占用时启动器恰好提示用户用它，却传不进去）。
+  - 启动失败的清理改用 `taskkill /T`，不再孤儿化 `cmd → npm → node` 进程树（此前会残留 Vite 占着端口）。
+  - 健康检查的超时从固定 30 秒改为按服务区分（后端 90 秒、前端 120 秒：冷启动要跑迁移，且杀毒软件会扫描刚装好的依赖），并在**子进程已退出时立即失败**、把退出码写进错误信息，不再白等满超时。
+  - 依赖是否就绪改为让解释器**真的 import 一次**，而不是检查四个目录是否存在——缺 pydantic 之类的半截环境此前会被判成"已就绪"，然后以"启动超时"的形式失败。
+  - Node 便携包改为先试国内镜像（华为云、npmmirror、腾讯云，实测三者与官方产物字节一致）、再回官方源，**每个候选都校验 SHA-256**（期望值来自仓库常量而非镜像），并把总下载预算限制在 30 分钟——此前是每个地址两次 × 1 小时，网络不通时表现像卡死两小时。
+  - 打不开浏览器不再连带停掉刚启动的服务（无默认浏览器关联的机器上 `Start-Process <url>` 会抛错并触发回滚）。
+
 ### Changed
 
 ## 0.3.0 - 2026-09-15

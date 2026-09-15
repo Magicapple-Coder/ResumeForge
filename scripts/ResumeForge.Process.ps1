@@ -25,6 +25,18 @@ function Start-ResumeForge {
         }
         else {
             $pythonExecutable = Join-Path $BackendDirectory ".venv\Scripts\python.exe"
+            $venvConfigPath = Join-Path $BackendDirectory ".venv\pyvenv.cfg"
+            if ((Test-Path -LiteralPath $pythonExecutable) -and
+                -not (Test-VenvVersionSupported -ConfigPath $venvConfigPath)) {
+                # A venv built by an out-of-window interpreter can never install
+                # the pinned wheels, so reusing it makes every run fail the same
+                # way. Move it aside rather than delete: the project keeps
+                # derived artifacts recoverable, and a rename is free on the
+                # same volume. runtime/ is git-ignored.
+                $staleVenvPath = Join-Path $RuntimeDirectory ("venv-unsupported-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+                Write-Warning "backend\.venv was created by an unsupported Python version. Moving it to $staleVenvPath and recreating it."
+                Move-Item -LiteralPath (Join-Path $BackendDirectory ".venv") -Destination $staleVenvPath
+            }
             if (-not (Test-Path -LiteralPath $pythonExecutable)) {
                 $systemPython = Ensure-SystemPython
 
@@ -44,15 +56,26 @@ function Start-ResumeForge {
                 throw "Backend Python environment not found: $pythonExecutable"
             }
 
-            $backendDependenciesReady = $true
-            foreach ($packageName in @("fastapi", "uvicorn", "sqlalchemy", "alembic")) {
-                $packagePath = Join-Path $BackendDirectory ".venv\Lib\site-packages\$packageName"
-                if (-not (Test-Path -LiteralPath $packagePath -PathType Container)) {
-                    $backendDependenciesReady = $false
-                    break
-                }
+            # Ask the interpreter to import the packages instead of looking for
+            # four directory names: a venv that lost pydantic, or whose wheels
+            # were built for another interpreter, otherwise passes the check and
+            # then dies at import time with only "did not start" to show for it.
+            #
+            # This probe is expected to fail on a fresh venv, and Python writes
+            # the ImportError traceback to stderr. With ErrorActionPreference
+            # set to Stop, PowerShell raises a terminating NativeCommandError for
+            # any stderr output from a native command, so the preference has to
+            # be relaxed for the duration: the exit code is the signal here.
+            $probePreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                & $pythonExecutable -c "import fastapi, uvicorn, sqlalchemy, alembic, pydantic, pydantic_settings" 2>&1 | Out-Null
+                $dependencyProbeExitCode = $LASTEXITCODE
             }
-            if (-not $backendDependenciesReady) {
+            finally {
+                $ErrorActionPreference = $probePreference
+            }
+            if ($dependencyProbeExitCode -ne 0) {
                 Write-Host "First run: installing backend dependencies..."
                 & $pythonExecutable -m pip install `
                     --timeout 300 `
@@ -63,7 +86,8 @@ function Start-ResumeForge {
                 }
             }
 
-            $env:PYTHONUTF8 = "1"
+            # PYTHONUTF8 is set once at the top of Start-ResumeForge.ps1 so that
+            # venv creation, pip and the backend all inherit it.
             $startedBackend = Start-Process -FilePath $pythonExecutable `
                 -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$BackendPort", "--log-level", "warning") `
                 -WorkingDirectory $BackendDirectory `
@@ -73,8 +97,12 @@ function Start-ResumeForge {
                 -PassThru
             Save-ProcessRecord -Process $startedBackend -Path $BackendPidPath
 
-            if (-not (Wait-ForCondition -Condition { Test-ResumeForgeBackend -Url $BackendUrl })) {
-                throw "Backend did not start within 30 seconds. See runtime\\backend.stderr.log."
+            if (-not (Wait-ForCondition -Condition { Test-ResumeForgeBackend -Url $BackendUrl } `
+                    -TimeoutSeconds $BackendStartTimeoutSeconds -FailFastProcess $startedBackend)) {
+                if ($startedBackend.HasExited) {
+                    throw "Backend exited with code $($startedBackend.ExitCode) before becoming healthy. See runtime\\backend.stderr.log."
+                }
+                throw "Backend did not start within $BackendStartTimeoutSeconds seconds. See runtime\\backend.stderr.log."
             }
             Write-Host "Backend started: $BackendUrl"
         }
@@ -128,8 +156,14 @@ function Start-ResumeForge {
             # This process-local override keeps the Vite proxy bound to the backend
             # started above without changing a user's tracked or local .env files.
             $env:VITE_BACKEND_URL = $BackendUrl
-            $startedFrontend = Start-Process -FilePath $env:ComSpec `
-                -ArgumentList @("/d", "/s", "/c", "`"$npmPath`" run dev -- --host 127.0.0.1 --port $FrontendPort --strictPort") `
+            # Hand npm.cmd to Start-Process as the program. PowerShell wraps a
+            # .cmd in cmd.exe itself and, unlike a hand-written
+            # "cmd /c ""<path>" args" line, does the quoting correctly: a path
+            # containing spaces used to arrive unquoted and cmd tried to run
+            # "C:\Program". The recorded process is still cmd.exe, so stop.cmd
+            # keeps recognising it.
+            $startedFrontend = Start-Process -FilePath $npmPath `
+                -ArgumentList @("run", "dev", "--", "--host", "127.0.0.1", "--port", "$FrontendPort", "--strictPort") `
                 -WorkingDirectory $FrontendDirectory `
                 -WindowStyle Hidden `
                 -RedirectStandardOutput (Join-Path $RuntimeDirectory "frontend.stdout.log") `
@@ -137,14 +171,26 @@ function Start-ResumeForge {
                 -PassThru
             Save-ProcessRecord -Process $startedFrontend -Path $FrontendPidPath
 
-            if (-not (Wait-ForCondition -Condition { Test-ResumeForgeFrontend -Url $FrontendUrl })) {
-                throw "Frontend did not start within 30 seconds. See runtime\\frontend.stderr.log."
+            if (-not (Wait-ForCondition -Condition { Test-ResumeForgeFrontend -Url $FrontendUrl } `
+                    -TimeoutSeconds $FrontendStartTimeoutSeconds -FailFastProcess $startedFrontend)) {
+                if ($startedFrontend.HasExited) {
+                    throw "Frontend exited with code $($startedFrontend.ExitCode) before becoming healthy. See runtime\\frontend.stderr.log."
+                }
+                throw "Frontend did not start within $FrontendStartTimeoutSeconds seconds. See runtime\\frontend.stderr.log."
             }
             Write-Host "Frontend started: $FrontendUrl"
         }
 
         if (-not $NoBrowser) {
-            Start-Process $FrontendUrl
+            # A machine without a default-browser association makes this throw,
+            # and the catch below would then tear down the services we just
+            # started. Failing to open a window is not a reason to stop the app.
+            try {
+                Start-Process $FrontendUrl
+            }
+            catch {
+                Write-Warning "Could not open a browser automatically. Open $FrontendUrl manually."
+            }
         }
 
         Write-Host "`nResumeForge is ready. Double-click stop.cmd to close services."

@@ -45,13 +45,28 @@ function Test-ResumeForgeFrontend {
 function Wait-ForCondition {
     param(
         [scriptblock]$Condition,
-        [int]$TimeoutSeconds = 30
+        [int]$TimeoutSeconds = 30,
+        [AllowNull()]
+        [System.Diagnostics.Process]$FailFastProcess = $null
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
         if (& $Condition) {
             return $true
+        }
+        # A dead child will never become healthy. Report it immediately instead
+        # of burning the whole timeout: a mis-quoted cmd exits in milliseconds,
+        # and that failure should not look like a slow start.
+        if ($null -ne $FailFastProcess) {
+            try {
+                if ($FailFastProcess.HasExited) {
+                    return $false
+                }
+            }
+            catch {
+                # The handle can be gone; treat it as "not exited" and keep waiting.
+            }
         }
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
@@ -84,7 +99,17 @@ function Stop-StartedProcess {
     if ($null -eq $Process) {
         return
     }
-    if (-not $Process.HasExited) {
+
+    # Stop-Process kills only the recorded process. For the frontend that is the
+    # cmd.exe wrapper, so npm and the Vite/node child survive and keep the port
+    # bound. taskkill /T walks the tree, matching what stop.cmd does.
+    try {
+        if ($Process.HasExited) {
+            return
+        }
+        & taskkill.exe /PID $Process.Id /T /F | Out-Null
+    }
+    catch {
         Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
     }
 }

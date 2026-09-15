@@ -1,4 +1,8 @@
-# 直接运行依赖固定版本；开发与 CI 工具见 requirements-dev.txt。
+# Pinned runtime dependencies; dev and CI tooling lives in requirements-dev.txt.
+# Keep this file pure ASCII: pip 24.x decodes a BOM-less requirements file with
+# the locale codec (cp936 on Chinese Windows), so a non-ASCII comment here makes
+# `pip install -r requirements.txt` abort with UnicodeDecodeError before it
+# reads a single pin.
 fastapi==0.141.1
 starlette==1.6.0
 uvicorn[standard]==0.34.0

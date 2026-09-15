@@ -179,6 +179,7 @@ function Get-NodeBootstrapPackage {
         return [pscustomobject]@{
             Architecture = "x64"
             Url          = $NodeBootstrapX64Url
+            Urls         = Get-NodeBootstrapUrls -OfficialUrl $NodeBootstrapX64Url -Architecture "x64"
             Sha256       = $NodeBootstrapX64Sha256
         }
     }
@@ -186,11 +187,30 @@ function Get-NodeBootstrapPackage {
         return [pscustomobject]@{
             Architecture = "arm64"
             Url          = $NodeBootstrapArm64Url
+            Urls         = Get-NodeBootstrapUrls -OfficialUrl $NodeBootstrapArm64Url -Architecture "arm64"
             Sha256       = $NodeBootstrapArm64Sha256
         }
     }
 
     throw "Windows architecture '$architecture' is not supported by the portable Node.js fallback. Enable winget or install Node.js $MinimumNodeVersion or later manually from https://nodejs.org/."
+}
+
+function Get-NodeBootstrapUrls {
+    param(
+        [string]$OfficialUrl,
+        [string]$Architecture
+    )
+
+    # Domestic mirrors first, official last. Order matters: nodejs.org is
+    # routinely unreachable from China, and the old code would sit on a stalled
+    # connection for an hour before trying anything else.
+    $archiveName = "node-v$NodeBootstrapVersion-win-$Architecture.zip"
+    $urls = @()
+    foreach ($baseUrl in $NodeBootstrapMirrorBaseUrls) {
+        $urls += "$baseUrl/v$NodeBootstrapVersion/$archiveName"
+    }
+    $urls += $OfficialUrl
+    return $urls
 }
 
 function Install-PortableNodeRuntime {
@@ -210,7 +230,7 @@ function Install-PortableNodeRuntime {
     $stagingDirectory = Join-Path $NodeToolsDirectory ("node-bootstrap-" + [Guid]::NewGuid().ToString("N"))
 
     try {
-        Write-Host "Downloading the verified portable Node.js $NodeBootstrapVersion runtime (about 37 MB) from nodejs.org..."
+        Write-Host "Downloading the verified portable Node.js $NodeBootstrapVersion runtime (about 37 MB)..."
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         }
@@ -219,28 +239,45 @@ function Install-PortableNodeRuntime {
             # negotiate the protocol required by nodejs.org.
         }
 
+        # Try each candidate until one yields a file that matches the pinned
+        # hash, under a single overall budget. Without the budget a dead network
+        # looks like a hang: the previous code allowed two one-hour attempts per
+        # URL. The expected hash is a constant in this repo rather than anything
+        # the mirror supplies, so a mirror can only be stale or slow, never
+        # substitute content.
         $downloadError = $null
-        foreach ($downloadAttempt in 1..2) {
-            try {
-                Invoke-WebRequest -UseBasicParsing -Uri $package.Url -OutFile $temporaryArchive -TimeoutSec 3600
-                $downloadError = $null
+        $downloadDeadline = (Get-Date).AddSeconds($NodeDownloadTotalBudgetSeconds)
+        foreach ($candidateUrl in $package.Urls) {
+            $remainingSeconds = [int][Math]::Floor(($downloadDeadline - (Get-Date)).TotalSeconds)
+            if ($remainingSeconds -le 30) {
+                $downloadError = "The download budget of $NodeDownloadTotalBudgetSeconds seconds was exhausted."
                 break
             }
-            catch {
-                $downloadError = $_.Exception.Message
-                Remove-Item -LiteralPath $temporaryArchive -Force -ErrorAction SilentlyContinue
-                if ($downloadAttempt -lt 2) {
-                    Write-Warning "The Node.js download was interrupted. Retrying once..."
-                }
+            $attemptTimeout = [Math]::Min($NodeDownloadAttemptTimeoutSeconds, $remainingSeconds)
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri $candidateUrl -OutFile $temporaryArchive -TimeoutSec $attemptTimeout
             }
+            catch {
+                $downloadError = "$candidateUrl failed: $($_.Exception.Message)"
+                Remove-Item -LiteralPath $temporaryArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "Could not download Node.js from $candidateUrl. Trying the next source..."
+                continue
+            }
+
+            $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $temporaryArchive).Hash.ToLowerInvariant()
+            if ($actualHash -ne $package.Sha256) {
+                # A mirror serving different bytes is worth saying out loud, and
+                # the next candidate is very likely fine.
+                $downloadError = "$candidateUrl returned a file whose SHA-256 does not match (expected $($package.Sha256); actual $actualHash)."
+                Write-Warning $downloadError
+                Remove-Item -LiteralPath $temporaryArchive -Force -ErrorAction SilentlyContinue
+                continue
+            }
+            $downloadError = $null
+            break
         }
         if ($null -ne $downloadError) {
-            throw "Could not download the official Node.js runtime after two attempts. Check the network or proxy settings. $downloadError"
-        }
-
-        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $temporaryArchive).Hash.ToLowerInvariant()
-        if ($actualHash -ne $package.Sha256) {
-            throw "Node.js archive verification failed; extraction was stopped (expected SHA-256: $($package.Sha256); actual: $actualHash)."
+            throw "Could not download the Node.js runtime from any source. Check the network or proxy settings. $downloadError"
         }
 
         New-Item -ItemType Directory -Path $stagingDirectory -Force | Out-Null

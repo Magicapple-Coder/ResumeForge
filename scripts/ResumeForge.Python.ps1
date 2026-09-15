@@ -6,17 +6,58 @@ function Test-PythonCandidate {
         [string[]]$PrefixArguments = @()
     )
 
-    $arguments = @($PrefixArguments) + @(
-        "-c",
-        "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"
-    )
+    $arguments = @($PrefixArguments) + @("-c", $PythonVersionProbe)
+    # A probe must not install anything. The py launcher honours
+    # PYLAUNCHER_ALLOW_INSTALL, so if that variable is set in the user's
+    # environment, probing an absent version such as -3.13 would silently
+    # install it through winget. Remove it for the duration of the probe and
+    # restore it afterwards; installing stays in Try-InstallPythonWithWinget,
+    # which is deliberate and reports what it is doing.
+    $previousAllowInstall = $env:PYLAUNCHER_ALLOW_INSTALL
     try {
+        if (-not [string]::IsNullOrEmpty($previousAllowInstall)) {
+            Remove-Item Env:PYLAUNCHER_ALLOW_INSTALL -ErrorAction SilentlyContinue
+        }
         & $Path @arguments *> $null
         return $LASTEXITCODE -eq 0
     }
     catch {
         return $false
     }
+    finally {
+        if (-not [string]::IsNullOrEmpty($previousAllowInstall)) {
+            $env:PYLAUNCHER_ALLOW_INSTALL = $previousAllowInstall
+        }
+    }
+}
+
+function Test-VenvVersionSupported {
+    param([string]$ConfigPath)
+
+    # pyvenv.cfg records the interpreter that built the environment. A venv
+    # created by an out-of-window interpreter can never install the pinned
+    # wheels, so reusing it makes every run fail the same way. Compare
+    # major.minor only: the file writes "3.12.2", the window is 3.10..3.13.
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        return $false
+    }
+    $versionLine = Get-Content -LiteralPath $ConfigPath -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match "^\s*version\s*=" } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($versionLine)) {
+        return $false
+    }
+    $parsedVersion = $null
+    $rawVersion = ($versionLine -replace "^\s*version\s*=\s*", "").Trim()
+    if (-not [Version]::TryParse($rawVersion, [ref]$parsedVersion)) {
+        return $false
+    }
+    $majorMinor = [Version]::new($parsedVersion.Major, $parsedVersion.Minor)
+    return ($majorMinor -ge $MinimumPythonVersion -and $majorMinor -le $MaximumPythonVersion)
+}
+
+function Format-PythonWindow {
+    return "$($MinimumPythonVersion.ToString(2))-$($MaximumPythonVersion.ToString(2))"
 }
 
 function Refresh-ProcessPath {
@@ -60,24 +101,40 @@ function Add-ProcessPathEntry {
     $env:Path = (@($normalizedPath) + $remainingEntries) -join ";"
 }
 
+function Find-PythonViaLauncher {
+    param([string]$LauncherPath)
+
+    # Ask the launcher for each supported version in turn. Probing plain "-3"
+    # would hand back the newest interpreter on the machine, which on a box with
+    # only 3.14 installed is exactly the one that cannot install the pins.
+    foreach ($selector in $PythonSupportedSelectors) {
+        if (Test-PythonCandidate -Path $LauncherPath -PrefixArguments @($selector)) {
+            return [pscustomobject]@{
+                Path            = $LauncherPath
+                PrefixArguments = @($selector)
+            }
+        }
+    }
+    return $null
+}
+
 function Find-SystemPython {
     # Prefer the official Windows launcher because python.exe may only be the
     # Microsoft Store execution alias and cannot create a virtual environment.
     $launcher = Get-Command py.exe -ErrorAction SilentlyContinue
-    if ($null -ne $launcher -and (Test-PythonCandidate -Path $launcher.Source -PrefixArguments @("-3"))) {
-        return [pscustomobject]@{
-            Path            = $launcher.Source
-            PrefixArguments = @("-3")
+    if ($null -ne $launcher) {
+        $found = Find-PythonViaLauncher -LauncherPath $launcher.Source
+        if ($null -ne $found) {
+            return $found
         }
     }
 
     if (-not [string]::IsNullOrWhiteSpace($env:LocalAppData)) {
         $knownLauncherPath = Join-Path $env:LocalAppData "Programs\Python\Launcher\py.exe"
-        if ((Test-Path -LiteralPath $knownLauncherPath) -and
-            (Test-PythonCandidate -Path $knownLauncherPath -PrefixArguments @("-3"))) {
-            return [pscustomobject]@{
-                Path            = $knownLauncherPath
-                PrefixArguments = @("-3")
+        if (Test-Path -LiteralPath $knownLauncherPath) {
+            $found = Find-PythonViaLauncher -LauncherPath $knownLauncherPath
+            if ($null -ne $found) {
+                return $found
             }
         }
     }
@@ -212,7 +269,7 @@ function Try-InstallPythonWithWinget {
 function Install-PythonWithOfficialInstaller {
     $architecture = Get-WindowsArchitecture
     if ($architecture -notin @("AMD64", "X64", "X86_64")) {
-        throw "Windows architecture '$architecture' is not supported by the bundled fallback installer (x64 only). Enable winget or install Python 3.10+ manually from https://www.python.org/downloads/windows/."
+        throw "Windows architecture '$architecture' is not supported by the bundled fallback installer (x64 only). Enable winget or install Python $(Format-PythonWindow) manually from https://www.python.org/downloads/windows/."
     }
 
     $temporaryFile = [IO.Path]::GetTempFileName()
@@ -278,6 +335,10 @@ function Ensure-SystemPython {
         return $systemPython
     }
 
+    # An interpreter may exist yet still be outside the window (a machine with
+    # only 3.14 installed lands here), so say what we are looking for.
+    Write-Host "No supported Python ($(Format-PythonWindow)) found. Preparing one automatically..."
+
     $wingetSucceeded = Try-InstallPythonWithWinget
     if ($wingetSucceeded) {
         Refresh-ProcessPath
@@ -292,13 +353,13 @@ function Ensure-SystemPython {
         Install-PythonWithOfficialInstaller
     }
     catch {
-        throw "Unable to prepare Python 3.10+ automatically: $($_.Exception.Message) If network, policy, or permissions prevent this, install Python manually from https://www.python.org/downloads/windows/ and run start.cmd again."
+        throw "Unable to prepare Python $(Format-PythonWindow) automatically: $($_.Exception.Message) If network, policy, or permissions prevent this, install Python manually from https://www.python.org/downloads/windows/ and run start.cmd again."
     }
 
     Refresh-ProcessPath
     $systemPython = Find-SystemPython
     if ($null -eq $systemPython) {
-        throw "The Python installer finished, but no usable Python 3.10+ was found. Restart start.cmd; if it still fails, install the Python Launcher and disable the Microsoft Store execution alias."
+        throw "The Python installer finished, but no usable Python $(Format-PythonWindow) was found. Newer interpreters do not work yet: the pinned backend dependencies have no Python 3.14 wheels. Restart start.cmd; if it still fails, install the Python Launcher and disable the Microsoft Store execution alias."
     }
     return $systemPython
 }
