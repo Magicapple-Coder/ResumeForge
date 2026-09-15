@@ -93,15 +93,10 @@
   line-height: 1.8;
 }
 
+/* 操作栏位于 Drawer 的 footer 插槽内，常驻底部：抽屉负责分隔线和内边距，
+   这里只处理换行排布。 */
 .job-detail-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   width: 100%;
-  margin-top: 20px;
-  padding: 16px 0 4px;
-  background: #fff;
-  border-top: 1px solid #f0f0f0;
 }

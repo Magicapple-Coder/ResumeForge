@@ -63,7 +63,46 @@ export default function JobDetailDrawer({
   favoriteLoading = false,
 }: Props) {
   return (
-    <Drawer title="岗位详情" width="min(640px, 100vw)" open={!!job} onClose={onClose}>
+    <Drawer
+      title="岗位详情"
+      width="min(640px, 100vw)"
+      open={!!job}
+      onClose={onClose}
+      // 操作栏交给抽屉的 footer 插槽：它由抽屉布局常驻底部，内容不足一屏时
+      // 也不会浮在正文中间；正文仍由 body 独立滚动。
+      styles={{ footer: { padding: "12px 24px" } }}
+      footer={
+        job && (
+          <Space className="job-detail-actions">
+            <Button type="primary" icon={<FileTextOutlined />} onClick={() => onGenerate(job)}>
+              用 AI 生成简历
+            </Button>
+            <Button icon={<EditOutlined />} onClick={() => onWrite(job)}>
+              自行编写简历
+            </Button>
+            <Button icon={<FolderOpenOutlined />} onClick={() => onViewResumes(job)}>
+              查看生成的简历
+            </Button>
+            <Button icon={<BulbOutlined />} onClick={() => onAnalyze(job)}>
+              岗位需求解读
+            </Button>
+            <Button icon={<MessageOutlined />} onClick={() => onAskAssistant(job)}>
+              咨询求职助手
+            </Button>
+            {job.source_url && (
+              <Button
+                icon={<LinkOutlined />}
+                href={job.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                前往投递
+              </Button>
+            )}
+          </Space>
+        )
+      }
+    >
       {job && (
         <>
           <div className="job-detail-title-row">
@@ -130,34 +169,6 @@ export default function JobDetailDrawer({
               variant="note"
             />
           </div>
-
-          <Space className="job-detail-actions">
-            <Button type="primary" icon={<FileTextOutlined />} onClick={() => onGenerate(job)}>
-              用 AI 生成简历
-            </Button>
-            <Button icon={<EditOutlined />} onClick={() => onWrite(job)}>
-              自行编写简历
-            </Button>
-            <Button icon={<FolderOpenOutlined />} onClick={() => onViewResumes(job)}>
-              查看生成的简历
-            </Button>
-            <Button icon={<BulbOutlined />} onClick={() => onAnalyze(job)}>
-              岗位需求解读
-            </Button>
-            <Button icon={<MessageOutlined />} onClick={() => onAskAssistant(job)}>
-              咨询求职助手
-            </Button>
-            {job.source_url && (
-              <Button
-                icon={<LinkOutlined />}
-                href={job.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                前往投递
-              </Button>
-            )}
-          </Space>
         </>
       )}
     </Drawer>
