@@ -5,6 +5,15 @@ import type { LLMConfig, LLMConfigRecord } from "../../types";
 
 export const CUSTOM_PRESET = "custom";
 export const CUSTOM_PRESET_LABEL = "自定义模型（OpenAI 兼容）";
+/**
+ * 不套用任何预设：选中后清空 Base URL 与模型名，由用户从空白开始填。
+ *
+ * 与 ``CUSTOM_PRESET`` 的区别只在"选中时做什么"：自定义模型保留当前内容（避免误点丢失
+ * 已填的接口信息），纯手动配置则主动清空，用来从中转/网关等非标准地址重新填一套。
+ * 两者都只影响表单，保存与否仍由用户决定。
+ */
+export const MANUAL_PRESET = "manual";
+export const MANUAL_PRESET_LABEL = "纯手动配置（不套用任何预设）";
 export const API_KEY_MASK = "********";
 
 /** max_tokens 取该值表示“不限制”：请求体里不发送该字段，由服务商决定上限。 */
@@ -17,6 +26,7 @@ export const MAX_MAX_TOKENS = 65536;
 export const PRESET_OPTIONS = [
   ...LLM_PRESETS.map((preset) => ({ value: preset.provider, label: preset.label })),
   { value: CUSTOM_PRESET, label: CUSTOM_PRESET_LABEL },
+  { value: MANUAL_PRESET, label: MANUAL_PRESET_LABEL },
 ];
 
 export type SettingsFormValues = LLMConfig & { preset: string };
@@ -63,7 +73,9 @@ export function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
     temperature: config.temperature,
     timeout_seconds: config.timeout_seconds,
     max_tokens: config.max_tokens,
-    preset: matched?.provider ?? CUSTOM_PRESET,
+    // 纯手动配置保存后再打开时，下拉要停在它自己那一项上，而不是跳回"自定义模型"。
+    preset:
+      matched?.provider ?? (config.provider === MANUAL_PRESET ? MANUAL_PRESET : CUSTOM_PRESET),
   };
 }
 

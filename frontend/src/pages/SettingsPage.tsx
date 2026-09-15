@@ -26,6 +26,7 @@ import SkillsCard from "../components/settings/SkillsCard";
 import {
   API_KEY_MASK,
   CUSTOM_PRESET,
+  MANUAL_PRESET,
   configFromFormValues,
   configFromRecord,
   formValuesFromConfig,
@@ -243,6 +244,13 @@ export default function SettingsPage() {
     if (provider === CUSTOM_PRESET) {
       resetRevealedApiKey();
       form.setFieldValue("provider", CUSTOM_PRESET);
+      return;
+    }
+    // 纯手动配置则是要一套空表单：清掉预设会填的那两项，自己从头填。
+    // 不动 API Key——预设本来就不碰它，顺手清掉等于替用户删密钥。
+    if (provider === MANUAL_PRESET) {
+      resetRevealedApiKey();
+      form.setFieldsValue({ provider: MANUAL_PRESET, base_url: "", model: "" });
       return;
     }
     const preset = LLM_PRESETS.find((item) => item.provider === provider);

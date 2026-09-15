@@ -156,6 +156,61 @@ describe("SettingsPage model presets", () => {
     expect(screen.getByLabelText("模型名称")).toHaveValue("company-chat");
   });
 
+  it("clears the preset fields for a manual configuration", async () => {
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
+    fireEvent.click(await screen.findByText("纯手动配置（不套用任何预设）"));
+
+    // 关键区别：自定义模型保留当前内容，纯手动配置要一套空的
+    expect(screen.getByLabelText("Base URL")).toHaveValue("");
+    expect(screen.getByLabelText("模型名称")).toHaveValue("");
+    // 预设本来就不碰密钥，这里也不该替用户清掉它
+    expect(screen.getByLabelText("API Key（选填）")).toHaveValue("********");
+
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://relay.example.com/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("模型名称"), { target: { value: "my-model" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "manual",
+          base_url: "https://relay.example.com/v1",
+          model: "my-model",
+        }),
+      ),
+    );
+  }, 15_000);
+
+  it("keeps showing 纯手动配置 after it is saved", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      provider: "manual",
+      base_url: "https://relay.example.com/v1",
+      model: "my-model",
+    });
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+
+    // 保存后再打开，下拉要停在自己那一项，而不是跳回「自定义模型」
+    expect(await screen.findByText("纯手动配置（不套用任何预设）")).toBeInTheDocument();
+  });
+
   it("saves the provider that belongs to the selected preset", async () => {
     apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
 
