@@ -3,6 +3,7 @@ import base64
 import binascii
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -218,6 +219,7 @@ class ProfileTextParseRequest(BaseModel):
 
 class ProfileTextParseResult(ProfileUpdate):
     warnings: list[str] = Field(default_factory=list)
+    recognition_source: Literal["ai", "local"] = "local"
 
 
 class ProfileOut(ProfileUpdate):

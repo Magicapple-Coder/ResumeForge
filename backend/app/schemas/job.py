@@ -1,6 +1,6 @@
 """岗位 Schema。"""
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -142,6 +142,7 @@ class JobTextParseResult(BaseModel):
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
     warnings: list[str] = Field(default_factory=list)
+    recognition_source: Literal["ai", "local"] = "local"
 
 
 class JobOut(JobCreate):
