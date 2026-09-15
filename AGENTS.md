@@ -106,3 +106,11 @@ npm audit --registry=https://registry.npmjs.org
 - 环境变量、默认配置、依赖版本或启动命令；
 - 导出格式、简历生成逻辑和用户可见交互；
 - 安全边界、隐私处理和部署要求。
+
+## 版本与发布
+
+- **不要手工逐个文件改版本号。** 在仓库根目录执行 `python scripts/bump_version.py`：它按自上一个 `v*` 标签以来的提交类型判定幅度，并同步全部位置。加 `--dry-run` 只预览不改文件；自动判定不满意时用 `--bump major|minor|patch` 覆盖。
+- 幅度规则：标题带 `!`（如 `feat!:`）或正文含 `BREAKING CHANGE` → major；`feat` → minor；`fix` → patch；`docs`/`chore`/`test`/`refactor`/`style`/`ci` 不推动版本号。**提交前缀写错会让发版幅度算错**，请继续遵循 Conventional Commits。
+- 版本号有 5 处必须一致：`backend/app/config.py` 的 `app_version`、`frontend/package.json` 的 `version`、`frontend/package-lock.json` 的根包版本、`README.md` 顶部的"当前版本"、`CHANGELOG.md` 的最新条目。`backend/tests/test_version_consistency.py` 会在 CI 上校验前四处。
+- 本仓库**从未使用过 `BREAKING CHANGE` 标记**，所以自动判定实际上只能产出 minor/patch。改动涉及破坏性变更（如删除已发布功能、不可逆的数据库迁移）时，必须显式传 `--bump major`；脚本检测到新增 migration 会提醒复核，但不会替你判断。
+- 脚本**只改文件，不 commit、不打 tag**——发布由用户发起（见"工作流程"第 6 条）。跑完按它打印的命令手动提交与打标签。
