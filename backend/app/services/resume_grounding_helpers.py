@@ -165,8 +165,12 @@ def _enhance_or_restore_list(
     return accepted or list(source)
 
 
-def _build_grounded_summary(selected_data: dict, job: JobOut) -> str:
-    """用已选事实生成不依赖模型自由发挥的岗位摘要。"""
+def _build_grounded_summary(selected_data: dict, job: JobOut | None = None) -> str:
+    """用已选事实生成不依赖模型自由发挥的摘要。
+
+    ``job is None`` 是通用简历（无目标岗位）：措辞里不能出现"面向某某岗位"，
+    也不该说技能"与岗位匹配"。
+    """
     evidence: list[str] = []
     for item in selected_data.get("experiences", [])[:2]:
         company = _source_value(item, "company")
@@ -189,12 +193,19 @@ def _build_grounded_summary(selected_data: dict, job: JobOut) -> str:
     if selected_summary:
         # 这是用户资料中已通过岗位相关性筛选的原文，不是模型生成的断言。
         sentences.append(selected_summary)
-    if evidence:
-        sentences.append(f"面向{job.title}，具备{'、'.join(evidence)}等相关经历。")
-    else:
-        sentences.append(f"面向{job.title}求职。")
+    if job is not None:
+        if evidence:
+            sentences.append(f"面向{job.title}，具备{'、'.join(evidence)}等相关经历。")
+        else:
+            sentences.append(f"面向{job.title}求职。")
+    elif evidence:
+        sentences.append(f"具备{'、'.join(evidence)}等相关经历。")
     if skills:
-        sentences.append(f"已掌握{'、'.join(skills)}等与岗位匹配的技能。")
+        sentences.append(
+            f"已掌握{'、'.join(skills)}等与岗位匹配的技能。"
+            if job is not None
+            else f"已掌握{'、'.join(skills)}等技能。"
+        )
     return "".join(sentences)
 
 

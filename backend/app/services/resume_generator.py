@@ -16,6 +16,7 @@ from ..schemas.profile import ProfileOut
 from ..schemas.resume import GenerateOptions, ResumeContent
 from .llm.base import BaseLLMProvider, LLMError
 from .profile_relevance import (
+    build_general_profile_context,
     build_job_prompt_text,
     build_profile_prompt_data,
     build_targeted_profile_context,
@@ -95,21 +96,36 @@ class ResumeGenerator:
         )
 
     async def generate(
-        self, profile: ProfileOut, job: JobOut, options: GenerateOptions
+        self, profile: ProfileOut, job: JobOut | None, options: GenerateOptions
     ) -> AsyncIterator[dict]:
-        """执行生成流程，依次产出进度、增量、完成或错误事件。"""
+        """执行生成流程，依次产出进度、增量、完成或错误事件。
+
+        ``job is None`` 表示**通用简历**：不针对任何岗位，候选资料是完整资料库，
+        筛选层换成 ``build_general_profile_context``（见那里的说明——不能靠"传空岗位"
+        让岗位路径自己退化，那条路径会丢掉校园经历、奖项、技能与总结）。
+        """
+        general = job is None
         enhancement_guide = (
             ENHANCEMENT_LEVEL_GUIDES[options.enhancement_level]
             if options.enhance
             else _ENHANCEMENT_DISABLED_GUIDE
         )
 
-        yield {"type": "progress", "message": "正在分析岗位要求与资料匹配度…"}
-        selection = build_targeted_profile_context(
-            profile,
-            job,
-            max_chars=MAX_PROFILE_CHARS,
-            include_references=options.enhance,
+        yield {
+            "type": "progress",
+            "message": "正在整理完整资料…" if general else "正在分析岗位要求与资料匹配度…",
+        }
+        selection = (
+            build_general_profile_context(
+                profile, max_chars=MAX_PROFILE_CHARS, include_references=options.enhance
+            )
+            if general
+            else build_targeted_profile_context(
+                profile,
+                job,
+                max_chars=MAX_PROFILE_CHARS,
+                include_references=options.enhance,
+            )
         )
         counts = selection.selected_counts
         reference_count = sum(
@@ -118,25 +134,42 @@ class ResumeGenerator:
             for item in selection.data.get(section, [])
             if item.get("reference_facts") or item.get("reference_excerpt")
         )
-        reference_message = (
-            f"；已提取 {reference_count} 份总结文件中的岗位相关事实"
-            if options.enhance and reference_count
-            else ""
-        )
-        yield {
-            "type": "progress",
-            "message": (
-                "已从完整资料中筛选 "
-                f"{counts['experiences']} 段实习/工作、{counts['projects']} 个项目、"
-                f"{counts['campus_experiences']} 段校园经历和 {counts['skills']} 项技能"
-                f"{reference_message}"
-            ),
-        }
-        system_prompt = self._load_prompt("resume_generate_system.md")
+        if general:
+            reference_message = (
+                f"；已从 {reference_count} 份总结文件中提取可用事实"
+                if options.enhance and reference_count
+                else ""
+            )
+            yield {
+                "type": "progress",
+                "message": (
+                    "已整理 "
+                    f"{counts['experiences']} 段实习/工作、{counts['projects']} 个项目、"
+                    f"{counts['campus_experiences']} 段校园经历和 {counts['skills']} 项技能"
+                    f"{reference_message}"
+                ),
+            }
+        else:
+            reference_message = (
+                f"；已提取 {reference_count} 份总结文件中的岗位相关事实"
+                if options.enhance and reference_count
+                else ""
+            )
+            yield {
+                "type": "progress",
+                "message": (
+                    "已从完整资料中筛选 "
+                    f"{counts['experiences']} 段实习/工作、{counts['projects']} 个项目、"
+                    f"{counts['campus_experiences']} 段校园经历和 {counts['skills']} 项技能"
+                    f"{reference_message}"
+                ),
+            }
+        # 渲染会吃掉模板文件末尾的换行；补回来，让岗位模式的系统提示与改动前逐字节一致。
+        system_prompt = self._env.get_template("resume_generate_system.md").render(job=job) + "\n"
         user_prompt = self._env.get_template("resume_generate_user.md").render(
             profile_json=selection.serialized,
             job=job,
-            jd=build_job_prompt_text(job, MAX_JD_CHARS),
+            jd=build_job_prompt_text(job, MAX_JD_CHARS) if job else "",
             enhancement_guide=enhancement_guide,
             enhancement_enabled=options.enhance,
             focus_skills="、".join(selection.focus.skills) or "未识别到明确技能，请以 JD 原文为准",
@@ -213,7 +246,19 @@ class ResumeGenerator:
             ):
                 resume = retry_resume
 
-        warnings = check_consistency(resume, profile, selection.data)
+        warnings = check_consistency(
+            resume, profile, selection.data, source_label="完整资料" if general else None
+        )
+        if general:
+            omitted_total = sum(selection.omitted_counts.values())
+            if omitted_total:
+                # 措辞要同时成立于两种丢弃来源：栏目上限与序列化时的预算压缩，
+                # 代码目前分不出是哪一种，所以只说"超出篇幅预算"。
+                warnings.append(
+                    f"这是通用简历（不按岗位筛选）：完整资料中有 {omitted_total} 条内容"
+                    "超出单份简历的篇幅预算，已按资料顺序优先保留靠前的条目；"
+                    "需要补充的内容可以在「微调内容」里手动加上。"
+                )
         resume = ground_resume_facts(
             resume,
             profile,
@@ -234,11 +279,6 @@ class ResumeGenerator:
         data = extract_json(raw)
         return coerce_resume(data) if data is not None else None
 
-    def _load_prompt(self, filename: str) -> str:
-        """从 prompts/ 目录加载模板文件（模板集中管理，方便调参）。"""
-        return (PROMPTS_DIR / filename).read_text(encoding="utf-8")
-
-
 __all__ = [
     "ResumeGenerator",
     "extract_json",
@@ -248,6 +288,7 @@ __all__ = [
     "restore_selected_sections",
     "build_profile_prompt_data",
     "build_job_prompt_text",
+    "build_general_profile_context",
     "build_targeted_profile_context",
     "split_commas",
     "split_lines",

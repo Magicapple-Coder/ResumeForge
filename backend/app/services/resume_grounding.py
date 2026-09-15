@@ -73,13 +73,16 @@ def restore_selected_sections(
 def ground_resume_facts(
     resume: ResumeContent,
     profile: ProfileOut,
-    job: JobOut,
+    job: JobOut | None,
     selected_data: dict | None = None,
     *,
     enhance: bool = False,
     enhancement_level: str = "balanced",
 ) -> ResumeContent:
-    """把模型结果中的可验证字段锚定回资料库。"""
+    """把模型结果中的可验证字段锚定回资料库。
+
+    ``job is None`` 表示通用简历：求职意向沿用资料里用户自己写的那份。
+    """
     source_data = selected_data or build_profile_prompt_data(profile)
     result = resume.model_copy(
         update={
@@ -89,7 +92,7 @@ def ground_resume_facts(
             "phone": profile.phone,
             "email": profile.email,
             "city": profile.city,
-            "job_intent": job.title or profile.job_intent,
+            "job_intent": (job.title if job else "") or profile.job_intent,
         }
     )
     grounded_summary = _build_grounded_summary(source_data, job)

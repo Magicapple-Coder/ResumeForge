@@ -23,6 +23,7 @@ from ..schemas.resume import (
     ResumeOut,
     ResumeRenderRequest,
     ResumeSuggestionsOut,
+    ResumeTitleUpdate,
 )
 from ..services.exporter import build_filename, export_json, export_markdown, render_html
 from ..services.llm import create_provider
@@ -49,11 +50,12 @@ def _format_sse(payload: dict) -> str:
 async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db)):
     """流式生成简历（SSE）。
 
-    事件类型见 services/resume_generator.py 文档；生成结果成功落库后，
-    依次发送携带记录 id 的 saved 事件和最终 done 事件。
+    ``job_id`` 为空表示生成**通用简历**（不针对任何岗位）。事件类型见
+    services/resume_generator.py 文档；生成结果成功落库后，依次发送携带记录 id 的
+    saved 事件和最终 done 事件。
     """
-    job = db.get(Job, payload.job_id)
-    if job is None:
+    job = db.get(Job, payload.job_id) if payload.job_id is not None else None
+    if payload.job_id is not None and job is None:
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
 
     profile = get_profile_detail(db)
@@ -70,7 +72,7 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="请先在「设置」页配置大模型 API")
 
     generator = ResumeGenerator(create_provider(config))
-    job_out = JobOut.model_validate(job)
+    job_out = JobOut.model_validate(job) if job is not None else None
     profile_out = to_profile_out(profile)
     # 流式模型调用可能持续数分钟；快照完成后立即释放请求 Session，避免占满连接池。
     db.close()
@@ -101,6 +103,7 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
                         generator.provider.config.model,
                         payload.options.enhance,
                         payload.options.enhancement_level,
+                        requested_title=payload.title,
                     )
                 # 只有持久化成功后才宣布完成；断流不会留下“成功但无历史记录”的状态。
                 yield _format_sse({"type": "saved", "record_id": record.id})
@@ -123,24 +126,35 @@ def _save_record(
     db: Session,
     content: dict,
     warnings: list[str],
-    job: JobOut,
+    job: JobOut | None,
     raw: str,
     model: str,
     enhancement_enabled: bool,
     enhancement_level: str,
     source: str = "ai",
+    requested_title: str = "",
 ) -> ResumeRecord:
-    """生成结果落库（在流结束后的同一请求内调用）。"""
+    """生成结果落库（在流结束后的同一请求内调用）。
+
+    ``job is None`` 是通用简历：没有公司与岗位，``job_title`` 沿用正文里的求职意向
+    （与 ``POST /manual`` 在无岗位时已有的约定一致），标题回退到「…-通用简历-时间戳」。
+    """
     name = str(content.get("name") or "简历").strip()[:48]
-    company = (job.company.strip() or "未命名公司")[:80]
-    job_title = job.title.strip()[:80]
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    title = f"{name}-{company}-{job_title}-{timestamp}"
+    if job is None:
+        company = ""
+        job_title = str(content.get("job_intent") or "").strip()[:128]
+        title = f"{name}-通用简历-{timestamp}"
+    else:
+        company = (job.company.strip() or "未命名公司")[:80]
+        job_title = job.title.strip()[:80]
+        title = f"{name}-{company}-{job_title}-{timestamp}"
+    title = requested_title.strip()[:256] or title
     record = ResumeRecord(
         title=title,
-        job_id=job.id,
-        job_title=job.title,
-        company=job.company,
+        job_id=job.id if job is not None else None,
+        job_title=job_title,
+        company=company,
         content=content,
         warnings=warnings,
         source=source,
@@ -151,7 +165,12 @@ def _save_record(
     db.add(record)
     db.commit()
     db.refresh(record)
-    logger.info("简历生成完成 record_id=%s model=%s job=%s", record.id, model, job.title)
+    logger.info(
+        "简历生成完成 record_id=%s model=%s job=%s",
+        record.id,
+        model,
+        job.title if job is not None else "通用简历",
+    )
     return record
 
 
@@ -223,10 +242,16 @@ def list_resumes(
     page_size: int = Query(default=20, ge=1, le=100),
     job_id: int | None = Query(default=None, ge=1),
     favorite: bool | None = Query(default=None),
+    has_job: bool | None = Query(default=None),
 ):
+    """列出简历。``has_job=false`` 只返回通用简历（未关联任何岗位）。"""
     query = db.query(ResumeRecord)
     if job_id is not None:
         query = query.filter(ResumeRecord.job_id == job_id)
+    if has_job is not None:
+        query = query.filter(
+            ResumeRecord.job_id.is_not(None) if has_job else ResumeRecord.job_id.is_(None)
+        )
     if favorite is not None:
         query = query.filter(ResumeRecord.favorite == favorite)
     if keyword:
@@ -304,6 +329,22 @@ def update_resume(resume_id: int, payload: ResumeContent, db: Session = Depends(
     # AI 生成阶段的告警不再适用于用户已手工确认过的内容。
     record.warnings = []
     record.parse_error = ""
+    db.commit()
+    db.refresh(record)
+    return _to_resume_out(record)
+
+
+@router.patch("/{resume_id}", response_model=ResumeOut)
+def rename_resume(
+    resume_id: int,
+    payload: ResumeTitleUpdate,
+    db: Session = Depends(get_db),
+):
+    """只更新简历名称；正文与生成告警都不受影响。"""
+    record = db.get(ResumeRecord, resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    record.title = payload.title
     db.commit()
     db.refresh(record)
     return _to_resume_out(record)

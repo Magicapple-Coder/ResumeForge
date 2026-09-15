@@ -22,7 +22,10 @@ class GenerateOptions(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    job_id: int = Field(ge=1)
+    """生成请求。``job_id`` 为空表示生成**通用简历**（不针对任何岗位）。"""
+
+    job_id: int | None = Field(default=None, ge=1)
+    title: str = Field(default="", max_length=256)
     options: GenerateOptions = GenerateOptions()
 
 
@@ -137,6 +140,21 @@ class ResumeFavoriteUpdate(BaseModel):
     """只更新收藏状态，避免切换收藏时覆盖整份简历内容。"""
 
     favorite: bool
+
+
+class ResumeTitleUpdate(BaseModel):
+    """只更新简历名称，避免重命名时覆盖整份简历内容。"""
+
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=256)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("简历名称不能为空")
+        return cleaned
 
 
 class ResumeSuggestion(BaseModel):

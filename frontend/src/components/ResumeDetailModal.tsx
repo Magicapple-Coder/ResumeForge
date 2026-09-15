@@ -103,7 +103,15 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
             <Tag color={detail.source === "manual" ? "purple" : "blue"}>
               {detail.source === "manual" ? "用户编写" : "AI 生成"}
             </Tag>
-            <Tag color="blue">目标岗位：{detail.job_title || "-"}</Tag>
+            {detail.job_id ? (
+              <Tag color="blue">目标岗位：{detail.job_title || "-"}</Tag>
+            ) : (
+              // 通用简历没有岗位；job_title 里存的是求职意向。
+              <>
+                <Tag color="purple">通用简历</Tag>
+                <Tag>求职意向：{detail.job_title || "未填写"}</Tag>
+              </>
+            )}
             {detail.company && <Tag>{detail.company}</Tag>}
             <Tag>模型：{detail.model || "-"}</Tag>
             <Tag color={detail.enhancement_enabled ? "green" : undefined}>

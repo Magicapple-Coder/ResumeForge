@@ -20,9 +20,16 @@ export function listResumes(
     page_size?: number;
     job_id?: number;
     favorite?: boolean;
+    /** false 只取通用简历（未关联任何岗位） */
+    has_job?: boolean;
   } = {},
 ): Promise<Page<ResumeBrief>> {
   return request(`/resumes${buildQuery(params)}`);
+}
+
+/** 只改简历名称，不影响正文与生成告警。 */
+export function renameResume(id: number, title: string): Promise<ResumeDetail> {
+  return request(`/resumes/${id}`, { method: "PATCH", body: JSON.stringify({ title }) });
 }
 
 export function getResume(id: number): Promise<ResumeDetail> {
@@ -62,9 +69,9 @@ export function generateResumeSuggestions(id: number): Promise<ResumeSuggestions
   return request(`/resumes/${id}/suggestions`, { method: "POST" });
 }
 
-/** 流式生成简历，事件定义见 types/StreamEvent */
+/** 流式生成简历，事件定义见 types/StreamEvent；job_id 为 null 表示生成通用简历。 */
 export function generateResume(
-  payload: { job_id: number; options: GenerateOptions },
+  payload: { job_id: number | null; title?: string; options: GenerateOptions },
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {

@@ -7,11 +7,19 @@ import {
   SaveOutlined,
 } from "@ant-design/icons";
 import { Button, Form, Input, Skeleton, Typography } from "antd";
+import { useState } from "react";
+import GenerateResumeModal from "../components/GenerateResumeModal";
+import ManualResumeModal from "../components/ManualResumeModal";
+import GeneralResumeSection from "../components/profile/GeneralResumeSection";
 import ProfileSectionStack from "../components/profile/ProfileSectionStack";
 import ProfileTextModal from "../components/profile/ProfileTextModal";
 import { useProfilePage } from "../features/profile/useProfilePage";
 
 export default function ProfilePage() {
+  // 通用简历：名称在两个入口之间共享，用户填一次即可。
+  const [generalTitle, setGeneralTitle] = useState("");
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [writeOpen, setWriteOpen] = useState(false);
   const {
     form,
     loading,
@@ -91,9 +99,23 @@ export default function ProfilePage() {
               </Button>
             </>
           ) : (
-            <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
-              编辑资料
-            </Button>
+            <>
+              {/* 资料分区很长，通用简历卡片在页面底部；给一个直达入口，
+                  否则用户得滚过全部资料才看得到它。 */}
+              <Button
+                icon={<FileSearchOutlined />}
+                onClick={() =>
+                  document
+                    .getElementById("general-resume-section")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              >
+                通用简历
+              </Button>
+              <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
+                编辑资料
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -117,6 +139,30 @@ export default function ProfilePage() {
           onMoveByOffset={moveSectionByOffset}
         />
       </Form>
+
+      <GeneralResumeSection
+        onGenerate={(title) => {
+          setGeneralTitle(title);
+          setGenerateOpen(true);
+        }}
+        onWrite={(title) => {
+          setGeneralTitle(title);
+          setWriteOpen(true);
+        }}
+      />
+
+      <GenerateResumeModal
+        job={null}
+        open={generateOpen}
+        initialTitle={generalTitle}
+        onClose={() => setGenerateOpen(false)}
+      />
+      <ManualResumeModal
+        job={null}
+        open={writeOpen}
+        initialTitle={generalTitle}
+        onClose={() => setWriteOpen(false)}
+      />
 
       <ProfileTextModal
         open={profileTextOpen}

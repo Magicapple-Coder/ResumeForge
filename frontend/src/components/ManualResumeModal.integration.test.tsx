@@ -71,7 +71,7 @@ describe("ManualResumeModal", () => {
   it("passes the selected job into the resume editor as a reference", async () => {
     render(
       <AntdApp>
-        <ManualResumeModal job={JOB} onClose={vi.fn()} />
+        <ManualResumeModal job={JOB} open onClose={vi.fn()} />
       </AntdApp>,
     );
 
@@ -84,5 +84,28 @@ describe("ManualResumeModal", () => {
     expect(screen.getByText(JOB.additional_info)).toBeInTheDocument();
     expect(screen.getByText("工程制图")).toBeInTheDocument();
     expect(screen.getByLabelText("求职意向")).toHaveValue(JOB.title);
+  });
+
+  it("opens the editor for a job-less general resume", async () => {
+    // 以前这里会因为 !job 提前返回：资料不加载、编辑器永远打不开。
+    render(
+      <AntdApp>
+        <ManualResumeModal job={null} open initialTitle="研发通用版" onClose={vi.fn()} />
+      </AntdApp>,
+    );
+
+    await waitFor(() => expect(apiMocks.getProfile).toHaveBeenCalledOnce());
+    expect(await screen.findByText("从头编写通用简历")).toBeInTheDocument();
+    // 没有岗位就不该出现岗位要求面板
+    expect(screen.queryByRole("button", { name: /查看岗位要求/ })).not.toBeInTheDocument();
+
+    apiMocks.createManualResume.mockResolvedValue({ id: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /保存手写简历/ }));
+
+    await waitFor(() => expect(apiMocks.createManualResume).toHaveBeenCalledOnce());
+    expect(apiMocks.createManualResume.mock.calls[0][0]).toMatchObject({
+      job_id: null,
+      title: "研发通用版",
+    });
   });
 });

@@ -106,7 +106,12 @@ export default function ResumesPage() {
               <Tag color="blue">{record.job_title || "-"}</Tag>
             </Button>
           ) : (
-            <Tag color="blue">{record.job_title || "-"}</Tag>
+            // 无岗位记录的 job_title 存的是求职意向，不能当岗位名显示，
+            // 否则通用简历看起来就是一份岗位简历。
+            <>
+              <Tag color="purple">通用简历</Tag>
+              {record.job_title && <Tag>求职意向：{record.job_title}</Tag>}
+            </>
           )}
           {record.company && <Tag>{record.company}</Tag>}
         </Space>

@@ -158,6 +158,28 @@ def _prepare_reference_excerpt(
     file_name = str(result.pop(_REFERENCE_FILE_KEY, ""))
     excerpt = _select_reference_excerpt(content, section, focus)
     facts = _select_reference_facts(content, section, focus)
+    return _with_reference_payload(result, file_name, excerpt, facts)
+
+
+def _prepare_general_reference_excerpt(item: dict[str, Any]) -> dict[str, Any]:
+    """通用简历（没有目标岗位）的参考节选：不按岗位打分，按原文顺序取靠前内容。
+
+    **不能复用上面那个函数**：``_select_reference_facts`` 会把打分 ≤ 0 的事实全部跳过，
+    没有岗位信号时一条都不剩；``_select_reference_excerpt`` 同理。结果是通用简历的附件
+    事实被静默清空，还会连带让 ``has_reference_facts`` 变假，使强化模式的质量门槛和
+    兜底恢复一起失效。
+    """
+    result = deepcopy(item)
+    content = str(result.pop(_REFERENCE_CONTENT_KEY, ""))
+    file_name = str(result.pop(_REFERENCE_FILE_KEY, ""))
+    facts = _reference_fact_candidates(content)[:_REFERENCE_FACT_LIMIT]
+    excerpt = _reference_head_excerpt(content)
+    return _with_reference_payload(result, file_name, excerpt, facts)
+
+
+def _with_reference_payload(
+    result: dict[str, Any], file_name: str, excerpt: str, facts: list[str]
+) -> dict[str, Any]:
     if excerpt or facts:
         result["reference_file_name"] = file_name
     if excerpt:
@@ -165,3 +187,18 @@ def _prepare_reference_excerpt(
     if facts:
         result["reference_facts"] = facts
     return result
+
+
+def _reference_head_excerpt(content: str) -> str:
+    """按原文顺序取靠前的段落填满预算。"""
+    selected: list[str] = []
+    used_chars = 0
+    for chunk in _reference_chunks(content):
+        separator_size = 2 if selected else 0
+        if selected and used_chars + separator_size + len(chunk) > _REFERENCE_EXCERPT_MAX_CHARS:
+            break
+        selected.append(chunk)
+        used_chars += separator_size + len(chunk)
+        if used_chars >= _REFERENCE_EXCERPT_MAX_CHARS:
+            break
+    return "\n\n".join(selected)

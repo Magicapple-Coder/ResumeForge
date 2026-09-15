@@ -1,11 +1,23 @@
 /** AI 生成简历弹窗：配置岗位导向美化 -> 流式生成 -> 预览结果（自动保存历史）。 */
 import { BulbOutlined, EditOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Modal, Segmented, Space, Spin, Switch, Tag, Typography } from "antd";
+import {
+  Alert,
+  App,
+  Button,
+  Input,
+  Modal,
+  Segmented,
+  Space,
+  Spin,
+  Switch,
+  Tag,
+  Typography,
+} from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { generateResume, renderResume, updateResume } from "../api/resumes";
 import { getLLMConfig } from "../api/settings";
-import { RESUME_ENHANCEMENT_LEVELS } from "../config";
+import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
 import type { EnhancementLevel, Job, ResumeContent, StreamEvent } from "../types";
 import ExportButtons from "./ExportButtons";
 import ResumeEditorModal from "./ResumeEditorModal";
@@ -15,7 +27,11 @@ import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
 type Stage = "config" | "generating" | "preview" | "error";
 
 interface Props {
+  /** null 表示生成**通用简历**（不针对任何岗位）。 */
   job: Job | null;
+  open: boolean;
+  /** 通用简历的初始名称，留空则后端按「姓名-通用简历-时间戳」命名。 */
+  initialTitle?: string;
   onClose: () => void;
 }
 
@@ -25,11 +41,12 @@ interface GenerateResult {
   recordId: number | null;
 }
 
-export default function GenerateResumeModal({ job, onClose }: Props) {
+export default function GenerateResumeModal({ job, open, initialTitle = "", onClose }: Props) {
   const { message } = App.useApp();
   const navigate = useNavigate();
 
   const [stage, setStage] = useState<Stage>("config");
+  const [title, setTitle] = useState("");
   const [enhance, setEnhance] = useState(false);
   const [enhancementLevel, setEnhancementLevel] = useState<EnhancementLevel>("balanced");
   const [modelName, setModelName] = useState("");
@@ -51,16 +68,22 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
   const streamTextBuffer = useRef("");
   const streamFrame = useRef<number | null>(null);
 
+  // 打开时把资料页填的名称带进来。reset() 只在关闭时跑，不补这一步的话
+  // 名称输入框永远是空的。
+  useEffect(() => {
+    if (open) setTitle(initialTitle);
+  }, [open, initialTitle]);
+
   // 打开弹窗时检查 LLM 配置并展示当前模型
   useEffect(() => {
-    if (!job) return;
+    if (!open) return;
     void getLLMConfig()
       .then((config) => {
         setModelName(config.model || "");
         setLlmReady(!!config.base_url && !!config.model);
       })
       .catch(() => setLlmReady(false));
-  }, [job]);
+  }, [open]);
 
   // 流式文本自动滚到底部
   useEffect(() => {
@@ -87,6 +110,7 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
       streamFrame.current = null;
     }
     setStage("config");
+    setTitle(initialTitle);
     setProgress([]);
     setStreamText("");
     setErrorMsg("");
@@ -97,10 +121,10 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
     setSuggestionsOpen(false);
-  }, []);
+  }, [initialTitle]);
 
   const startGenerate = async () => {
-    if (!job) return;
+    if (!open) return;
     abortRef.current?.abort();
     const currentGeneration = ++generationVersion.current;
     const controller = new AbortController();
@@ -164,7 +188,11 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
 
     try {
       await generateResume(
-        { job_id: job.id, options: { enhance, enhancement_level: enhancementLevel } },
+        {
+          job_id: job?.id ?? null,
+          title: job ? "" : title.trim(),
+          options: { enhance, enhancement_level: enhancementLevel },
+        },
         handleEvent,
         controller.signal,
       );
@@ -218,8 +246,8 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
 
   return (
     <Modal
-      title={job ? `为「${job.title}」生成简历` : "AI 生成简历"}
-      open={!!job}
+      title={job ? `为「${job.title}」生成简历` : "生成通用简历"}
+      open={open}
       onCancel={handleClose}
       width={860}
       footer={null}
@@ -242,17 +270,38 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
               showIcon
               style={{ marginBottom: 16 }}
               message={`当前模型：${modelName || "未知"}。生成过程约需 1-2 分钟，请勿关闭弹窗。`}
-              description="系统会根据目标岗位的 JD，从完整个人资料与经历总结文件中筛选并排序相关信息；原始资料不会被修改。"
+              description={
+                job
+                  ? "系统会根据目标岗位的 JD，从完整个人资料与经历总结文件中筛选并排序相关信息；原始资料不会被修改。"
+                  : "通用简历不针对任何岗位：系统会完整使用你的资料（只受篇幅预算限制），保留各方向的经历与技能；原始资料不会被修改。"
+              }
             />
           )}
-          <Typography.Title level={5}>岗位适配与内容美化</Typography.Title>
+          {!job && (
+            <div style={{ marginBottom: 16 }}>
+              <Typography.Text strong>简历名称</Typography.Text>
+              <Input
+                aria-label="简历名称"
+                value={title}
+                maxLength={64}
+                style={{ marginTop: 8 }}
+                placeholder="留空则自动命名为「姓名-通用简历-时间」"
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </div>
+          )}
+          <Typography.Title level={5}>{job ? "岗位适配与内容美化" : "内容美化"}</Typography.Title>
           <Space direction="vertical" size={14} style={{ width: "100%" }}>
             <Space size={10}>
               <Switch checked={enhance} onChange={setEnhance} />
-              <Typography.Text strong>根据岗位要求美化拓展经历</Typography.Text>
+              <Typography.Text strong>
+                {job ? "根据岗位要求美化拓展经历" : "用资料里的总结文件补足经历细节"}
+              </Typography.Text>
             </Space>
             <Typography.Text type="secondary">
-              基于已有经历和总结文件补足表达细节，突出与岗位相关的能力，不修改个人资料原文。
+              {job
+                ? "基于已有经历和总结文件补足表达细节，突出与岗位相关的能力，不修改个人资料原文。"
+                : "基于已有经历和总结文件补足表达细节，突出资料本身的重点，不修改个人资料原文。"}
             </Typography.Text>
             <Segmented
               block
@@ -266,8 +315,7 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
             />
             <Typography.Text type={enhance ? undefined : "secondary"}>
               {enhance
-                ? RESUME_ENHANCEMENT_LEVELS.find((item) => item.value === enhancementLevel)
-                    ?.description
+                ? enhancementLevelDescription(enhancementLevel, !job)
                 : "关闭后仅筛选和整理原有资料，不进行拓展。"}
             </Typography.Text>
           </Space>
@@ -350,16 +398,18 @@ export default function GenerateResumeModal({ job, onClose }: Props) {
               >
                 微调内容
               </Button>
-              <Button
-                icon={<BulbOutlined />}
-                disabled={!result.recordId}
-                onClick={() => setSuggestionsOpen(true)}
-              >
-                {suggestionsGenerated ? "查看岗位优化建议" : "生成岗位优化建议"}
-              </Button>
-              <Button onClick={() => navigate(`/jobs?job_id=${job?.id ?? ""}`)}>
-                查看对应岗位
-              </Button>
+              {job && (
+                <>
+                  <Button
+                    icon={<BulbOutlined />}
+                    disabled={!result.recordId}
+                    onClick={() => setSuggestionsOpen(true)}
+                  >
+                    {suggestionsGenerated ? "查看岗位优化建议" : "生成岗位优化建议"}
+                  </Button>
+                  <Button onClick={() => navigate(`/jobs?job_id=${job.id}`)}>查看对应岗位</Button>
+                </>
+              )}
               <Button onClick={() => navigate("/resumes")}>去简历中心</Button>
               <Button icon={<ReloadOutlined />} onClick={() => void startGenerate()}>
                 重新生成

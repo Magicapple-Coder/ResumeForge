@@ -1,5 +1,5 @@
 import { App as AntdApp } from "antd";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResumeBrief } from "../types";
@@ -89,5 +89,32 @@ describe("ResumesPage favorites", () => {
     await waitFor(() =>
       expect(apiMocks.updateResumeFavorite).toHaveBeenCalledWith(RESUME.id, false),
     );
+  });
+});
+
+describe("ResumesPage 通用简历", () => {
+  it("marks a job-less record as 通用简历 and shows the intent instead of a job", async () => {
+    // 无岗位记录的 job_title 存的是求职意向，以前会被当成岗位名显示，
+    // 于是通用简历看起来和岗位简历一模一样。
+    apiMocks.listResumes.mockResolvedValue({
+      items: [{ ...RESUME, job_id: null, job_title: "后端开发", company: "" }],
+      total: 1,
+    });
+    renderPage();
+
+    const row = (await screen.findByText(RESUME.title)).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("通用简历")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText("求职意向：后端开发")).toBeInTheDocument();
+    // 有岗位时岗位名是一个可点击跳转的按钮；通用简历不该有
+    expect(within(row as HTMLElement).queryByRole("button", { name: RESUME.job_title })).toBeNull();
+  });
+
+  it("keeps job-linked records linking to their job", async () => {
+    renderPage();
+
+    const row = (await screen.findByText(RESUME.title)).closest("tr");
+    expect(within(row as HTMLElement).getByText(RESUME.job_title)).toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText("通用简历")).toBeNull();
   });
 });

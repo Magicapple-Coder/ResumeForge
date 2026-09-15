@@ -66,3 +66,21 @@ export const RESUME_ENHANCEMENT_LEVELS = [
     description: "充分利用已有资料，强化岗位匹配度",
   },
 ] as const;
+
+/**
+ * 通用简历没有岗位可匹配，深度档的说明要换一个说法。
+ *
+ * 参数类型直接写联合类型，**不要**改成 `import type { EnhancementLevel } from "./types"`：
+ * 实测只是加上那一行类型导入，`AssistantPage.test.tsx` 就从稳定通过变成 5/6 失败
+ * （报错是空态元素刚找到就被卸载，像时序问题；去掉后 6/6 通过）。类型导入本身不该有
+ * 运行时影响，具体机制没查清，所以这里保持不引入 `types/` barrel。
+ */
+export function enhancementLevelDescription(
+  level: "light" | "balanced" | "strong",
+  general = false,
+): string {
+  const matched = RESUME_ENHANCEMENT_LEVELS.find((item) => item.value === level);
+  if (!matched) return "";
+  if (!general || level !== "strong") return matched.description;
+  return "充分利用已有资料，充分展开过程与成果";
+}

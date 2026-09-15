@@ -351,8 +351,16 @@ export default function JobsPage() {
         }}
         onSaved={() => void reload()}
       />
-      <GenerateResumeModal job={generateJob} onClose={() => setGenerateJob(null)} />
-      <ManualResumeModal job={manualResumeJob} onClose={() => setManualResumeJob(null)} />
+      <GenerateResumeModal
+        job={generateJob}
+        open={!!generateJob}
+        onClose={() => setGenerateJob(null)}
+      />
+      <ManualResumeModal
+        job={manualResumeJob}
+        open={!!manualResumeJob}
+        onClose={() => setManualResumeJob(null)}
+      />
       <JobAnalysisModal job={analysisJob} onClose={() => setAnalysisJob(null)} />
     </div>
   );

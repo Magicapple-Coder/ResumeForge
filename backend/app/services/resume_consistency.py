@@ -17,12 +17,20 @@ from .resume_grounding import (
 
 
 def check_consistency(
-    resume: ResumeContent, profile: ProfileOut, selected_data: dict | None = None
+    resume: ResumeContent,
+    profile: ProfileOut,
+    selected_data: dict | None = None,
+    *,
+    source_label: str | None = None,
 ) -> list[str]:
-    """校验生成结果是否出现候选资料中不存在的信息（防 AI 虚构）。"""
+    """校验生成结果是否出现候选资料中不存在的信息（防 AI 虚构）。
+
+    ``source_label`` 用于替换警告里的资料来源说法：通用简历没有岗位，说"本岗位候选资料"
+    会让用户以为简历是针对某个岗位筛过的。
+    """
     warnings: list[str] = []
     source_data = selected_data or build_profile_prompt_data(profile)
-    source_label = "本岗位候选资料" if selected_data is not None else "个人资料"
+    label = source_label or ("本岗位候选资料" if selected_data is not None else "个人资料")
     known_schools = [item["school"] for item in source_data["educations"] if item.get("school")]
     known_companies = [item["company"] for item in source_data["experiences"] if item.get("company")]
     known_campus_organizations = [
@@ -37,12 +45,12 @@ def check_consistency(
     for edu in resume.education:
         if edu.school and not any(_similar(edu.school, s) for s in known_schools):
             warnings.append(
-                f"教育经历中出现{source_label}未包含的学校「{edu.school}」，请核对是否为虚构"
+                f"教育经历中出现{label}未包含的学校「{edu.school}」，请核对是否为虚构"
             )
     for exp in resume.experience:
         if exp.company and not any(_similar(exp.company, c) for c in known_companies):
             warnings.append(
-                f"实习/工作经历中出现{source_label}未包含的公司「{exp.company}」，请核对是否为虚构"
+                f"实习/工作经历中出现{label}未包含的公司「{exp.company}」，请核对是否为虚构"
             )
         source = _find_source(exp, source_data["experiences"], "company", "role")
         if source:
@@ -59,7 +67,7 @@ def check_consistency(
             for organization in known_campus_organizations
         ):
             warnings.append(
-                f"校园经历中出现{source_label}未包含的组织「{item.organization}」，请核对是否为虚构"
+                f"校园经历中出现{label}未包含的组织「{item.organization}」，请核对是否为虚构"
             )
         source = _find_source(item, source_data["campus_experiences"], "organization", "role")
         if source:
@@ -73,7 +81,7 @@ def check_consistency(
     for project in resume.projects:
         if project.name and not any(_similar(project.name, p) for p in known_projects):
             warnings.append(
-                f"项目经历中出现{source_label}未包含的项目「{project.name}」，请核对是否为虚构"
+                f"项目经历中出现{label}未包含的项目「{project.name}」，请核对是否为虚构"
             )
         source = _find_source(project, source_data["projects"], "name", "role")
         if source:
@@ -88,12 +96,12 @@ def check_consistency(
     for skill in resume.skills:
         if skill.name and not any(_similar_skill(skill.name, known) for known in known_skills):
             warnings.append(
-                f"专业技能中出现{source_label}未包含的技能「{skill.name}」，请核对是否为虚构"
+                f"专业技能中出现{label}未包含的技能「{skill.name}」，请核对是否为虚构"
             )
     for award in resume.awards:
         if award.name and not any(_similar(award.name, known) for known in known_awards):
             warnings.append(
-                f"荣誉奖项中出现{source_label}未包含的奖项「{award.name}」，请核对是否为虚构"
+                f"荣誉奖项中出现{label}未包含的奖项「{award.name}」，请核对是否为虚构"
             )
     unsupported_summary = _unsupported_quantified_values(
         resume.summary, json.dumps(source_data, ensure_ascii=False)

@@ -243,3 +243,19 @@ def _select_skills(
         return []
     # JD 未给出可识别信号时保留有限技能作为兜底，避免生成空技能区。
     return [item for _, _, item in ranked[: SECTION_LIMITS["skills"]]]
+
+
+def _take_entries(items: list[dict[str, Any]], section: str) -> list[dict[str, Any]]:
+    """不做相关性筛选地取一个栏目的条目，按资料原顺序保留到该栏目上限。
+
+    通用简历（没有目标岗位）专用。**不能改用 ``_select_entries`` / ``_select_skills``**：
+    那两个函数是按岗位信号打分的，在"没有信号"时它们的行为并不是"保留全部"——
+    ``_select_entries`` 会无条件丢掉校园经历与奖项，``_select_skills`` 只要证据里出现过
+    任一技能名就只保留那些技能。两者都会静默产生内容残缺的简历。
+
+    仍然保留"主字段为空则丢弃"这一条：只有日期、没有学校/公司/项目名的条目写进提示词
+    只会浪费预算。
+    """
+    primary_field = SECTION_PRIMARY_FIELDS[section]
+    valid_items = [item for item in items if str(item.get(primary_field, "")).strip()]
+    return valid_items[: SECTION_LIMITS[section]]

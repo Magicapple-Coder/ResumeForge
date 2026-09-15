@@ -39,11 +39,13 @@ from .profile_matching import (
     _select_skills,
     _select_summary,
     _skill_domain_score,
+    _take_entries,
     _unique,
     build_job_focus,
 )
 from .profile_references import (
     _clean_reference_fact_line,
+    _prepare_general_reference_excerpt,
     _prepare_reference_excerpt,
     _reference_chunks,
     _reference_fact_candidates,
@@ -79,6 +81,9 @@ from .profile_relevance_constants import (
 )
 
 
+_EMPTY_FOCUS = JobFocus(skills=(), domains=(), terms=())
+
+
 def build_targeted_profile_context(
     profile: ProfileOut,
     job: JobOut,
@@ -110,11 +115,16 @@ def build_targeted_profile_context(
     }
     selected["skills"] = _select_skills(full["skills"], evidence, focus)
     selected = build_llm_profile_prompt_data(selected)
-    selected_counts = {section: len(selected[section]) for section in SECTION_LIMITS}
-    omitted_counts = {
-        section: max(0, len(full[section]) - selected_counts[section])
-        for section in SECTION_LIMITS
-    }
+    return _assemble_selection(full, selected, focus, max_chars)
+
+
+def _assemble_selection(
+    full: dict[str, Any],
+    selected: dict[str, Any],
+    focus: JobFocus,
+    max_chars: int,
+) -> ProfileSelection:
+    """把已选好的候选资料做预算压缩并统计，供岗位与通用两条路径共用。"""
     serialized = serialize_profile_prompt_data(selected, max_chars)
     # ``serialize_profile_prompt_data`` 会在副本上做预算压缩；对外暴露的
     # data 必须与实际发送给模型的 JSON 完全一致，避免诊断和生成出现偏差。
@@ -133,6 +143,39 @@ def build_targeted_profile_context(
     )
 
 
+def build_general_profile_context(
+    profile: ProfileOut,
+    max_chars: int = 12_000,
+    *,
+    include_references: bool = False,
+) -> ProfileSelection:
+    """构建**通用简历**的候选资料：不按岗位筛选，也不排序。
+
+    做的是"全貌优先"：每个栏目按用户在资料页里的录入顺序取到该栏目上限，
+    保留简历自己的求职意向与完整个人总结，校园经历和奖项同样保留。
+
+    **不要退化成"传一个空 focus 走岗位路径"**：那条路径在无信号时的行为并不是
+    "保留全部"——它会丢掉校园经历与奖项、清空个人总结、并且只保留被证据提到的技能
+    （见 ``_take_entries`` 的说明）。
+    """
+    full = build_profile_prompt_data(profile, include_references=include_references)
+    selected: dict[str, Any] = {
+        key: value for key, value in full.items() if key not in SECTION_LIMITS
+    }
+    # 求职意向沿用资料原文，不替换成任何岗位名；总结也保留用户自己写的那份。
+    selected["summary"] = full["summary"]
+    for section in ("educations", "experiences", "campus_experiences", "projects", "awards"):
+        selected[section] = [
+            _prepare_general_reference_excerpt(item)
+            if include_references and section in _REFERENCE_SECTIONS
+            else item
+            for item in _take_entries(full[section], section)
+        ]
+    selected["skills"] = _take_entries(full["skills"], "skills")
+    selected = build_llm_profile_prompt_data(selected)
+    return _assemble_selection(full, selected, _EMPTY_FOCUS, max_chars)
+
+
 def build_targeted_profile_prompt_data(
     profile: ProfileOut, job: JobOut, *, include_references: bool = False
 ) -> dict[str, Any]:
@@ -149,6 +192,7 @@ __all__ = [
     "build_llm_profile_prompt_data",
     "build_job_focus",
     "build_job_prompt_text",
+    "build_general_profile_context",
     "build_targeted_profile_context",
     "build_targeted_profile_prompt_data",
     "serialize_profile_prompt_data",

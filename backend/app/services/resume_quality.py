@@ -85,14 +85,27 @@ def _quality_shortfalls(
             and normalized_references
             and all(_normalize_fact(point) in normalized_references for point in points)
         ):
-            shortfalls.append(f"项目「{source_name}」的要点仍是附件原文，尚未完成岗位化改写")
+            shortfalls.append(
+                f"项目「{source_name}」的要点仍是附件原文，尚未完成"
+                f"{'岗位化' if job else ''}改写"
+            )
 
     if reference_projects and shortfalls:
-        grounded_summary = _build_grounded_summary(selected_data, job) if job else ""
+        # 通用简历（job 为空）也有兜底文本可以比对——_build_grounded_summary 支持无岗位，
+        # 因此这里不再用 ``if job else ""`` 跳过，否则通用模式的这条检查永远不会触发。
+        grounded_summary = _build_grounded_summary(selected_data, job)
         if not resume.summary.strip():
-            shortfalls.append("个人总结为空，未概括与目标岗位相关的能力")
+            shortfalls.append(
+                "个人总结为空，未概括与目标岗位相关的能力"
+                if job
+                else "个人总结为空，未概括能力与经历全貌"
+            )
         elif grounded_summary and resume.summary.strip() == grounded_summary.strip():
-            shortfalls.append("个人总结只是系统兜底文本，未体现岗位化表达")
+            shortfalls.append(
+                "个人总结只是系统兜底文本，未体现岗位化表达"
+                if job
+                else "个人总结只是系统兜底文本，未真正概括经历"
+            )
     return shortfalls
 
 
