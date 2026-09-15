@@ -1,19 +1,22 @@
 import { App as AntdApp } from "antd";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "./SettingsPage";
 
 const apiMocks = vi.hoisted(() => ({
-  applyBackup: vi.fn(),
+  activateDataset: vi.fn(),
+  deleteDataset: vi.fn(),
   deleteLLMConfigRecord: vi.fn(),
-  exportBackup: vi.fn(),
+  exportDataset: vi.fn(),
   getLLMConfig: vi.fn(),
+  importDataset: vi.fn(),
+  listDatasets: vi.fn(),
   listLLMConfigRecords: vi.fn(),
+  renameDataset: vi.fn(),
   revealLLMApiKey: vi.fn(),
   saveLLMConfig: vi.fn(),
   saveLLMConfigRecord: vi.fn(),
   testLLM: vi.fn(),
-  uploadBackup: vi.fn(),
 }));
 
 vi.mock("../api/settings", () => apiMocks);
@@ -22,6 +25,16 @@ const navigationMocks = vi.hoisted(() => ({ reloadPage: vi.fn() }));
 
 // 整页重载在 jsdom 里不可用，换成可断言的替身。
 vi.mock("../utils/navigation", () => navigationMocks);
+
+const mainDataset = {
+  id: "main",
+  name: "主数据",
+  source: "本机",
+  size_bytes: 4_947_968,
+  created_at: null,
+  is_active: true,
+  exists: true,
+};
 
 const llmConfig = {
   provider: "openai",
@@ -43,6 +56,7 @@ function tooltipTriggerFor(label: string): HTMLElement {
 beforeEach(() => {
   apiMocks.getLLMConfig.mockResolvedValue(llmConfig);
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
+  apiMocks.listDatasets.mockResolvedValue([mainDataset]);
   apiMocks.revealLLMApiKey.mockResolvedValue({ api_key: "sk-revealed" });
 });
 
@@ -412,24 +426,15 @@ describe("SettingsPage output limit", () => {
   });
 });
 
-describe("SettingsPage data backup", () => {
-  const preview = {
-    token: "a".repeat(32),
-    size_bytes: 2048,
-    manifest: {
-      format: 1,
-      app: "ResumeForge",
-      app_version: "0.2.0",
-      alembic_revision: "0006_chat_conversation_flags",
-      exported_at: "2026-09-15T10:00:00+08:00",
-      tables: { job: 7, resume_record: 3 },
-      api_key_included: false,
-    },
-    database: {
-      alembic_revision: "0006_chat_conversation_flags",
-      tables: { job: 7, resume_record: 3 },
-    },
-    current_tables: { job: 7, resume_record: 3 },
+describe("SettingsPage datasets", () => {
+  const imported = {
+    id: "0123456789abcdef",
+    name: "备份 A",
+    source: "导入",
+    size_bytes: 2_048_000,
+    created_at: "2026-09-15T10:00:00+08:00",
+    is_active: false,
+    exists: true,
   };
 
   function chooseBackupFile(container: HTMLElement) {
@@ -439,120 +444,117 @@ describe("SettingsPage data backup", () => {
     return file;
   }
 
-  it("downloads the exported archive", async () => {
+  async function renderPage() {
+    const view = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.listDatasets).toHaveBeenCalled());
+    return view;
+  }
+
+  it("lists the available datasets and marks the active one", async () => {
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    await renderPage();
+
+    expect(await screen.findByText("主数据")).toBeInTheDocument();
+    expect(screen.getByText("备份 A")).toBeInTheDocument();
+    expect(screen.getByText("当前")).toBeInTheDocument();
+  });
+
+  it("downloads the active dataset", async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    apiMocks.exportBackup.mockResolvedValue({
+    apiMocks.exportDataset.mockResolvedValue({
       blob: new Blob(["zip-bytes"], { type: "application/zip" }),
       filename: "resumeforge-backup-20260915.zip",
     });
+    await renderPage();
 
-    render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /导出全部数据/ }));
+    fireEvent.click(screen.getByRole("button", { name: /导出当前数据集/ }));
 
-    await waitFor(() => expect(click).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiMocks.exportDataset).toHaveBeenCalledWith("main"));
+    expect(click).toHaveBeenCalledOnce();
     click.mockRestore();
   });
 
-  it("previews the chosen backup before touching any data", async () => {
-    apiMocks.uploadBackup.mockResolvedValue(preview);
+  it("imports a chosen archive as a new dataset without switching to it", async () => {
+    apiMocks.importDataset.mockResolvedValue(imported);
+    const { container } = await renderPage();
 
-    const { container } = render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
-    );
     const file = chooseBackupFile(container);
 
-    await waitFor(() => expect(apiMocks.uploadBackup).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiMocks.importDataset).toHaveBeenCalledOnce());
     // antd 会把 File 包一层再交给 beforeUpload，按属性断言更稳。
-    expect((apiMocks.uploadBackup.mock.calls[0][0] as File).name).toBe(file.name);
-    expect(await screen.findByText("确认恢复备份")).toBeInTheDocument();
-    expect(screen.getByText(/备份中不含大模型 API Key/)).toBeInTheDocument();
-    expect(apiMocks.applyBackup).not.toHaveBeenCalled();
-  });
-
-  it("warns when the backup holds less data than the current database", async () => {
-    apiMocks.uploadBackup.mockResolvedValue({
-      ...preview,
-      database: { ...preview.database, tables: { job: 2, resume_record: 3 } },
-    });
-
-    const { container } = render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
-    );
-    chooseBackupFile(container);
-
-    expect(await screen.findByText("备份中的数据少于当前数据")).toBeInTheDocument();
-    expect(screen.getByText(/岗位：当前 7 → 备份 2/)).toBeInTheDocument();
-  });
-
-  it("leaves the data untouched when the preview is cancelled", async () => {
-    apiMocks.uploadBackup.mockResolvedValue(preview);
-
-    const { container } = render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
-    );
-    chooseBackupFile(container);
-    await screen.findByText("确认恢复备份");
-
-    fireEvent.click(screen.getByRole("button", { name: /取\s*消/ }));
-
-    // 不在这里断言弹窗从 DOM 消失：jsdom 不触发 CSS transition 事件，
-    // antd 的关闭动画不会完成，节点会一直留在文档里。这里只验证真正要紧的
-    // 事实——取消不会触发任何破坏性调用。
-    await waitFor(() => expect(apiMocks.uploadBackup).toHaveBeenCalledOnce());
-    expect(apiMocks.applyBackup).not.toHaveBeenCalled();
+    expect((apiMocks.importDataset.mock.calls[0][0] as File).name).toBe(file.name);
+    expect(apiMocks.importDataset.mock.calls[0][1]).toBe("backup");
+    // 导入只新增数据集：既不会切过去，也不会重载页面。
+    expect(apiMocks.activateDataset).not.toHaveBeenCalled();
     expect(navigationMocks.reloadPage).not.toHaveBeenCalled();
   });
 
-  it("applies the backup and reloads once confirmed", async () => {
-    apiMocks.uploadBackup.mockResolvedValue(preview);
-    apiMocks.applyBackup.mockResolvedValue({
-      manifest: preview.manifest,
-      tables: preview.database.tables,
-      previous_backup: "resume_forge-20260915.db",
-      upgraded_backup: null,
-    });
+  it("switches to another dataset and reloads the page", async () => {
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    apiMocks.activateDataset.mockResolvedValue({ ...imported, is_active: true });
+    await renderPage();
 
-    const { container } = render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
-    );
-    chooseBackupFile(container);
-    await screen.findByText("确认恢复备份");
+    // 列表顺序即渲染顺序：主数据在前，可切换的那份在后。
+    fireEvent.click(screen.getAllByRole("button", { name: /切换/ })[1]);
 
-    fireEvent.click(screen.getByRole("button", { name: /确认恢复/ }));
-
-    await waitFor(() => expect(apiMocks.applyBackup).toHaveBeenCalledWith(preview.token));
+    await waitFor(() => expect(apiMocks.activateDataset).toHaveBeenCalledWith(imported.id));
     await waitFor(() => expect(navigationMocks.reloadPage).toHaveBeenCalled(), { timeout: 3000 });
   });
 
-  it("keeps the preview open when applying fails", async () => {
-    apiMocks.uploadBackup.mockResolvedValue(preview);
-    apiMocks.applyBackup.mockRejectedValue(new Error("数据库文件正被占用"));
+  it("renames a dataset", async () => {
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    apiMocks.renameDataset.mockResolvedValue({ ...imported, name: "校招专用" });
+    await renderPage();
 
-    const { container } = render(
-      <AntdApp>
-        <SettingsPage />
-      </AntdApp>,
+    fireEvent.click(screen.getByRole("button", { name: `重命名 ${imported.name}` }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "校招专用" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.renameDataset).toHaveBeenCalledWith(imported.id, "校招专用"),
     );
-    chooseBackupFile(container);
-    await screen.findByText("确认恢复备份");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /确认恢复/ }));
+  it("keeps the rename dialog open when renaming fails", async () => {
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    apiMocks.renameDataset.mockRejectedValue(new Error("名称不能为空"));
+    await renderPage();
 
-    await waitFor(() => expect(apiMocks.applyBackup).toHaveBeenCalledOnce());
-    // 失败时弹窗保留，用户可以重试或取消。
-    expect(screen.getByText("确认恢复备份")).toBeInTheDocument();
-    expect(navigationMocks.reloadPage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: `重命名 ${imported.name}` }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /保\s*存/ }));
+
+    await waitFor(() => expect(apiMocks.renameDataset).toHaveBeenCalledOnce());
+    // 失败时弹窗保留，用户可以改个名字重试。
+    expect(screen.getByText("重命名数据集")).toBeInTheDocument();
+  });
+
+  it("deletes a dataset only after confirmation", async () => {
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    apiMocks.deleteDataset.mockResolvedValue(undefined);
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: `删除数据集 ${imported.name}` }));
+
+    expect(apiMocks.deleteDataset).not.toHaveBeenCalled();
+    const confirm = await waitFor(() =>
+      document.querySelector<HTMLButtonElement>(".ant-popconfirm-buttons .ant-btn-primary")!,
+    );
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(apiMocks.deleteDataset).toHaveBeenCalledWith(imported.id));
+  });
+
+  it("does not offer switching or deleting the active dataset", async () => {
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /切换/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除数据集 主数据" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重命名 主数据" })).toBeDisabled();
   });
 });

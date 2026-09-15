@@ -27,34 +27,13 @@ export interface LLMApiKeyRevealResult {
   api_key: string;
 }
 
-/** 备份包里的元信息。 */
-export interface BackupManifest {
-  format: number;
-  app: string;
-  app_version: string;
-  alembic_revision: string | null;
-  exported_at: string;
-  tables: Record<string, number>;
-  api_key_included: boolean;
-}
-
-export interface BackupDatabaseInfo {
-  alembic_revision: string | null;
-  tables: Record<string, number>;
-}
-
-/** 上传备份包后返回的预览；确认之前不会改动任何数据。 */
-export interface BackupPreview {
-  token: string;
+/** 一份数据集：一整个数据库，可切换。 */
+export interface DatasetInfo {
+  id: string;
+  name: string;
+  source: string;
   size_bytes: number;
-  manifest: BackupManifest;
-  database: BackupDatabaseInfo;
-  current_tables: Record<string, number>;
-}
-
-export interface BackupApplyResult {
-  manifest: BackupManifest;
-  tables: Record<string, number>;
-  previous_backup: string | null;
-  upgraded_backup: string | null;
+  created_at: string | null;
+  is_active: boolean;
+  exists: boolean;
 }

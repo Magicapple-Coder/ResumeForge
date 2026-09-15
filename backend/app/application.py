@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401 - 确保全部模型注册到 Base.metadata
 from .api import (
     assistant,
-    backup,
+    datasets,
     jobs,
     profile,
     resumes,
@@ -18,8 +18,9 @@ from .api import (
     settings as settings_api,
     stats,
 )
+from . import database
 from .config import get_settings
-from .database import Base, engine, ensure_sqlite_columns
+from .database import Base, ensure_sqlite_columns
 from .database_compat import SQLITE_REQUIRED_COLUMNS
 from .database_migrations import is_unversioned_legacy_database, run_database_migrations
 from .middleware import RequestContextMiddleware, RequestIdFilter, get_request_id
@@ -43,12 +44,14 @@ settings = get_settings()
 async def lifespan(_app: FastAPI):
     # 只有早期未版本化数据库需要兼容建表/补列；空库与后续升级均由
     # Alembic 独立管理，避免 create_all 提前创建结构而掩盖 revision。
-    if is_unversioned_legacy_database(engine):
-        Base.metadata.create_all(bind=engine)
-        ensure_sqlite_columns(engine, SQLITE_REQUIRED_COLUMNS)
-    run_database_migrations(engine)
+    # 用属性访问而不是按值导入：切换数据集会重建 engine，按值引用会指向旧库。
+    bind = database.engine
+    if is_unversioned_legacy_database(bind):
+        Base.metadata.create_all(bind=bind)
+        ensure_sqlite_columns(bind, SQLITE_REQUIRED_COLUMNS)
+    run_database_migrations(bind)
     # 上次运行若中途退出，可能留下未应用的备份包与导出产物，它们不会再用到。
-    cleanup_temp_directories(engine)
+    cleanup_temp_directories(bind)
     yield
 
 
@@ -77,7 +80,7 @@ def create_app() -> FastAPI:
         max_body_bytes=settings.max_request_body_mb * 1024 * 1024,
         # 备份上传的体积随用户数据增长，且是流式落盘；其余接口维持原上限。
         larger_body_paths={
-            backup.UPLOAD_PATH: settings.max_backup_upload_mb * 1024 * 1024,
+            datasets.IMPORT_PATH: settings.max_backup_upload_mb * 1024 * 1024,
         },
     )
     app.add_middleware(
@@ -91,7 +94,7 @@ def create_app() -> FastAPI:
         resumes.router,
         profile.router,
         settings_api.router,
-        backup.router,
+        datasets.router,
         search.router,
         stats.router,
         assistant.router,

@@ -3,19 +3,22 @@ import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons";
 import { App, Button, Form, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  applyBackup,
+  activateDataset,
+  deleteDataset,
   deleteLLMConfigRecord,
-  exportBackup,
+  exportDataset,
   getLLMConfig,
+  importDataset,
+  listDatasets,
   listLLMConfigRecords,
+  renameDataset,
   revealLLMApiKey,
   saveLLMConfig,
   saveLLMConfigRecord,
   testLLM,
-  uploadBackup,
 } from "../api/settings";
 import { LLM_PRESETS } from "../config";
-import DataBackupCard from "../components/settings/DataBackupCard";
+import DatasetsCard from "../components/settings/DatasetsCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
 import {
@@ -28,7 +31,7 @@ import {
   sameConfig,
   type SettingsFormValues,
 } from "../components/settings/SettingsConfig";
-import type { BackupPreview, LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
+import type { DatasetInfo, LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
 import { downloadBlob } from "../utils/download";
 import { reloadPage } from "../utils/navigation";
 
@@ -52,52 +55,99 @@ export default function SettingsPage() {
 
   const resetRevealedApiKey = useCallback(() => setApiKeyResetToken((current) => current + 1), []);
 
-  const [backupExporting, setBackupExporting] = useState(false);
-  const [backupUploading, setBackupUploading] = useState(false);
-  const [backupApplying, setBackupApplying] = useState(false);
-  // 上传成功后先展示预览，用户确认之前不会改动任何数据。
-  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
+  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+  const [datasetsLoading, setDatasetsLoading] = useState(true);
+  const [datasetExporting, setDatasetExporting] = useState(false);
+  const [datasetImporting, setDatasetImporting] = useState(false);
+  const [switchingDatasetId, setSwitchingDatasetId] = useState<string | null>(null);
+  const [renamingDatasetId, setRenamingDatasetId] = useState<string | null>(null);
+  const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<DatasetInfo | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
-  const runBackupExport = async () => {
-    if (backupExporting) return;
-    setBackupExporting(true);
+  const loadDatasetList = useCallback(async () => {
+    setDatasetsLoading(true);
     try {
-      const { blob, filename } = await exportBackup();
+      setDatasets(await listDatasets());
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "加载数据集失败");
+    } finally {
+      setDatasetsLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => {
+    void loadDatasetList();
+  }, [loadDatasetList]);
+
+  const runDatasetExport = async (dataset: DatasetInfo) => {
+    if (datasetExporting) return;
+    setDatasetExporting(true);
+    try {
+      const { blob, filename } = await exportDataset(dataset.id);
       downloadBlob(blob, filename);
-      message.success("备份已导出到浏览器的下载目录");
+      message.success(`已导出「${dataset.name}」到浏览器的下载目录`);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "导出备份失败");
+      message.error(err instanceof Error ? err.message : "导出数据集失败");
     } finally {
-      setBackupExporting(false);
+      setDatasetExporting(false);
     }
   };
 
-  const selectBackupFile = async (file: File) => {
-    if (backupUploading) return;
-    setBackupUploading(true);
+  const importDatasetFile = async (file: File, name: string) => {
+    if (datasetImporting) return;
+    setDatasetImporting(true);
     try {
-      setBackupPreview(await uploadBackup(file));
+      const created = await importDataset(file, name);
+      await loadDatasetList();
+      message.success(`已导入数据集「${created.name}」，当前数据未受影响`);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "读取备份文件失败");
+      message.error(err instanceof Error ? err.message : "导入备份失败");
     } finally {
-      setBackupUploading(false);
+      setDatasetImporting(false);
     }
   };
 
-  const confirmBackupRestore = async () => {
-    if (!backupPreview || backupApplying) return;
-    setBackupApplying(true);
+  const switchDataset = async (dataset: DatasetInfo) => {
+    if (switchingDatasetId !== null) return;
+    setSwitchingDatasetId(dataset.id);
     try {
-      await applyBackup(backupPreview.token);
-      setBackupPreview(null);
-      message.success("恢复完成，正在重新加载页面");
-      // 稍等提示可见再整页重载：恢复后所有本地状态都要按新数据重建。
+      await activateDataset(dataset.id);
+      message.success(`已切换到「${dataset.name}」，正在重新加载页面`);
+      // 整页重载：切换后所有本地状态都要按新数据集重建。失败时保留 loading 以便重试。
       window.setTimeout(reloadPage, 800);
     } catch (err) {
-      // 失败时保留弹窗，用户可以重试或取消。
-      message.error(err instanceof Error ? err.message : "恢复备份失败");
+      message.error(err instanceof Error ? err.message : "切换数据集失败");
+      setSwitchingDatasetId(null);
+    }
+  };
+
+  const confirmDatasetRename = async () => {
+    if (!renameTarget || renamingDatasetId !== null) return;
+    setRenamingDatasetId(renameTarget.id);
+    try {
+      await renameDataset(renameTarget.id, renameValue);
+      setRenameTarget(null);
+      await loadDatasetList();
+      message.success("已重命名");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "重命名失败");
     } finally {
-      setBackupApplying(false);
+      setRenamingDatasetId(null);
+    }
+  };
+
+  const removeDataset = async (dataset: DatasetInfo) => {
+    if (deletingDatasetId !== null) return;
+    setDeletingDatasetId(dataset.id);
+    try {
+      await deleteDataset(dataset.id);
+      await loadDatasetList();
+      message.success(`已删除「${dataset.name}」，可在 data/datasets/.trash/ 找回`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "删除数据集失败");
+    } finally {
+      setDeletingDatasetId(null);
     }
   };
 
@@ -361,17 +411,29 @@ export default function SettingsPage() {
         }}
       />
 
-      <DataBackupCard
-        exporting={backupExporting}
-        uploading={backupUploading}
-        applying={backupApplying}
-        preview={backupPreview}
-        onExport={() => void runBackupExport()}
-        onSelectFile={(file) => void selectBackupFile(file)}
-        onConfirmRestore={() => void confirmBackupRestore()}
-        onCancelRestore={() => {
-          if (!backupApplying) setBackupPreview(null);
+      <DatasetsCard
+        datasets={datasets}
+        loading={datasetsLoading}
+        exporting={datasetExporting}
+        importing={datasetImporting}
+        switchingId={switchingDatasetId}
+        renamingId={renamingDatasetId}
+        deletingId={deletingDatasetId}
+        renameTarget={renameTarget}
+        renameValue={renameValue}
+        onExport={(dataset) => void runDatasetExport(dataset)}
+        onImport={(file, name) => void importDatasetFile(file, name)}
+        onActivate={(dataset) => void switchDataset(dataset)}
+        onOpenRename={(dataset) => {
+          setRenameTarget(dataset);
+          setRenameValue(dataset.name);
         }}
+        onRenameValueChange={setRenameValue}
+        onConfirmRename={() => void confirmDatasetRename()}
+        onCancelRename={() => {
+          if (renamingDatasetId === null) setRenameTarget(null);
+        }}
+        onDelete={(dataset) => void removeDataset(dataset)}
       />
     </div>
   );

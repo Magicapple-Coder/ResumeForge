@@ -1,4 +1,8 @@
-"""用户数据备份的导出与恢复测试。"""
+"""备份导出与备份包校验测试。
+
+导入/切换数据集的往返验证在 ``test_datasets.py``；这里只管"导出物是否安全"和
+"坏包是否被挡住"。
+"""
 import json
 import sqlite3
 import zipfile
@@ -15,7 +19,6 @@ from app.services.data_backup import (
     DATABASE_MEMBER,
     MANIFEST_MEMBER,
     BackupError,
-    apply_archive,
     create_backup_archive,
     inspect_archive,
 )
@@ -37,8 +40,7 @@ def _manifest(archive_path: Path) -> dict:
 
 def _config_api_key(archive_path: Path, tmp_path: Path) -> str:
     extracted = tmp_path / "read-config.db"
-    with zipfile.ZipFile(archive_path) as archive:
-        extracted.write_bytes(archive.read(DATABASE_MEMBER))
+    extracted.write_bytes(_database_bytes(archive_path))
     with sqlite3.connect(extracted) as connection:
         row = connection.execute(
             "SELECT value FROM app_setting WHERE key = 'llm_config'"
@@ -107,30 +109,7 @@ def test_export_writes_a_manifest_describing_the_data(db_session, tmp_path):
     assert manifest["alembic_revision"]
 
 
-def test_backup_round_trip_restores_the_exported_data(db_session, tmp_path):
-    db_session.add(Job(title="导出时的岗位", description="职责", requirements="要求"))
-    db_session.commit()
-    archive = _export(tmp_path)
-
-    db_session.add(Job(title="导出之后新增的岗位", description="职责", requirements="要求"))
-    db_session.commit()
-    assert db_session.query(Job).count() == 2
-
-    # 恢复要替换数据库文件，必须先释放本进程持有的连接（真实应用里 apply 端点
-    # 刻意不使用 get_db 就是这个原因）。
-    db_session.close()
-    result = apply_archive(archive, engine, tmp_path / "staging")
-
-    with engine.connect() as connection:
-        titles = {
-            row[0] for row in connection.exec_driver_sql("SELECT title FROM job").fetchall()
-        }
-    assert titles == {"导出时的岗位"}
-    assert result["previous_backup"] is not None
-    assert (Path(engine.url.database).parent / "backups" / result["previous_backup"]).exists()
-
-
-def test_restore_rejects_a_payload_that_is_not_a_zip(tmp_path):
+def test_inspect_rejects_a_payload_that_is_not_a_zip(tmp_path):
     broken = tmp_path / "broken.zip"
     broken.write_bytes(b"this is not a zip archive")
 
@@ -138,7 +117,7 @@ def test_restore_rejects_a_payload_that_is_not_a_zip(tmp_path):
         inspect_archive(broken, engine, tmp_path / "staging")
 
 
-def test_restore_rejects_an_archive_without_a_manifest(db_session, tmp_path):
+def test_inspect_rejects_an_archive_without_a_manifest(db_session, tmp_path):
     stripped = tmp_path / "no-manifest.zip"
     with zipfile.ZipFile(stripped, "w") as archive:
         archive.writestr(DATABASE_MEMBER, b"sqlite")
@@ -147,9 +126,10 @@ def test_restore_rejects_an_archive_without_a_manifest(db_session, tmp_path):
         inspect_archive(stripped, engine, tmp_path / "staging")
 
 
-def test_restore_rejects_a_manifest_that_claims_to_include_api_keys(db_session, tmp_path):
+def test_inspect_rejects_a_manifest_that_claims_to_include_api_keys(db_session, tmp_path):
     archive = _export(tmp_path)
     tampered = tmp_path / "tampered.zip"
+
     with zipfile.ZipFile(archive) as source, zipfile.ZipFile(tampered, "w") as target:
         for name in source.namelist():
             if name == MANIFEST_MEMBER:
@@ -163,29 +143,21 @@ def test_restore_rejects_a_manifest_that_claims_to_include_api_keys(db_session, 
         inspect_archive(tampered, engine, tmp_path / "staging")
 
 
-def test_restore_rejects_a_database_with_unknown_tables(db_session, tmp_path):
+def test_inspect_rejects_a_database_with_unknown_tables(db_session, tmp_path):
     archive = _export(tmp_path)
     foreign = tmp_path / "foreign.db"
     foreign.write_bytes(_database_bytes(archive))
     with sqlite3.connect(foreign) as connection:
         connection.execute("CREATE TABLE cookies (value TEXT)")
 
-    tampered = tmp_path / "foreign.zip"
-    with zipfile.ZipFile(archive) as source, zipfile.ZipFile(tampered, "w") as target:
-        for name in source.namelist():
-            if name == DATABASE_MEMBER:
-                target.writestr(name, foreign.read_bytes())
-            else:
-                target.writestr(name, source.read(name))
+    tampered = _replace_member(archive, DATABASE_MEMBER, foreign.read_bytes(), tmp_path / "foreign.zip")
 
     with pytest.raises(BackupError, match="未识别的数据表"):
         inspect_archive(tampered, engine, tmp_path / "staging")
 
 
-def test_restore_rejects_a_newer_revision(db_session, tmp_path):
+def test_inspect_rejects_a_newer_revision(db_session, tmp_path):
     archive = _export(tmp_path)
-    # 改写库里的 revision 模拟「备份来自更新版本」；一次成型重建压缩包，
-    # 避免出现重名成员。
     database = tmp_path / "newer.db"
     database.write_bytes(_database_bytes(archive))
     with sqlite3.connect(database) as connection:
@@ -193,50 +165,13 @@ def test_restore_rejects_a_newer_revision(db_session, tmp_path):
         connection.execute("DELETE FROM alembic_version")
         connection.execute("INSERT INTO alembic_version VALUES ('9999_from_the_future')")
 
-    newer = tmp_path / "newer.zip"
-    with zipfile.ZipFile(archive) as source, zipfile.ZipFile(newer, "w") as target:
-        for name in source.namelist():
-            if name == DATABASE_MEMBER:
-                target.writestr(name, database.read_bytes())
-            else:
-                target.writestr(name, source.read(name))
+    tampered = _replace_member(archive, DATABASE_MEMBER, database.read_bytes(), tmp_path / "newer.zip")
 
     with pytest.raises(BackupError, match="更新版本"):
-        inspect_archive(newer, engine, tmp_path / "staging")
+        inspect_archive(tampered, engine, tmp_path / "staging")
 
 
-def test_restore_rolls_back_when_the_migration_fails(db_session, tmp_path, monkeypatch):
-    db_session.add(Job(title="恢复前的岗位", description="职责", requirements="要求"))
-    db_session.commit()
-    archive = tmp_path / "old.zip"
-    with zipfile.ZipFile(archive, "w") as target:
-        target.writestr(MANIFEST_MEMBER, json.dumps({
-            "format": BACKUP_FORMAT_VERSION,
-            "app": "ResumeForge",
-            "app_version": "0.2.0",
-            "alembic_revision": None,
-            "exported_at": "2026-01-01T00:00:00+08:00",
-            "tables": {},
-            "api_key_included": False,
-        }))
-        target.writestr(DATABASE_MEMBER, Path(engine.url.database).read_bytes())
-
-    def fail_migration(_bind):
-        raise RuntimeError("迁移失败")
-
-    monkeypatch.setattr("app.services.data_backup.run_database_migrations", fail_migration)
-    db_session.close()
-
-    with pytest.raises(BackupError, match="已回滚"):
-        apply_archive(archive, engine, tmp_path / "staging")
-
-    # 回滚后用户数据仍在，不会停在半升级状态。
-    with engine.connect() as connection:
-        count = connection.exec_driver_sql("SELECT COUNT(*) FROM job").scalar_one()
-    assert count == 1
-
-
-def test_backup_rejects_a_memory_database(tmp_path):
+def test_export_rejects_a_memory_database(tmp_path):
     from sqlalchemy import create_engine
 
     memory_engine = create_engine("sqlite://")
@@ -245,3 +180,11 @@ def test_backup_rejects_a_memory_database(tmp_path):
             create_backup_archive(memory_engine, tmp_path / "staging")
     finally:
         memory_engine.dispose()
+
+
+def _replace_member(archive: Path, member: str, payload: bytes, destination: Path) -> Path:
+    """一次成型重建压缩包，避免出现重名成员。"""
+    with zipfile.ZipFile(archive) as source, zipfile.ZipFile(destination, "w") as target:
+        for name in source.namelist():
+            target.writestr(name, payload if name == member else source.read(name))
+    return destination

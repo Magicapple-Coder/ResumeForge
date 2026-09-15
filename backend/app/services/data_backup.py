@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import secrets
 import shutil
 import sqlite3
@@ -31,7 +30,6 @@ from ..database_migrations import (
     _APPLICATION_TABLES,
     backup_sqlite_database,
     build_alembic_config,
-    run_database_migrations,
 )
 from .settings_service import API_KEY_MASK, _LLM_CONFIG_KEY
 
@@ -305,61 +303,6 @@ def inspect_archive(archive_path: Path, bind: Engine, staging_dir: Path) -> dict
         "manifest": manifest,
         "database": info,
         "current_tables": _table_counts(bind),
-    }
-
-
-def _replace_database(bind: Engine, source: Path, target: Path) -> None:
-    """释放连接池后用 source 原子替换 target。
-
-    ``dispose()`` 会换上一个新的空连接池，引擎对象继续可用；被本进程持有的连接
-    会锁住数据库文件，所以替换前必须先释放。
-    """
-    bind.dispose()
-    os.replace(source, target)
-
-
-def apply_archive(archive_path: Path, bind: Engine, staging_dir: Path) -> dict[str, Any]:
-    """用备份包替换当前数据库。
-
-    替换前先给当前库做一次备份（用户可据此回滚）。若恢复后的库升级失败，会把
-    数据库换回恢复前的内容，而不是把用户留在半升级状态。
-    """
-    preview = inspect_archive(archive_path, bind, staging_dir)
-    target = database_path(bind)
-
-    staging_dir.mkdir(parents=True, exist_ok=True)
-    candidate = staging_dir / f"restore-{datetime.now():%Y%m%d-%H%M%S-%f}.db"
-    extract_database(archive_path, candidate)
-
-    previous = backup_sqlite_database(bind)
-    try:
-        _replace_database(bind, candidate, target)
-    except OSError as exc:
-        candidate.unlink(missing_ok=True)
-        raise BackupError(
-            f"数据库文件正被占用，请关闭其它页面或正在进行的 AI 请求后重试：{exc}",
-            status_code=409,
-        ) from exc
-
-    try:
-        upgraded = run_database_migrations(bind)
-    except Exception as exc:
-        logger.exception("恢复后的数据库升级失败，正在回滚到恢复前的数据")
-        if previous is not None and previous.exists():
-            rollback = target.parent / f"{target.name}.rollback"
-            shutil.copyfile(previous, rollback)
-            try:
-                _replace_database(bind, rollback, target)
-            except OSError:  # pragma: no cover - 回滚也失败时保留原样并上报
-                logger.exception("回滚失败，数据库停留在恢复后的状态")
-        raise BackupError("备份中的数据库无法升级，已回滚到恢复前的数据", status_code=500) from exc
-
-    logger.info("已从备份恢复数据库 path=%s 回滚备份=%s", target, previous or "无")
-    return {
-        "manifest": preview["manifest"],
-        "tables": preview["database"]["tables"],
-        "previous_backup": previous.name if previous else None,
-        "upgraded_backup": upgraded.name if upgraded else None,
     }
 
 
