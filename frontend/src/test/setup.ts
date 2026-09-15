@@ -17,6 +17,19 @@ Object.defineProperty(window, "ResizeObserver", {
   value: ResizeObserverMock,
 });
 
+// jsdom 没有实现对象 URL，而下载与打印都依赖它。
+Object.defineProperty(URL, "createObjectURL", {
+  configurable: true,
+  writable: true,
+  value: () => "blob:jsdom-object-url",
+});
+
+Object.defineProperty(URL, "revokeObjectURL", {
+  configurable: true,
+  writable: true,
+  value: () => undefined,
+});
+
 Object.defineProperty(window, "matchMedia", {
   configurable: true,
   value: (query: string) => ({

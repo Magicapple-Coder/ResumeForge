@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -83,9 +84,13 @@ def backup_sqlite_database(bind: Engine, output_dir: Path | None = None) -> Path
     destination_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     destination = destination_dir / f"{source.stem}-{timestamp}{source.suffix or '.db'}"
-    with sqlite3.connect(source) as source_db, sqlite3.connect(destination) as backup_db:
-        source_db.backup(backup_db)
-    logger.info("数据库升级前备份已创建 path=%s", destination)
+    # sqlite3 连接的上下文管理器只提交事务、不关闭连接；不显式关闭会让备份文件在
+    # Windows 上一直被占用，调用方既删不掉也替换不了它。
+    with closing(sqlite3.connect(source)) as source_db:
+        with closing(sqlite3.connect(destination)) as backup_db:
+            source_db.backup(backup_db)
+            backup_db.commit()
+    logger.info("SQLite 备份已创建 path=%s", destination)
     return destination
 
 def run_database_migrations(bind: Engine) -> Path | None:

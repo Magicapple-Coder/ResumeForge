@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from contextvars import ContextVar
 from uuid import uuid4
 
@@ -30,11 +31,28 @@ class RequestContextMiddleware:
 
     The receive wrapper enforces the limit even when a client omits Content-Length
     and streams chunks, so field-level validation cannot be bypassed with chunking.
+
+    ``larger_body_paths`` raises the ceiling for specific path prefixes whose
+    payloads are legitimately large (the data-backup upload streams straight to
+    disk, so the body size costs no memory); every other path keeps the default.
     """
 
-    def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_body_bytes: int,
+        *,
+        larger_body_paths: Mapping[str, int] | None = None,
+    ) -> None:
         self.app = app
         self.max_body_bytes = max_body_bytes
+        self.larger_body_paths = dict(larger_body_paths or {})
+
+    def _limit_for(self, scope: Scope) -> int:
+        # 精确匹配而不是前缀匹配：前缀会让 /upload-extra 这类兄弟路径也静默拿到
+        # 放宽的额度。归一化结尾斜杠，使 /upload/ 与 /upload 表现一致。
+        path = scope.get("path", "").rstrip("/")
+        return self.larger_body_paths.get(path, self.max_body_bytes)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -44,6 +62,7 @@ class RequestContextMiddleware:
         request_id = self._request_id(scope)
         token = request_id_context.set(request_id)
         response_started = False
+        max_body_bytes = self._limit_for(scope)
 
         async def send_with_request_id(message: Message) -> None:
             nonlocal response_started
@@ -59,8 +78,8 @@ class RequestContextMiddleware:
             await send(message)
 
         try:
-            if self._declared_size(scope) > self.max_body_bytes:
-                await self._send_too_large(send_with_request_id)
+            if self._declared_size(scope) > max_body_bytes:
+                await self._send_too_large(send_with_request_id, max_body_bytes)
                 return
 
             received = 0
@@ -70,7 +89,7 @@ class RequestContextMiddleware:
                 message = await receive()
                 if message["type"] == "http.request":
                     received += len(message.get("body", b""))
-                    if received > self.max_body_bytes:
+                    if received > max_body_bytes:
                         raise _RequestTooLarge
                 return message
 
@@ -79,7 +98,7 @@ class RequestContextMiddleware:
             except _RequestTooLarge:
                 if response_started:
                     raise
-                await self._send_too_large(send_with_request_id)
+                await self._send_too_large(send_with_request_id, max_body_bytes)
         finally:
             request_id_context.reset(token)
 
@@ -99,9 +118,9 @@ class RequestContextMiddleware:
                 return 0
         return 0
 
-    async def _send_too_large(self, send: Send) -> None:
+    async def _send_too_large(self, send: Send, max_body_bytes: int) -> None:
         body = json.dumps(
-            {"detail": f"请求体过大，最大允许 {self.max_body_bytes // (1024 * 1024)} MB"},
+            {"detail": f"请求体过大，最大允许 {max_body_bytes // (1024 * 1024)} MB"},
             ensure_ascii=False,
         ).encode("utf-8")
         await send(

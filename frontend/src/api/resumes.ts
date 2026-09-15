@@ -8,7 +8,7 @@ import type {
   ResumeSuggestions,
   StreamEvent,
 } from "../types";
-import { ApiError, buildQuery, extractError, request } from "./client";
+import { ApiError, buildQuery, extractError, getFilenameFromDisposition, request } from "./client";
 import { consumeSSE } from "./stream";
 
 export type ExportFormat = "json" | "md" | "html";
@@ -102,18 +102,4 @@ export async function exportResume(
 export async function fetchResumeHtml(id: number): Promise<string> {
   const { blob } = await exportResume(id, "html");
   return blob.text();
-}
-
-function getFilenameFromDisposition(header: string | null): string | null {
-  if (!header) return null;
-  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (utf8Match) {
-    try {
-      return decodeURIComponent(utf8Match[1]);
-    } catch {
-      return utf8Match[1];
-    }
-  }
-  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
-  return plainMatch ? plainMatch[1] : null;
 }

@@ -99,3 +99,63 @@ async def test_request_id_replaces_downstream_header():
     assert len(request_ids) == 1
     assert request_ids[0] != b"downstream-value"
     assert len(request_ids[0]) == 32
+
+
+def _scope_at(path, headers=()):
+    scope = _scope(headers)
+    scope["path"] = path
+    scope["raw_path"] = path.encode()
+    return scope
+
+
+def _echo_body_middleware():
+    """返回 (middleware, 收到的请求体字典)，用于断言放行是否生效。"""
+    received = {}
+
+    async def downstream(_scope, receive, send):
+        received["body"] = (await receive()).get("body", b"")
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    middleware = RequestContextMiddleware(
+        downstream,
+        max_body_bytes=4,
+        larger_body_paths={"/api/settings/backup/upload": 64},
+    )
+    return middleware, received
+
+
+async def test_larger_body_path_accepts_a_body_over_the_default_limit():
+    middleware, received = _echo_body_middleware()
+    sent = await _collect_response(
+        middleware,
+        _scope_at("/api/settings/backup/upload", [(b"content-length", b"8")]),
+        [{"type": "http.request", "body": b"12345678", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 200
+    assert received["body"] == b"12345678"
+
+
+async def test_larger_body_path_does_not_apply_to_a_sibling_path():
+    """前缀匹配会让 upload-xxx 这类路径静默继承放宽的额度，必须精确匹配。"""
+    middleware, _received = _echo_body_middleware()
+    sent = await _collect_response(
+        middleware,
+        _scope_at("/api/settings/backup/upload-extra", [(b"content-length", b"8")]),
+        [],
+    )
+
+    assert sent[0]["status"] == 413
+
+
+async def test_larger_body_path_tolerates_a_trailing_slash():
+    middleware, received = _echo_body_middleware()
+    sent = await _collect_response(
+        middleware,
+        _scope_at("/api/settings/backup/upload/", [(b"content-length", b"8")]),
+        [{"type": "http.request", "body": b"12345678", "more_body": False}],
+    )
+
+    assert sent[0]["status"] == 200
+    assert received["body"] == b"12345678"

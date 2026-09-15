@@ -8,12 +8,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401 - 确保全部模型注册到 Base.metadata
-from .api import assistant, jobs, profile, resumes, search, settings as settings_api, stats
+from .api import (
+    assistant,
+    backup,
+    jobs,
+    profile,
+    resumes,
+    search,
+    settings as settings_api,
+    stats,
+)
 from .config import get_settings
 from .database import Base, engine, ensure_sqlite_columns
 from .database_compat import SQLITE_REQUIRED_COLUMNS
 from .database_migrations import is_unversioned_legacy_database, run_database_migrations
 from .middleware import RequestContextMiddleware, RequestIdFilter, get_request_id
+from .services.data_backup import cleanup_temp_directories
 
 
 logging.basicConfig(
@@ -37,6 +47,8 @@ async def lifespan(_app: FastAPI):
         Base.metadata.create_all(bind=engine)
         ensure_sqlite_columns(engine, SQLITE_REQUIRED_COLUMNS)
     run_database_migrations(engine)
+    # 上次运行若中途退出，可能留下未应用的备份包与导出产物，它们不会再用到。
+    cleanup_temp_directories(engine)
     yield
 
 
@@ -63,6 +75,10 @@ def create_app() -> FastAPI:
     app.add_middleware(
         RequestContextMiddleware,
         max_body_bytes=settings.max_request_body_mb * 1024 * 1024,
+        # 备份上传的体积随用户数据增长，且是流式落盘；其余接口维持原上限。
+        larger_body_paths={
+            backup.UPLOAD_PATH: settings.max_backup_upload_mb * 1024 * 1024,
+        },
     )
     app.add_middleware(
         CORSMiddleware,
@@ -75,6 +91,7 @@ def create_app() -> FastAPI:
         resumes.router,
         profile.router,
         settings_api.router,
+        backup.router,
         search.router,
         stats.router,
         assistant.router,

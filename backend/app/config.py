@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     max_request_body_mb: int = Field(default=8, ge=1, le=64)
 
+    # 备份上传单独放宽：恢复用的压缩包体积随用户数据增长，而请求体是流式落盘的，
+    # 内存占用与包大小无关。其余接口仍受 max_request_body_mb 约束。
+    max_backup_upload_mb: int = Field(default=512, ge=1, le=4096)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",

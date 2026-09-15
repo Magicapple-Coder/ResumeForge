@@ -4,16 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "./SettingsPage";
 
 const apiMocks = vi.hoisted(() => ({
+  applyBackup: vi.fn(),
   deleteLLMConfigRecord: vi.fn(),
+  exportBackup: vi.fn(),
   getLLMConfig: vi.fn(),
   listLLMConfigRecords: vi.fn(),
   revealLLMApiKey: vi.fn(),
   saveLLMConfig: vi.fn(),
   saveLLMConfigRecord: vi.fn(),
   testLLM: vi.fn(),
+  uploadBackup: vi.fn(),
 }));
 
 vi.mock("../api/settings", () => apiMocks);
+
+const navigationMocks = vi.hoisted(() => ({ reloadPage: vi.fn() }));
+
+// 整页重载在 jsdom 里不可用，换成可断言的替身。
+vi.mock("../utils/navigation", () => navigationMocks);
 
 const llmConfig = {
   provider: "openai",
@@ -401,5 +409,150 @@ describe("SettingsPage output limit", () => {
         expect.objectContaining({ max_tokens: 8192 }),
       ),
     );
+  });
+});
+
+describe("SettingsPage data backup", () => {
+  const preview = {
+    token: "a".repeat(32),
+    size_bytes: 2048,
+    manifest: {
+      format: 1,
+      app: "ResumeForge",
+      app_version: "0.2.0",
+      alembic_revision: "0006_chat_conversation_flags",
+      exported_at: "2026-09-15T10:00:00+08:00",
+      tables: { job: 7, resume_record: 3 },
+      api_key_included: false,
+    },
+    database: {
+      alembic_revision: "0006_chat_conversation_flags",
+      tables: { job: 7, resume_record: 3 },
+    },
+    current_tables: { job: 7, resume_record: 3 },
+  };
+
+  function chooseBackupFile(container: HTMLElement) {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["zip-bytes"], "backup.zip", { type: "application/zip" });
+    fireEvent.change(input, { target: { files: [file] } });
+    return file;
+  }
+
+  it("downloads the exported archive", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    apiMocks.exportBackup.mockResolvedValue({
+      blob: new Blob(["zip-bytes"], { type: "application/zip" }),
+      filename: "resumeforge-backup-20260915.zip",
+    });
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /导出全部数据/ }));
+
+    await waitFor(() => expect(click).toHaveBeenCalledOnce());
+    click.mockRestore();
+  });
+
+  it("previews the chosen backup before touching any data", async () => {
+    apiMocks.uploadBackup.mockResolvedValue(preview);
+
+    const { container } = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    const file = chooseBackupFile(container);
+
+    await waitFor(() => expect(apiMocks.uploadBackup).toHaveBeenCalledOnce());
+    // antd 会把 File 包一层再交给 beforeUpload，按属性断言更稳。
+    expect((apiMocks.uploadBackup.mock.calls[0][0] as File).name).toBe(file.name);
+    expect(await screen.findByText("确认恢复备份")).toBeInTheDocument();
+    expect(screen.getByText(/备份中不含大模型 API Key/)).toBeInTheDocument();
+    expect(apiMocks.applyBackup).not.toHaveBeenCalled();
+  });
+
+  it("warns when the backup holds less data than the current database", async () => {
+    apiMocks.uploadBackup.mockResolvedValue({
+      ...preview,
+      database: { ...preview.database, tables: { job: 2, resume_record: 3 } },
+    });
+
+    const { container } = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    chooseBackupFile(container);
+
+    expect(await screen.findByText("备份中的数据少于当前数据")).toBeInTheDocument();
+    expect(screen.getByText(/岗位：当前 7 → 备份 2/)).toBeInTheDocument();
+  });
+
+  it("leaves the data untouched when the preview is cancelled", async () => {
+    apiMocks.uploadBackup.mockResolvedValue(preview);
+
+    const { container } = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    chooseBackupFile(container);
+    await screen.findByText("确认恢复备份");
+
+    fireEvent.click(screen.getByRole("button", { name: /取\s*消/ }));
+
+    // 不在这里断言弹窗从 DOM 消失：jsdom 不触发 CSS transition 事件，
+    // antd 的关闭动画不会完成，节点会一直留在文档里。这里只验证真正要紧的
+    // 事实——取消不会触发任何破坏性调用。
+    await waitFor(() => expect(apiMocks.uploadBackup).toHaveBeenCalledOnce());
+    expect(apiMocks.applyBackup).not.toHaveBeenCalled();
+    expect(navigationMocks.reloadPage).not.toHaveBeenCalled();
+  });
+
+  it("applies the backup and reloads once confirmed", async () => {
+    apiMocks.uploadBackup.mockResolvedValue(preview);
+    apiMocks.applyBackup.mockResolvedValue({
+      manifest: preview.manifest,
+      tables: preview.database.tables,
+      previous_backup: "resume_forge-20260915.db",
+      upgraded_backup: null,
+    });
+
+    const { container } = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    chooseBackupFile(container);
+    await screen.findByText("确认恢复备份");
+
+    fireEvent.click(screen.getByRole("button", { name: /确认恢复/ }));
+
+    await waitFor(() => expect(apiMocks.applyBackup).toHaveBeenCalledWith(preview.token));
+    await waitFor(() => expect(navigationMocks.reloadPage).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
+  it("keeps the preview open when applying fails", async () => {
+    apiMocks.uploadBackup.mockResolvedValue(preview);
+    apiMocks.applyBackup.mockRejectedValue(new Error("数据库文件正被占用"));
+
+    const { container } = render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    chooseBackupFile(container);
+    await screen.findByText("确认恢复备份");
+
+    fireEvent.click(screen.getByRole("button", { name: /确认恢复/ }));
+
+    await waitFor(() => expect(apiMocks.applyBackup).toHaveBeenCalledOnce());
+    // 失败时弹窗保留，用户可以重试或取消。
+    expect(screen.getByText("确认恢复备份")).toBeInTheDocument();
+    expect(navigationMocks.reloadPage).not.toHaveBeenCalled();
   });
 });

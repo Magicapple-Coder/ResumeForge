@@ -3,15 +3,19 @@ import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons";
 import { App, Button, Form, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  applyBackup,
   deleteLLMConfigRecord,
+  exportBackup,
   getLLMConfig,
   listLLMConfigRecords,
   revealLLMApiKey,
   saveLLMConfig,
   saveLLMConfigRecord,
   testLLM,
+  uploadBackup,
 } from "../api/settings";
 import { LLM_PRESETS } from "../config";
+import DataBackupCard from "../components/settings/DataBackupCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
 import {
@@ -24,7 +28,9 @@ import {
   sameConfig,
   type SettingsFormValues,
 } from "../components/settings/SettingsConfig";
-import type { LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
+import type { BackupPreview, LLMConfig, LLMConfigRecord, LLMTestResult } from "../types";
+import { downloadBlob } from "../utils/download";
+import { reloadPage } from "../utils/navigation";
 
 export default function SettingsPage() {
   const [form] = Form.useForm<SettingsFormValues>();
@@ -45,6 +51,55 @@ export default function SettingsPage() {
   const [apiKeyResetToken, setApiKeyResetToken] = useState(0);
 
   const resetRevealedApiKey = useCallback(() => setApiKeyResetToken((current) => current + 1), []);
+
+  const [backupExporting, setBackupExporting] = useState(false);
+  const [backupUploading, setBackupUploading] = useState(false);
+  const [backupApplying, setBackupApplying] = useState(false);
+  // 上传成功后先展示预览，用户确认之前不会改动任何数据。
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
+
+  const runBackupExport = async () => {
+    if (backupExporting) return;
+    setBackupExporting(true);
+    try {
+      const { blob, filename } = await exportBackup();
+      downloadBlob(blob, filename);
+      message.success("备份已导出到浏览器的下载目录");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "导出备份失败");
+    } finally {
+      setBackupExporting(false);
+    }
+  };
+
+  const selectBackupFile = async (file: File) => {
+    if (backupUploading) return;
+    setBackupUploading(true);
+    try {
+      setBackupPreview(await uploadBackup(file));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "读取备份文件失败");
+    } finally {
+      setBackupUploading(false);
+    }
+  };
+
+  const confirmBackupRestore = async () => {
+    if (!backupPreview || backupApplying) return;
+    setBackupApplying(true);
+    try {
+      await applyBackup(backupPreview.token);
+      setBackupPreview(null);
+      message.success("恢复完成，正在重新加载页面");
+      // 稍等提示可见再整页重载：恢复后所有本地状态都要按新数据重建。
+      window.setTimeout(reloadPage, 800);
+    } catch (err) {
+      // 失败时保留弹窗，用户可以重试或取消。
+      message.error(err instanceof Error ? err.message : "恢复备份失败");
+    } finally {
+      setBackupApplying(false);
+    }
+  };
 
   // 同时加载当前配置与记录，避免页面先显示一套配置、稍后又跳变到另一套状态。
   useEffect(() => {
@@ -303,6 +358,19 @@ export default function SettingsPage() {
         onSaveRecord={() => void saveRecord()}
         onCloseRecordModal={() => {
           if (!recordSaving) setRecordModalOpen(false);
+        }}
+      />
+
+      <DataBackupCard
+        exporting={backupExporting}
+        uploading={backupUploading}
+        applying={backupApplying}
+        preview={backupPreview}
+        onExport={() => void runBackupExport()}
+        onSelectFile={(file) => void selectBackupFile(file)}
+        onConfirmRestore={() => void confirmBackupRestore()}
+        onCancelRestore={() => {
+          if (!backupApplying) setBackupPreview(null);
         }}
       />
     </div>

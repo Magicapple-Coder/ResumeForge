@@ -35,6 +35,21 @@ export async function extractError(resp: Response): Promise<string> {
   return `请求失败（HTTP ${resp.status}）`;
 }
 
+/** 从 Content-Disposition 里解析文件名，兼容 RFC 5987 的 filename* 形式 */
+export function getFilenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch ? plainMatch[1] : null;
+}
+
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");

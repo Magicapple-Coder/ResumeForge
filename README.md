@@ -166,7 +166,12 @@ GitHub Actions 会在 Linux 与 Windows 上重复执行关键检查；依赖审�
 
 ## 🔄 更新而不丢失数据
 
-岗位、资料、简历、助手历史和模型配置默认保存在 `backend/data/resume_forge.db`；可选的服务端环境变量保存在 `backend/.env`。两者都被 Git 忽略，正常 `git pull --ff-only` 不会覆盖。每次更新前请先关闭服务并运行数据库备份脚本，再拉取代码、重新安装依赖并重启：
+岗位、资料、简历、助手历史和模型配置默认保存在 `backend/data/resume_forge.db`；可选的服务端环境变量保存在 `backend/.env`。两者都被 Git 忽略，正常 `git pull --ff-only` 不会覆盖。
+
+更新前最省事的方式是在 **设置 → 数据备份与恢复** 里点 **导出全部数据**：照片、经历参考文件和助手
+附件都存在这个数据库里，所以导出的 zip 就是完整的一份，换电脑时在新装的 ResumeForge 里用
+**导入备份** 还原即可（备份不含大模型 API Key，恢复后需要重填）。也可以继续使用下面的命令行脚本
+备份，再拉取代码、重新安装依赖并重启：
 
 ```powershell
 cd backend
