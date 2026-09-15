@@ -255,6 +255,9 @@ describe("SettingsPage API key reveal", () => {
     );
 
     const input = await screen.findByLabelText("API Key（选填）");
+    // 必须先等掩码值写进表单：配置加载完成前点击显示按钮，掩码值为空，
+    // 组件会直接切到明文态而不发起读取请求，这里也就永远等不到错误提示。
+    await waitFor(() => expect(input).toHaveValue("********"));
     fireEvent.click(passwordToggle());
 
     expect(await screen.findByText("读取密钥失败")).toBeInTheDocument();
