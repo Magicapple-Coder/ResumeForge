@@ -13,6 +13,11 @@ function Get-NodeVersion {
         # Some winget portable executables report -1 through PowerShell 5.1's
         # LASTEXITCODE even though the process succeeds. A strict version parse
         # is a more reliable probe than that shell-specific exit-code artifact.
+        # The bogus code is then cleared so it cannot leak to callers: wrappers
+        # that run the launcher through `-Command` (GitHub Actions, for one)
+        # exit with whatever is left here, reporting a successful launch as a
+        # failure. Whether this probe succeeded is decided by the parse below.
+        $global:LASTEXITCODE = 0
         if ([string]::IsNullOrWhiteSpace($versionText)) {
             return $null
         }
@@ -47,6 +52,9 @@ function Test-NodeRuntimeCandidate {
 
     try {
         $npmVersionText = & $NpmPath --version 2> $null | Select-Object -First 1
+        # Same reason as the Node.js probe above: npm is only asked for its
+        # version here, so its exit code must not decide how callers see the run.
+        $global:LASTEXITCODE = 0
         return -not [string]::IsNullOrWhiteSpace($npmVersionText) -and
             $npmVersionText.Trim() -match "^\d+\.\d+\.\d+"
     }
