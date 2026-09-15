@@ -184,7 +184,7 @@ cd frontend
 npm ci
 ```
 
-后端启动时会自动运行 Alembic 数据库迁移，并在有待迁移数据时创建 `backend/data/backups/` 备份。不要使用 `git clean -fdx`，也不要删除整个项目目录后直接覆盖；完整的升级、压缩包更新和回滚步骤见 [docs/upgrading.md](docs/upgrading.md)。
+后端启动时会自动运行 Alembic 数据库迁移，并在有待迁移数据时创建 `backend/data/backups/` 备份；应用内的恢复操作也会先往该目录写一份。**这个目录不会自动清理**，每个文件都是一份完整的数据库副本，确认不再需要回滚后建议手动删除较早的文件。不要使用 `git clean -fdx`，也不要删除整个项目目录后直接覆盖；完整的升级、压缩包更新和回滚步骤见 [docs/upgrading.md](docs/upgrading.md)。
 
 ## ❓ FAQ
 
