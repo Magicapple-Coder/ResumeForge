@@ -65,9 +65,13 @@ function Save-ProcessRecord {
         [string]$Path
     )
 
+    # started_at_unix is the value used to detect PID reuse: it survives a JSON
+    # round trip intact, whereas an ISO string comes back from ConvertFrom-Json as
+    # a DateTime that has lost its UTC designator. started_at stays for humans.
     @{
-        process_id = $Process.Id
-        started_at = $Process.StartTime.ToUniversalTime().ToString("o")
+        process_id      = $Process.Id
+        started_at_unix = [DateTimeOffset]::new($Process.StartTime).ToUnixTimeSeconds()
+        started_at      = $Process.StartTime.ToUniversalTime().ToString("o")
     } | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding utf8
 }
 

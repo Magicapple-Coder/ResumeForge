@@ -28,13 +28,25 @@ function Stop-RecordedProcess {
         }
 
         $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($record.process_id)" -ErrorAction Stop
-        $startedAt = $runningProcess.StartTime.ToUniversalTime()
-        $recordedAt = [DateTime]::Parse($record.started_at).ToUniversalTime()
 
         # PID reuse is possible. Require a matching start time and command before
         # terminating a process tree, so this script cannot stop an unrelated app.
-        if ([Math]::Abs(($startedAt - $recordedAt).TotalSeconds) -gt 2 -or
-            $process.CommandLine -notmatch $CommandPattern) {
+        # The start time is compared through Unix seconds: parsing the record's ISO
+        # string loses its UTC designator, which made every comparison off by the
+        # local UTC offset and stopped this script from ever matching a live app.
+        $startTimeMatches = $true
+        if ($null -ne $record.started_at_unix) {
+            $recordedAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$record.started_at_unix).UtcDateTime
+            $startedAt = $runningProcess.StartTime.ToUniversalTime()
+            $startTimeMatches = [Math]::Abs(($startedAt - $recordedAt).TotalSeconds) -le 2
+        }
+        else {
+            # Records written before the Unix timestamp was introduced cannot be
+            # verified; the command line below still has to match.
+            Write-Warning "The $Name record predates start-time verification; matching on the command line only."
+        }
+
+        if (-not $startTimeMatches -or $process.CommandLine -notmatch $CommandPattern) {
             Write-Warning "Did not stop ${Name}: its record does not match the current process."
             return
         }
