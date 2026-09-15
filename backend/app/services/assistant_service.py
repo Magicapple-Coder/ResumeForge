@@ -1,14 +1,23 @@
-"""AI 助手的附件校验与模型消息组装纯函数。"""
+"""AI 助手的附件校验与模型消息组装纯函数。
 
-import base64
-import binascii
-import re
+附件校验的原语在 ``services/attachments.py``：图片那一支与岗位/资料识别接口共用，
+只能有一份实现。这里保留助手特有的文本附件处理与消息组装。
+"""
+
 from typing import Any
 
 from ..schemas.assistant import AssistantAttachmentInput
+from .attachments import (
+    IMAGE_MIME_BY_EXTENSION,
+    MAX_ATTACHMENT_BYTES,
+    MAX_ATTACHMENTS_TOTAL_BYTES,
+    attachment_extension,
+    declared_mime,
+    decode_data_url,
+    normalize_image_attachment,
+    safe_attachment_name,
+)
 
-MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024
-MAX_ATTACHMENTS_TOTAL_BYTES = 5 * 1024 * 1024
 MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_CHARS = 40_000
 MAX_CURRENT_ATTACHMENT_TEXT_CHARS = 40_000
@@ -19,65 +28,20 @@ _TEXT_TYPES = {
     ".json": ("application/json", {"application/json", "text/json", "text/plain"}),
     ".csv": ("text/csv", {"text/csv", "application/csv", "text/plain"}),
 }
-_IMAGE_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
-_DATA_URL_RE = re.compile(r"^data:([^;,]+);base64,(.+)$", re.IGNORECASE | re.DOTALL)
-
-
-def _safe_name(value: str) -> str:
-    name = re.split(r"[/\\]", value.strip())[-1]
-    if name in {"", ".", ".."}:
-        raise ValueError("附件名称无效")
-    return name
-
-
-def _extension(name: str) -> str:
-    dot = name.rfind(".")
-    return name[dot:].casefold() if dot >= 0 else ""
-
-
-def _declared_mime(value: str) -> str:
-    return value.split(";", 1)[0].strip().casefold()
-
-
-def _decode_data_url(data: str) -> tuple[str, bytes]:
-    match = _DATA_URL_RE.fullmatch(data)
-    if match is None:
-        raise ValueError("附件 data URL 必须使用 base64 编码")
-    try:
-        decoded = base64.b64decode(match.group(2), validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise ValueError("附件不是有效的 base64 数据") from exc
-    return match.group(1).casefold(), decoded
-
-
-def _image_signature_matches(mime_type: str, data: bytes) -> bool:
-    checks = {
-        "image/jpeg": data.startswith(b"\xff\xd8\xff"),
-        "image/png": data.startswith(b"\x89PNG\r\n\x1a\n"),
-        "image/webp": len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP",
-        "image/gif": data.startswith((b"GIF87a", b"GIF89a")),
-    }
-    return checks.get(mime_type, False)
 
 
 def normalize_attachment(attachment: AssistantAttachmentInput) -> dict[str, Any]:
     """验证一个浏览器附件并转换为适合本地历史存储的结构。"""
-    name = _safe_name(attachment.name)
-    extension = _extension(name)
-    declared_mime = _declared_mime(attachment.mime_type)
+    name = safe_attachment_name(attachment.name)
+    extension = attachment_extension(name)
+    declared = declared_mime(attachment.mime_type)
 
     if extension in _TEXT_TYPES:
         canonical_mime, allowed_mimes = _TEXT_TYPES[extension]
-        if declared_mime and declared_mime not in allowed_mimes:
+        if declared and declared not in allowed_mimes:
             raise ValueError(f"附件“{name}”的类型与扩展名不一致")
         if attachment.data.casefold().startswith("data:"):
-            data_mime, raw = _decode_data_url(attachment.data)
+            data_mime, raw = decode_data_url(attachment.data)
             if data_mime not in allowed_mimes:
                 raise ValueError(f"附件“{name}”的 data URL 类型不受支持")
         else:
@@ -90,32 +54,16 @@ def normalize_attachment(attachment: AssistantAttachmentInput) -> dict[str, Any]
             raise ValueError(f"附件“{name}”必须使用 UTF-8 编码") from exc
         return {
             "name": name,
-            "mime_type": declared_mime or canonical_mime,
+            "mime_type": declared or canonical_mime,
             "kind": "text",
             "size_bytes": len(raw),
             "text": text,
             "data_url": "",
         }
 
-    if extension in _IMAGE_TYPES:
-        canonical_mime = _IMAGE_TYPES[extension]
-        if declared_mime and declared_mime != canonical_mime:
-            raise ValueError(f"附件“{name}”的类型与扩展名不一致")
-        data_mime, raw = _decode_data_url(attachment.data)
-        if data_mime != canonical_mime:
-            raise ValueError(f"附件“{name}”的 data URL 类型与扩展名不一致")
-        if len(raw) > MAX_ATTACHMENT_BYTES:
-            raise ValueError(f"附件“{name}”不能超过 2 MB")
-        if not _image_signature_matches(canonical_mime, raw):
-            raise ValueError(f"附件“{name}”的内容与声明图片格式不一致")
-        return {
-            "name": name,
-            "mime_type": canonical_mime,
-            "kind": "image",
-            "size_bytes": len(raw),
-            "text": "",
-            "data_url": f"data:{canonical_mime};base64,{base64.b64encode(raw).decode('ascii')}",
-        }
+    if extension in IMAGE_MIME_BY_EXTENSION:
+        # 图片分支与识别接口共用实现，避免两处白名单/魔数校验各自漂移。
+        return normalize_image_attachment(attachment.name, attachment.mime_type, attachment.data)
 
     raise ValueError("仅支持 UTF-8 的 txt/md/json/csv 文件及 png/jpeg/webp/gif 图片")
 

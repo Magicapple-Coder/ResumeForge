@@ -26,6 +26,12 @@ export default function ProfilePage() {
     profileText,
     profileTextWarnings,
     profileTextParsing,
+    profileTextRecognized,
+    images,
+    imagesReading,
+    addImages,
+    removeImage,
+    onPasteImages,
     photo,
     submit,
     cancelEditing,
@@ -117,7 +123,13 @@ export default function ProfilePage() {
         text={profileText}
         warnings={profileTextWarnings}
         parsing={profileTextParsing}
+        recognizedText={profileTextRecognized}
+        images={images}
+        imagesReading={imagesReading}
         onTextChange={handleProfileTextChange}
+        onAddImages={(files) => void addImages(files)}
+        onRemoveImage={removeImage}
+        onPasteImages={onPasteImages}
         onClose={closeProfileTextModal}
         onParse={() => void parseProfile()}
       />

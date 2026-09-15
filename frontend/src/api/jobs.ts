@@ -1,5 +1,6 @@
 /** 岗位相关接口。 */
 import type {
+  ExtractionImageInput,
   Job,
   JobBatchDeleteResult,
   JobBatchStatusResult,
@@ -35,7 +36,10 @@ export function updateJob(id: number, payload: Partial<JobPayload>): Promise<Job
   return request(`/jobs/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 }
 
-export function parseJobText(payload: { text: string }): Promise<ParsedJobDraft> {
+export function parseJobText(payload: {
+  text: string;
+  images?: ExtractionImageInput[];
+}): Promise<ParsedJobDraft> {
   return request("/jobs/parse-text", { method: "POST", body: JSON.stringify(payload) });
 }
 

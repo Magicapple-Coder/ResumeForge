@@ -49,12 +49,9 @@ describe("JobFormModal", () => {
       </AntdApp>,
     );
 
-    fireEvent.change(
-      screen.getByPlaceholderText("粘贴职位名称、地点、职位描述、职位要求等完整招聘信息"),
-      {
-        target: { value: "门店店长招聘信息" },
-      },
-    );
+    fireEvent.change(screen.getByLabelText("完整招聘信息"), {
+      target: { value: "门店店长招聘信息" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
 
     await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
@@ -88,5 +85,121 @@ describe("JobFormModal", () => {
     await act(async () => pending.resolve());
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+const DRAFT = {
+  title: "门店店长",
+  company: "示例超市",
+  location: "成都市武侯区",
+  salary: "",
+  job_type: "社招",
+  description: "负责门店经营",
+  requirements: "三年零售经验",
+  additional_info: "",
+  source_url: "",
+  posted_at: "",
+  status: "开放中",
+  warnings: ["识别结果来自截图，请对照截图核对后再保存。"],
+  recognition_source: "ai" as const,
+  recognized_text: "门店店长 示例超市 成都市武侯区",
+};
+
+function renderModal(onSaved = vi.fn()) {
+  const view = render(
+    <AntdApp>
+      <JobFormModal open initial={null} onClose={vi.fn()} onSaved={onSaved} />
+    </AntdApp>,
+  );
+  return view;
+}
+
+function pasteScreenshot(textarea: HTMLElement, name = "shot.png") {
+  const file = new File([new Uint8Array(64)], name, { type: "image/png" });
+  fireEvent.paste(textarea, {
+    clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] },
+  });
+}
+
+describe("JobFormModal 图片识别", () => {
+  it("sends pasted screenshots even when the textarea is empty", async () => {
+    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    renderModal();
+    const textarea = screen.getByLabelText("完整招聘信息");
+
+    pasteScreenshot(textarea);
+    await waitFor(() => expect(screen.getByAltText("shot.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    const payload = apiMocks.parseJobText.mock.calls[0][0];
+    expect(payload.text).toBe("");
+    expect(payload.images).toHaveLength(1);
+    expect(payload.images[0].name).toBe("shot.png");
+    expect(payload.images[0].data.startsWith("data:image/png;base64,")).toBe(true);
+    // 只有图片、没有文本时不该再提示"请先粘贴招聘信息"
+    expect(screen.queryByText("请先粘贴招聘信息或添加截图")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("职位名称")).toHaveValue("门店店长");
+  });
+
+  it("accepts an image chosen from the file picker and lets it be removed", async () => {
+    renderModal();
+    // 弹窗内容被 portal 到 body，不能用 render 的 container 查
+    const input = document.querySelector(
+      'input[type="file"][aria-label="添加截图"]',
+    ) as HTMLInputElement;
+    const file = new File([new Uint8Array(64)], "picker.png", { type: "image/png" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByAltText("picker.png")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "移除截图 picker.png" }));
+    await waitFor(() => expect(screen.queryByAltText("picker.png")).not.toBeInTheDocument());
+  });
+
+  it("shows the text the model read and never submits it as a job field", async () => {
+    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.createJob.mockResolvedValue({});
+    renderModal();
+    const textarea = screen.getByLabelText("完整招聘信息");
+
+    pasteScreenshot(textarea);
+    await waitFor(() => expect(screen.getByAltText("shot.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    // 折叠块默认收起，点开后能看到模型抄录的原文
+    const toggle = await screen.findByText("查看模型识别到的原文（请对照截图核对）");
+    fireEvent.click(toggle);
+    expect(await screen.findByText("门店店长 示例超市 成都市武侯区")).toBeInTheDocument();
+
+    // 按 role 找按钮：警告条里也有"保存"两个字
+    fireEvent.click(screen.getByRole("button", { name: /保\s*存/ }));
+
+    await waitFor(() => expect(apiMocks.createJob).toHaveBeenCalledOnce());
+    expect(apiMocks.createJob.mock.calls[0][0]).not.toHaveProperty("recognized_text");
+    expect(JSON.stringify(apiMocks.createJob.mock.calls[0][0])).not.toContain("门店店长 示例超市");
+  });
+
+  it("keeps typed values when recognition comes back empty", async () => {
+    apiMocks.parseJobText.mockResolvedValue({
+      ...DRAFT,
+      title: "",
+      company: "",
+      location: "",
+      description: "",
+      requirements: "",
+      recognized_text: "",
+      recognition_source: "local" as const,
+    });
+    renderModal();
+    fireEvent.change(screen.getByLabelText("职位名称"), { target: { value: "我手填的岗位" } });
+
+    pasteScreenshot(screen.getByLabelText("完整招聘信息"));
+    await waitFor(() => expect(screen.getByAltText("shot.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    // 什么都没识别出来时不能把用户已经填好的内容抹掉
+    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText("职位名称")).toHaveValue("我手填的岗位");
   });
 });

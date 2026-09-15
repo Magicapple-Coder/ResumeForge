@@ -3,9 +3,10 @@ from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..models.job import JOB_STATUSES
+from .extraction import MAX_EXTRACTION_IMAGE_COUNT, MAX_RECOGNIZED_TEXT_CHARS, ExtractionImageInput
 
 
 MAX_SQLITE_INTEGER = 2**63 - 1
@@ -117,14 +118,18 @@ class JobBatchDeleteResult(BaseModel):
 
 
 class JobTextParseRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=50_000)
+    """粘贴的招聘文本，或若干张招聘信息截图（两者可同时给）。"""
 
-    @field_validator("text")
-    @classmethod
-    def text_must_contain_content(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("招聘信息不能为空")
-        return value
+    text: str = Field(default="", max_length=50_000)
+    images: list[ExtractionImageInput] = Field(
+        default_factory=list, max_length=MAX_EXTRACTION_IMAGE_COUNT
+    )
+
+    @model_validator(mode="after")
+    def require_text_or_images(self) -> "JobTextParseRequest":
+        if not self.text.strip() and not self.images:
+            raise ValueError("请粘贴招聘信息，或上传至少一张截图")
+        return self
 
 
 class JobTextParseResult(BaseModel):
@@ -143,6 +148,8 @@ class JobTextParseResult(BaseModel):
     status: str = Field(default="开放中", max_length=16)
     warnings: list[str] = Field(default_factory=list)
     recognition_source: Literal["ai", "local"] = "local"
+    # 图片识别时模型逐字抄录的原文，供用户对照截图核对；纯文本识别为空。
+    recognized_text: str = Field(default="", max_length=MAX_RECOGNIZED_TEXT_CHARS)
 
 
 class JobOut(JobCreate):

@@ -3,6 +3,9 @@ import { FileSearchOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Form, Input, Modal, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { createJob, parseJobText, updateJob } from "../api/jobs";
+import { useImageStaging } from "../hooks/useImageStaging";
+import ImageStagingField from "./ImageStagingField";
+import RecognizedTextField from "./RecognizedTextField";
 import type { Job, JobPayload } from "../types";
 
 interface Props {
@@ -16,6 +19,19 @@ interface Props {
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
 
+/** 判断"这次识别到底有没有读出东西"时只看这些字段：job_type 与 status 恒有默认值。 */
+const RECOGNIZED_CONTENT_FIELDS = [
+  "title",
+  "company",
+  "location",
+  "salary",
+  "description",
+  "requirements",
+  "additional_info",
+  "source_url",
+  "posted_at",
+] as const;
+
 export default function JobFormModal({ open, initial, onClose, onSaved }: Props) {
   const [form] = Form.useForm<JobPayload>();
   const { message } = App.useApp();
@@ -23,6 +39,8 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
   const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [recognizedText, setRecognizedText] = useState("");
+  const { images, reading, addFiles, removeImage, clear, onPaste } = useImageStaging();
   const parseRequestId = useRef(0);
   const submittingRef = useRef(false);
   const isEdit = !!initial;
@@ -40,14 +58,16 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       form.resetFields();
       setRawText("");
       setParseWarnings([]);
+      setRecognizedText("");
+      clear();
     }
-  }, [open, initial, form]);
+  }, [open, initial, form, clear]);
 
   const parseImport = async () => {
     if (submittingRef.current) return;
     const value = rawText.trim();
-    if (!value) {
-      message.warning("请先粘贴招聘信息");
+    if (!value && images.length === 0) {
+      message.warning("请先粘贴招聘信息或添加截图");
       return;
     }
 
@@ -57,18 +77,31 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       const {
         warnings,
         recognition_source: recognitionSource,
+        recognized_text: recognized,
         ...draft
-      } = await parseJobText({ text: value });
+      } = await parseJobText({
+        text: value,
+        images: images.map(({ name, mime_type, data }) => ({ name, mime_type, data })),
+      });
       if (requestId !== parseRequestId.current) return;
-      // 空字段也要回填，避免连续识别两段文本时残留上一段的薪资、链接等数据。
-      form.setFieldsValue(draft);
+      // 没有任何识别内容时（图片识别失败时的本地草稿就是这样）不要回填：无条件写入
+      // 会把用户已经手填的标题、公司一起抹掉。判定只看**内容字段**——job_type 和
+      // status 永远有默认值，把它们算进去会让这个判断恒为真。有内容时仍然全量覆盖，
+      // 避免残留上一次识别的字段。
+      if (RECOGNIZED_CONTENT_FIELDS.some((field) => draft[field].trim())) {
+        form.setFieldsValue(draft);
+      } else {
+        message.warning("没有识别到内容，表单未改动");
+      }
       setParseWarnings(warnings);
+      setRecognizedText(recognized ?? "");
       message.success(
         `${recognitionSource === "ai" ? "已使用 AI" : "已使用本地规则"}识别并填入表单，请核对后再保存`,
       );
     } catch (err) {
       if (requestId !== parseRequestId.current) return;
       setParseWarnings([]);
+      setRecognizedText("");
       message.error(err instanceof Error ? err.message : "识别招聘信息失败");
     } finally {
       if (requestId === parseRequestId.current) setParsing(false);
@@ -143,14 +176,23 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                 aria-label="完整招聘信息"
                 value={rawText}
                 disabled={parsing}
+                onPaste={onPaste}
                 onChange={(event) => {
                   setRawText(event.target.value);
                   setParseWarnings([]);
+                  setRecognizedText("");
                 }}
-                placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息"
+                placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图"
                 style={{ height: 220, resize: "none" }}
               />
             </Form.Item>
+            <ImageStagingField
+              images={images}
+              reading={reading}
+              disabled={parsing}
+              onAddFiles={(files) => void addFiles(files)}
+              onRemove={removeImage}
+            />
             <div
               style={{
                 display: "flex",
@@ -168,6 +210,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                 识别并填充
               </Button>
             </div>
+            <RecognizedTextField text={recognizedText} />
             {parseWarnings.length > 0 && (
               <Alert
                 type="warning"

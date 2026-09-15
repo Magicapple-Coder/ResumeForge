@@ -1,5 +1,5 @@
 /** 个人资料接口。 */
-import type { Profile, ProfileTextParseResult } from "../types";
+import type { ExtractionImageInput, Profile, ProfileTextParseResult } from "../types";
 import { request } from "./client";
 
 export function getProfile(): Promise<Profile> {
@@ -10,6 +10,9 @@ export function saveProfile(profile: Omit<Profile, "id" | "updated_at">): Promis
   return request("/profile", { method: "PUT", body: JSON.stringify(profile) });
 }
 
-export function parseProfileText(payload: { text: string }): Promise<ProfileTextParseResult> {
+export function parseProfileText(payload: {
+  text: string;
+  images?: ExtractionImageInput[];
+}): Promise<ProfileTextParseResult> {
   return request("/profile/parse-text", { method: "POST", body: JSON.stringify(payload) });
 }

@@ -9,6 +9,7 @@ export * from "./profile";
 export * from "./job";
 export * from "./resume";
 export * from "./assistant";
+export * from "./attachment";
 export * from "./skill";
 export * from "./settings";
 export * from "./search";

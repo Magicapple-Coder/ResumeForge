@@ -1,0 +1,45 @@
+/* 岗位 / 个人资料识别的图片暂存区与识别原文展示。 */
+
+.recognition-images {
+  margin-bottom: 16px;
+}
+
+.recognition-images-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recognition-images-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.recognition-image-item {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.recognition-image-item .recognition-image {
+  width: 96px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.recognized-text {
+  margin-bottom: 8px;
+}
+
+.recognized-text .recognized-text-body {
+  max-height: 220px;
+  margin-bottom: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+}

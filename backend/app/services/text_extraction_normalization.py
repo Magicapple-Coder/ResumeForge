@@ -4,6 +4,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
+from ..schemas.extraction import MAX_RECOGNIZED_TEXT_CHARS
 from ..schemas.job import JobTextParseResult
 from ..schemas.profile import ProfileTextParseResult
 from .llm.base import LLMError
@@ -118,6 +119,23 @@ def _is_grounded(value: str, source_text: str) -> bool:
     return bool(normalized) and normalized in _normalized(source_text)
 
 
+def transcription_of(data: dict[str, Any]) -> str:
+    """取出模型抄录的图片文字，兼容包在 profile 键里的写法。"""
+    value: Any = data.get("transcription")
+    if value is None and isinstance(data.get("profile"), dict):
+        value = data["profile"].get("transcription")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _recognized_text(data: dict[str, Any]) -> str:
+    """回传给用户核对的抄录内容。
+
+    直接切片而不是走 ``_bounded_text``：后者会置 ``truncated``，让一条只用于展示的
+    辅助信息触发"字段已截断"的警告，而那警告说的是保存字段。
+    """
+    return transcription_of(data)[:MAX_RECOGNIZED_TEXT_CHARS]
+
+
 def _pick_grounded(value: str, fallback: str, source_text: str) -> str:
     if value and _is_grounded(value, source_text):
         return value
@@ -158,7 +176,12 @@ def normalize_job_result(
     if state["truncated"]:
         warnings.append("部分 AI 识别字段超过可保存长度，已截断，请核对。")
     return JobTextParseResult.model_validate(
-        {**values, "warnings": warnings, "recognition_source": "ai"}
+        {
+            **values,
+            "warnings": warnings,
+            "recognition_source": "ai",
+            "recognized_text": _recognized_text(data),
+        }
     )
 
 
@@ -282,5 +305,6 @@ def normalize_profile_result(
             "section_order": list(local.section_order),
             "warnings": warnings,
             "recognition_source": "ai",
+            "recognized_text": _recognized_text(data),
         }
     )

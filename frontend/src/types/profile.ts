@@ -89,4 +89,6 @@ export interface Profile {
 export type ProfileTextParseResult = Omit<Profile, "id" | "updated_at"> & {
   warnings: string[];
   recognition_source: "ai" | "local";
+  /** 图片识别时模型逐字抄录的原文；纯文本识别为空。 */
+  recognized_text: string;
 };

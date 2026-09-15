@@ -42,6 +42,8 @@ export interface JobPayload {
 export interface ParsedJobDraft extends Required<Omit<JobPayload, "note" | "favorite">> {
   warnings: string[];
   recognition_source: "ai" | "local";
+  /** 图片识别时模型逐字抄录的原文；纯文本识别为空。 */
+  recognized_text: string;
 }
 
 export interface JobBatchStatusResult {

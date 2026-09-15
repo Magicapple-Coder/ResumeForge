@@ -27,10 +27,14 @@ from ..services.job_text_parser import parse_job_text
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.settings_service import get_llm_config
+from ..services.attachments import image_data_urls, normalize_extraction_images
 from ..services.text_extraction import (
+    ai_failed_warning,
+    attach_image_review_warning,
     extract_job_text,
     llm_is_configured,
     mark_local_fallback,
+    no_model_warning,
 )
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -100,21 +104,30 @@ def create_job(payload: JobCreate, db: Session = Depends(get_db)):
 
 @router.post("/parse-text", response_model=JobTextParseResult)
 async def parse_job_text_draft(payload: JobTextParseRequest, db: Session = Depends(get_db)):
-    """把用户粘贴的招聘信息解析为草稿；确认后仍由新增岗位接口入库。"""
+    """把用户粘贴的招聘信息（或截图）解析为草稿；确认后仍由新增岗位接口入库。"""
+    try:
+        images = normalize_extraction_images(payload.images)
+    except ValueError as exc:
+        # 在路由层抛：只有 HTTPException 的 detail 会被前端原样展示。
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    image_urls = image_data_urls(images)
+    has_images = bool(image_urls)
+
     local_draft = parse_job_text(payload.text)
     config = get_llm_config(db)
     if not llm_is_configured(config):
-        return mark_local_fallback(local_draft, "未配置大模型，已使用本地规则识别，请核对后保存。")
+        return mark_local_fallback(local_draft, no_model_warning(has_images))
     provider = create_provider(config)
     db.close()
     try:
-        return await extract_job_text(provider, payload.text, local_draft)
+        result = await extract_job_text(provider, payload.text, local_draft, image_urls)
     except LLMError as exc:
         logger.warning("岗位文本 AI 识别失败，已回退本地解析：%s", exc)
-        return mark_local_fallback(local_draft, "AI 识别暂不可用，已使用本地规则识别，请核对后保存。")
+        return mark_local_fallback(local_draft, ai_failed_warning(has_images, str(exc)))
     except Exception:  # noqa: BLE001 - 外部模型异常不能阻断草稿解析
         logger.exception("岗位文本 AI 识别发生内部错误，已回退本地解析")
-        return mark_local_fallback(local_draft, "AI 识别暂不可用，已使用本地规则识别，请核对后保存。")
+        return mark_local_fallback(local_draft, ai_failed_warning(has_images))
+    return attach_image_review_warning(result, has_images)
 
 
 @router.post("/batch-status", response_model=JobBatchStatusResult)

@@ -5,6 +5,7 @@ import type { UploadProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { getProfile, parseProfileText, saveProfile } from "../../api/profile";
 import { normalizeSectionOrder } from "../../components/profile/ProfileSectionConfig";
+import { useImageStaging } from "../../hooks/useImageStaging";
 import type { Profile } from "../../types";
 import { mergeParsedProfileValues } from "../../utils/profileText";
 import { useProfileSectionReorder } from "./useProfileSectionReorder";
@@ -58,6 +59,15 @@ export function useProfilePage() {
   const [profileText, setProfileText] = useState("");
   const [profileTextWarnings, setProfileTextWarnings] = useState<string[]>([]);
   const [profileTextParsing, setProfileTextParsing] = useState(false);
+  const [profileTextRecognized, setProfileTextRecognized] = useState("");
+  const {
+    images,
+    reading: imagesReading,
+    addFiles: addImages,
+    removeImage,
+    clear: clearImages,
+    onPaste: onPasteImages,
+  } = useImageStaging();
   const photoReadId = useRef(0);
   const profileTextRequestId = useRef(0);
   const savedValues = useRef<ProfileFormValues | null>(null);
@@ -107,6 +117,7 @@ export function useProfilePage() {
   const closeProfileTextModal = () => {
     profileTextRequestId.current += 1;
     setProfileTextParsing(false);
+    clearImages();
     setProfileTextOpen(false);
   };
 
@@ -177,26 +188,31 @@ export function useProfilePage() {
 
   const parseProfile = async () => {
     const text = profileText.trim();
-    if (!text) {
-      message.warning("请先粘贴个人资料");
+    if (!text && images.length === 0) {
+      message.warning("请先粘贴个人资料或添加截图");
       return;
     }
     setProfileTextParsing(true);
     const requestId = ++profileTextRequestId.current;
     try {
-      const parsed = await parseProfileText({ text });
+      const parsed = await parseProfileText({
+        text,
+        images: images.map(({ name, mime_type, data }) => ({ name, mime_type, data })),
+      });
       if (requestId !== profileTextRequestId.current) return;
       const { warnings, recognition_source: recognitionSource } = parsed;
       const currentValues = form.getFieldsValue(true) as Partial<ProfileFormValues>;
       const merged = mergeParsedProfileValues(currentValues as ProfileFormValues, parsed);
       form.setFieldsValue({ ...merged, section_order: sectionOrder });
       setProfileTextWarnings(warnings);
+      setProfileTextRecognized(parsed.recognized_text ?? "");
       message.success(
         `${recognitionSource === "ai" ? "已使用 AI" : "已使用本地规则"}识别并填入资料，请核对后保存`,
       );
     } catch (err) {
       if (requestId !== profileTextRequestId.current) return;
       setProfileTextWarnings([]);
+      setProfileTextRecognized("");
       message.error(err instanceof Error ? err.message : "识别个人资料失败");
     } finally {
       if (requestId === profileTextRequestId.current) setProfileTextParsing(false);
@@ -206,12 +222,15 @@ export function useProfilePage() {
   const openProfileTextModal = () => {
     setProfileText("");
     setProfileTextWarnings([]);
+    setProfileTextRecognized("");
+    clearImages();
     setProfileTextOpen(true);
   };
 
   const handleProfileTextChange = (value: string) => {
     setProfileText(value);
     setProfileTextWarnings([]);
+    setProfileTextRecognized("");
   };
 
   return {
@@ -228,6 +247,12 @@ export function useProfilePage() {
     profileText,
     profileTextWarnings,
     profileTextParsing,
+    profileTextRecognized,
+    images,
+    imagesReading,
+    addImages,
+    removeImage,
+    onPasteImages,
     photo,
     submit,
     cancelEditing,

@@ -4,39 +4,22 @@ import { createElement } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { AssistantAttachmentInput } from "../../types";
 
-export const MAX_ATTACHMENT_COUNT = 4;
-export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
-export const MAX_TOTAL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
-
-export const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  gif: "image/gif",
-};
-const TEXT_MIMES_BY_EXTENSION: Record<string, ReadonlySet<string>> = {
-  txt: new Set(["text/plain"]),
-  md: new Set(["text/markdown", "text/plain"]),
-  json: new Set(["application/json", "text/json", "text/plain"]),
-  csv: new Set(["text/csv", "application/csv", "text/plain"]),
-};
-const TEXT_CANONICAL_MIME_BY_EXTENSION: Record<string, string> = {
-  txt: "text/plain",
-  md: "text/markdown",
-  json: "application/json",
-  csv: "text/csv",
-};
+// 附件限值、类型判定与读取和岗位/资料识别共用，实现在 utils 里；这里保留
+// 原有导入路径，助手侧调用方不必跟着改。
+export {
+  IMAGE_MIME_BY_EXTENSION,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_COUNT,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  classifyAttachment,
+  readAsDataUrl,
+  type AttachmentClassification,
+} from "../../utils/attachments";
 
 export interface PendingAttachment extends AssistantAttachmentInput {
   id: number;
   size: number;
   kind: "text" | "image";
-}
-
-interface AttachmentClassification {
-  kind: "text" | "image";
-  mimeType: string;
 }
 
 export function safeExternalUrl(value: string): string | null {
@@ -101,37 +84,6 @@ export function isMarkdownTableDivider(line: string, columnCount: number): boole
 
 export function positiveId(value: string | null): number | undefined {
   return value && /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : undefined;
-}
-
-function fileExtension(name: string): string {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
-export function classifyAttachment(file: File): AttachmentClassification | null {
-  const extension = fileExtension(file.name);
-  const declaredMime = file.type.split(";", 1)[0].trim().toLowerCase();
-  const imageMime = IMAGE_MIME_BY_EXTENSION[extension];
-  if (imageMime) {
-    return declaredMime === imageMime ? { kind: "image", mimeType: imageMime } : null;
-  }
-
-  const textMimes = TEXT_MIMES_BY_EXTENSION[extension];
-  if (textMimes && (!declaredMime || textMimes.has(declaredMime))) {
-    return {
-      kind: "text",
-      mimeType: declaredMime || TEXT_CANONICAL_MIME_BY_EXTENSION[extension],
-    };
-  }
-  return null;
-}
-
-export function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("读取附件失败"));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function attachmentStyle(distance: number): CSSProperties {
