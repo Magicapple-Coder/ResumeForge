@@ -134,3 +134,24 @@ npm audit --registry=https://registry.npmjs.org
 - 版本号有 5 处必须一致：`backend/app/config.py` 的 `app_version`、`frontend/package.json` 的 `version`、`frontend/package-lock.json` 的根包版本、`README.md` 顶部的"当前版本"、`CHANGELOG.md` 的最新条目。`backend/tests/test_version_consistency.py` 会在 CI 上校验前四处。
 - 本仓库**从未使用过 `BREAKING CHANGE` 标记**，所以自动判定实际上只能产出 minor/patch。改动涉及破坏性变更（如删除已发布功能、不可逆的数据库迁移）时，必须显式传 `--bump major`；脚本检测到新增 migration 会提醒复核，但不会替你判断。
 - 脚本**只改文件，不 commit、不打 tag**——发布由用户发起（见"工作流程"第 6 条）。跑完按它打印的命令手动提交与打标签。
+
+## 提交署名（硬性要求）
+
+**提交的 author 与 committer 必须是维护者本人的身份**，提交信息里**不得出现任何 AI 或工具的署名**。无论你用的是 Claude、CodeBuddy、Copilot、Cursor 还是别的助手，都适用：
+
+- 不写 `Co-Authored-By:`、`Generated-by:`、`Assisted-by:`、`Signed-off-by:` 之类的尾注，也不要写 AI 服务商的邮箱；
+- 需要说明某个改动由 AI 协助完成时，把这句话放进**正文的普通句子**里——写成 trailer 就会被 GitHub 解析成署名；
+- 不为此修改 `git config user.name` / `user.email`。
+
+原因不在署名本身，而在它的副作用：GitHub 会把 `Co-Authored-By` 里的邮箱解析成账号，把这些提交算作该账号的贡献，于是**公开仓库的贡献者列表里会出现 AI 账号**。本仓库在 2026-09-16 因此出现过 `claude` 贡献者，清理方式是改写历史（**仅维护者明确授权后执行**）：
+
+```powershell
+git bundle create runtime\git-history-backup-<时间戳>.bundle --all        # 先备份全部历史
+pip install git-filter-repo
+git filter-repo --replace-message <表达式文件> --force                     # 文件内容：regex:(?m)^Co-Authored-By: .*<要删的邮箱>[ \t]*\r?\n?==>
+git remote add origin https://github.com/Magicapple-Coder/ResumeForge.git  # filter-repo 会移除 origin
+git push --force-with-lease origin main
+git push --force origin <受影响的标签>
+```
+
+改写会改变受影响提交及其所有后代的 hash，已 clone/fork 的人需要重新拉取；改写前创建的 `runtime/git-history-backup-*.bundle` 是唯一的本地回退点，**不要删除它**。

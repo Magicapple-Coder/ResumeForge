@@ -43,6 +43,7 @@ npm run dev
 - SQLite 表结构变更必须新增 `backend/migrations/versions/` 下的 Alembic revision，并有旧数据保留、重复启动和备份测试；不要修改已经发布的 revision。
 - 不要在日志、异常消息、测试夹具或截图中泄露 API Key 和个人资料。
 - 不做与当前问题无关的全量重构或格式化，避免掩盖行为变化。
+- 提交信息里不要添加 AI 或工具的联合署名（`Co-Authored-By:` 等）：GitHub 会把它解析成账号并计入贡献者列表。原因与清理方式见 [AGENTS.md](AGENTS.md) 的「提交署名」。
 
 ## 提交前检查
 
