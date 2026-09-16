@@ -3,10 +3,12 @@
 import json
 
 import pytest
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from pydantic import ValidationError
 
 from app.schemas.resume import GenerateOptions
 from app.services.resume_generator import (
+    PROMPTS_DIR,
     ResumeGenerator,
     build_profile_prompt_data,
     check_consistency,
@@ -206,3 +208,29 @@ def test_check_consistency_detects_hallucination():
 def test_split_helpers():
     assert split_lines("第一行\n第二行\n\n第三行\n") == ["第一行", "第二行", "第三行"]
     assert split_commas("Python, FastAPI、React") == ["Python", "FastAPI", "React"]
+
+
+def _render_system_prompt(job: bool) -> str:
+    """直接渲染系统提示模板：这两种口径都只存在于文本里，没有别的抓手。"""
+    env = Environment(
+        loader=FileSystemLoader(PROMPTS_DIR), undefined=StrictUndefined, autoescape=False
+    )
+    return env.get_template("resume_generate_system.md").render(job=job)
+
+
+def test_system_prompt_pins_writing_rules_for_both_modes():
+    """措辞、篇幅与分模块要求是「资深 HR 版」口径，改模板时最容易整段丢。"""
+    job_prompt = _render_system_prompt(job=True)
+    general_prompt = _render_system_prompt(job=False)
+
+    for prompt in (job_prompt, general_prompt):
+        assert "分模块呈现要求" in prompt
+        assert "不得升格职责范围" in prompt
+        assert "30 字以内" in prompt
+        assert "不超过 6 条" in prompt
+
+    # 关键词融入只属于岗位模式：通用简历没有 JD，写进去只会让模型硬塞关键词。
+    assert "JD 的高频关键词" in job_prompt
+    assert "JD 的高频关键词" not in general_prompt
+    # 通用简历的"全貌优先"是既有约束，不能被这次改口径顺手改掉。
+    assert "全貌优先" in general_prompt
