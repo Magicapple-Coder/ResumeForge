@@ -7,10 +7,13 @@ import type { AssistantAttachmentInput } from "../../types";
 // 附件限值、类型判定与读取和岗位/资料识别共用，实现在 utils 里；这里保留
 // 原有导入路径，助手侧调用方不必跟着改。
 export {
+  ASSISTANT_ACCEPT,
+  DOCUMENT_MIME_BY_EXTENSION,
   IMAGE_MIME_BY_EXTENSION,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_COUNT,
   MAX_TOTAL_ATTACHMENT_BYTES,
+  canPreviewImage,
   classifyAttachment,
   readAsDataUrl,
   type AttachmentClassification,
@@ -19,7 +22,8 @@ export {
 export interface PendingAttachment extends AssistantAttachmentInput {
   id: number;
   size: number;
-  kind: "text" | "image";
+  /** document：pdf/docx，正文由后端在本机提取后再进模型。 */
+  kind: "text" | "image" | "document";
 }
 
 /** 页头放不下太多技能名字，超过这个数量就收成"等 N 个"。 */

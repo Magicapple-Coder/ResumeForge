@@ -7,7 +7,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .extraction import MAX_EXTRACTION_IMAGE_COUNT, MAX_RECOGNIZED_TEXT_CHARS, ExtractionImageInput
+from .extraction import (
+    MAX_EXTRACTION_DOCUMENT_COUNT,
+    MAX_EXTRACTION_IMAGE_COUNT,
+    MAX_RECOGNIZED_TEXT_CHARS,
+    ExtractionDocumentInput,
+    ExtractionImageInput,
+)
 
 
 MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
@@ -209,17 +215,20 @@ class ProfileUpdate(BaseModel):
 
 
 class ProfileTextParseRequest(BaseModel):
-    """粘贴的个人资料文本，或若干张资料截图（两者可同时给）。"""
+    """粘贴的个人资料文本、资料截图或文档（可同时给）。"""
 
     text: str = Field(default="", max_length=MAX_PROFILE_TEXT_CHARS)
     images: list[ExtractionImageInput] = Field(
         default_factory=list, max_length=MAX_EXTRACTION_IMAGE_COUNT
     )
+    documents: list[ExtractionDocumentInput] = Field(
+        default_factory=list, max_length=MAX_EXTRACTION_DOCUMENT_COUNT
+    )
 
     @model_validator(mode="after")
     def require_text_or_images(self) -> "ProfileTextParseRequest":
-        if not self.text.strip() and not self.images:
-            raise ValueError("请粘贴个人资料，或上传至少一张截图")
+        if not self.text.strip() and not self.images and not self.documents:
+            raise ValueError("请粘贴个人资料，或上传至少一张截图或一份文档")
         return self
 
 

@@ -3,8 +3,8 @@ import { FileSearchOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Form, Input, Modal, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { createJob, parseJobText, updateJob } from "../api/jobs";
-import { useImageStaging } from "../hooks/useImageStaging";
-import ImageStagingField from "./ImageStagingField";
+import { attachmentInputs, useRecognitionFiles } from "../hooks/useRecognitionFiles";
+import RecognitionFileField from "./RecognitionFileField";
 import RecognitionOutcome from "./RecognitionOutcome";
 import type { Job, JobPayload, RecognitionSource } from "../types";
 
@@ -41,7 +41,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [recognizedText, setRecognizedText] = useState("");
   const [recognitionSource, setRecognitionSource] = useState<RecognitionSource | null>(null);
-  const { images, reading, addFiles, removeImage, clear, onPaste } = useImageStaging();
+  const { files, reading, addFiles, removeFile, clear, onPaste } = useRecognitionFiles();
   const parseRequestId = useRef(0);
   const submittingRef = useRef(false);
   const isEdit = !!initial;
@@ -68,8 +68,8 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
   const parseImport = async () => {
     if (submittingRef.current) return;
     const value = rawText.trim();
-    if (!value && images.length === 0) {
-      message.warning("请先粘贴招聘信息或添加截图");
+    if (!value && files.length === 0) {
+      message.warning("请先粘贴招聘信息，或添加截图、上传文档");
       return;
     }
 
@@ -83,7 +83,8 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
         ...draft
       } = await parseJobText({
         text: value,
-        images: images.map(({ name, mime_type, data }) => ({ name, mime_type, data })),
+        images: attachmentInputs(files, "image"),
+        documents: attachmentInputs(files, "document"),
       });
       if (requestId !== parseRequestId.current) return;
       // 没有任何识别内容时（图片识别失败时的本地草稿就是这样）不要回填：无条件写入
@@ -189,16 +190,16 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                   setRecognizedText("");
                   setRecognitionSource(null);
                 }}
-                placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图"
+                placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图（也可以上传 pdf/docx 招聘文档）"
                 style={{ height: 220, resize: "none" }}
               />
             </Form.Item>
-            <ImageStagingField
-              images={images}
+            <RecognitionFileField
+              files={files}
               reading={reading}
               disabled={parsing}
-              onAddFiles={(files) => void addFiles(files)}
-              onRemove={removeImage}
+              onAddFiles={(incoming) => void addFiles(incoming)}
+              onRemove={removeFile}
             />
             <div
               style={{

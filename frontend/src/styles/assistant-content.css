@@ -145,6 +145,13 @@
   vertical-align: bottom;
 }
 
+/* 文档提取的说明（例如内容过长只取了前一部分）：占满一行，跟在附件标签下面。 */
+.assistant-attachment-notes {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: #d48806;
+}
+
 .assistant-sources.ant-collapse {
   display: block;
   margin-top: 10px;

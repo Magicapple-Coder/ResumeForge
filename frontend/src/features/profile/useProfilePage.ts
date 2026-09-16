@@ -5,7 +5,7 @@ import type { UploadProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { getProfile, parseProfileText, saveProfile } from "../../api/profile";
 import { normalizeSectionOrder } from "../../components/profile/ProfileSectionConfig";
-import { useImageStaging } from "../../hooks/useImageStaging";
+import { attachmentInputs, useRecognitionFiles } from "../../hooks/useRecognitionFiles";
 import type { Profile, RecognitionSource } from "../../types";
 import { mergeParsedProfileValues } from "../../utils/profileText";
 import { useProfileSectionReorder } from "./useProfileSectionReorder";
@@ -62,13 +62,13 @@ export function useProfilePage() {
   const [profileTextRecognized, setProfileTextRecognized] = useState("");
   const [profileTextSource, setProfileTextSource] = useState<RecognitionSource | null>(null);
   const {
-    images,
-    reading: imagesReading,
-    addFiles: addImages,
-    removeImage,
-    clear: clearImages,
-    onPaste: onPasteImages,
-  } = useImageStaging();
+    files,
+    reading: filesReading,
+    addFiles,
+    removeFile,
+    clear: clearFiles,
+    onPaste: onPasteFiles,
+  } = useRecognitionFiles();
   const photoReadId = useRef(0);
   const profileTextRequestId = useRef(0);
   const savedValues = useRef<ProfileFormValues | null>(null);
@@ -118,7 +118,7 @@ export function useProfilePage() {
   const closeProfileTextModal = () => {
     profileTextRequestId.current += 1;
     setProfileTextParsing(false);
-    clearImages();
+    clearFiles();
     setProfileTextOpen(false);
   };
 
@@ -189,8 +189,8 @@ export function useProfilePage() {
 
   const parseProfile = async () => {
     const text = profileText.trim();
-    if (!text && images.length === 0) {
-      message.warning("请先粘贴个人资料或添加截图");
+    if (!text && files.length === 0) {
+      message.warning("请先粘贴个人资料，或添加截图、上传文档");
       return;
     }
     setProfileTextParsing(true);
@@ -198,7 +198,8 @@ export function useProfilePage() {
     try {
       const parsed = await parseProfileText({
         text,
-        images: images.map(({ name, mime_type, data }) => ({ name, mime_type, data })),
+        images: attachmentInputs(files, "image"),
+        documents: attachmentInputs(files, "document"),
       });
       if (requestId !== profileTextRequestId.current) return;
       const { warnings, recognition_source: recognitionSource } = parsed;
@@ -228,7 +229,7 @@ export function useProfilePage() {
     setProfileTextWarnings([]);
     setProfileTextRecognized("");
     setProfileTextSource(null);
-    clearImages();
+    clearFiles();
     setProfileTextOpen(true);
   };
 
@@ -256,11 +257,11 @@ export function useProfilePage() {
     profileTextParsing,
     profileTextRecognized,
     profileTextSource,
-    images,
-    imagesReading,
-    addImages,
-    removeImage,
-    onPasteImages,
+    files,
+    filesReading,
+    addFiles,
+    removeFile,
+    onPasteFiles,
     photo,
     submit,
     cancelEditing,

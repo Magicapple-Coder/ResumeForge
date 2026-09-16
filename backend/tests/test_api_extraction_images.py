@@ -110,13 +110,24 @@ def test_images_only_request_reaches_the_model_as_image_parts(client, monkeypatc
 
 
 @pytest.mark.parametrize("path", [JOB_PATH, PROFILE_PATH])
+def test_mislabeled_but_real_image_is_accepted(client, path):
+    """名字说 PNG、内容其实是 JPEG：不该拦在这，识别流程照常进行。"""
+    response = client.post(
+        path,
+        json={"text": "", "images": [_image(raw=b"\xff\xd8\xff\xe0JFIF-jpeg-bytes")]},
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("path", [JOB_PATH, PROFILE_PATH])
 def test_forged_and_unsupported_images_are_rejected(client, path):
     _configure_model(client)
 
-    # 声明是 PNG，内容不是
+    # 声明是 PNG，内容既不是 PNG 也认不出真实格式
     forged = client.post(path, json={"text": "", "images": [_image(raw=b"not a png at all")]})
     assert forged.status_code == 422
-    assert "声明图片格式不一致" in forged.json()["detail"]
+    assert "内容与扩展名不符" in forged.json()["detail"]
 
     # 文本附件不能混进识别接口
     text_file = client.post(

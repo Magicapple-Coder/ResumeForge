@@ -12,10 +12,13 @@ export interface AssistantConversationBrief {
 export interface AssistantAttachment {
   name: string;
   mime_type: string;
-  kind: "text" | "image";
+  /** document：pdf/docx，正文已由后端在本机提取进 `text`。 */
+  kind: "text" | "image" | "document";
   size_bytes: number;
   text: string;
   data_url: string;
+  /** 提取过程中的说明（例如内容过长只取了前一部分）。 */
+  notes: string[];
 }
 
 export interface AssistantSource {

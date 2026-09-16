@@ -69,8 +69,8 @@ export function useAssistantAttachments({ mountedRef }: Options) {
       attachmentReadsRef.current += 1;
       setAttachmentReads((current) => current + 1);
       try {
-        const data =
-          classification.kind === "image" ? await readAsDataUrl(file) : await file.text();
+        // 只有纯文本文件读成字符串；图片和文档都必须带原始字节（文档在后端提取文字）。
+        const data = classification.kind === "text" ? await file.text() : await readAsDataUrl(file);
         if (!mountedRef.current) return;
         const attachment: PendingAttachment = {
           id: ++attachmentSequenceRef.current,

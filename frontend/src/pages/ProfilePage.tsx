@@ -36,11 +36,11 @@ export default function ProfilePage() {
     profileTextParsing,
     profileTextRecognized,
     profileTextSource,
-    images,
-    imagesReading,
-    addImages,
-    removeImage,
-    onPasteImages,
+    files,
+    filesReading,
+    addFiles,
+    removeFile,
+    onPasteFiles,
     photo,
     submit,
     cancelEditing,
@@ -172,12 +172,12 @@ export default function ProfilePage() {
         parsing={profileTextParsing}
         recognizedText={profileTextRecognized}
         recognitionSource={profileTextSource}
-        images={images}
-        imagesReading={imagesReading}
+        files={files}
+        filesReading={filesReading}
         onTextChange={handleProfileTextChange}
-        onAddImages={(files) => void addImages(files)}
-        onRemoveImage={removeImage}
-        onPasteImages={onPasteImages}
+        onAddFiles={(incoming) => void addFiles(incoming)}
+        onRemoveFile={removeFile}
+        onPasteFiles={onPasteFiles}
         onClose={closeProfileTextModal}
         onParse={() => void parseProfile()}
       />

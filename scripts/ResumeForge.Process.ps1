@@ -69,7 +69,7 @@ function Start-ResumeForge {
             $probePreference = $ErrorActionPreference
             $ErrorActionPreference = "Continue"
             try {
-                & $pythonExecutable -c "import fastapi, uvicorn, sqlalchemy, alembic, pydantic, pydantic_settings" 2>&1 | Out-Null
+                & $pythonExecutable -c "import fastapi, uvicorn, sqlalchemy, alembic, pydantic, pydantic_settings, PIL, pypdf" 2>&1 | Out-Null
                 $dependencyProbeExitCode = $LASTEXITCODE
             }
             finally {

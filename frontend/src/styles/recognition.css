@@ -1,33 +1,45 @@
-/* 岗位 / 个人资料识别的图片暂存区与识别原文展示。 */
+/* 岗位 / 个人资料识别的文件暂存区与识别原文展示。 */
 
-.recognition-images {
+.recognition-files {
   margin-bottom: 16px;
 }
 
-.recognition-images-actions {
+.recognition-files-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.recognition-images-list {
+.recognition-files-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 
-.recognition-image-item {
+/* 第一行固定成缩略图的高度：截图与文档混排时，删除按钮才会落在同一条线上。
+   只有标签的条目（文档、浏览器渲染不了的 TIFF）在这个高度里垂直居中。 */
+.recognition-file-item {
   display: grid;
+  grid-template-rows: 72px auto;
   justify-items: center;
+  align-items: center;
   gap: 2px;
 }
 
-.recognition-image-item .recognition-image {
+.recognition-file-item .recognition-image {
   width: 96px;
   height: 72px;
   object-fit: contain;
+}
+
+/* 文档的标签可能很长（文件名来自用户），截断后靠悬停查看全名。 */
+.recognition-file-tag {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 识别来源标记与"识别到的原文"合为一块：来源要一直看得见，原文默认收起。 */

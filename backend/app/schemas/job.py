@@ -6,7 +6,13 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..models.job import JOB_STATUSES
-from .extraction import MAX_EXTRACTION_IMAGE_COUNT, MAX_RECOGNIZED_TEXT_CHARS, ExtractionImageInput
+from .extraction import (
+    MAX_EXTRACTION_DOCUMENT_COUNT,
+    MAX_EXTRACTION_IMAGE_COUNT,
+    MAX_RECOGNIZED_TEXT_CHARS,
+    ExtractionDocumentInput,
+    ExtractionImageInput,
+)
 
 
 MAX_SQLITE_INTEGER = 2**63 - 1
@@ -118,17 +124,20 @@ class JobBatchDeleteResult(BaseModel):
 
 
 class JobTextParseRequest(BaseModel):
-    """粘贴的招聘文本，或若干张招聘信息截图（两者可同时给）。"""
+    """粘贴的招聘文本、招聘信息截图或招聘文档（可同时给）。"""
 
     text: str = Field(default="", max_length=50_000)
     images: list[ExtractionImageInput] = Field(
         default_factory=list, max_length=MAX_EXTRACTION_IMAGE_COUNT
     )
+    documents: list[ExtractionDocumentInput] = Field(
+        default_factory=list, max_length=MAX_EXTRACTION_DOCUMENT_COUNT
+    )
 
     @model_validator(mode="after")
     def require_text_or_images(self) -> "JobTextParseRequest":
-        if not self.text.strip() and not self.images:
-            raise ValueError("请粘贴招聘信息，或上传至少一张截图")
+        if not self.text.strip() and not self.images and not self.documents:
+            raise ValueError("请粘贴招聘信息，或上传至少一张截图或一份文档")
         return self
 
 

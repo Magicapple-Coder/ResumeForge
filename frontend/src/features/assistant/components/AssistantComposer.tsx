@@ -1,8 +1,30 @@
 /** 求职助手消息输入、上下文选择和附件预览。 */
 
-import { PaperClipOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import {
+  FilePdfOutlined,
+  FileTextOutlined,
+  FileWordOutlined,
+  PaperClipOutlined,
+  SendOutlined,
+  StopOutlined,
+} from "@ant-design/icons";
 import { Alert, Button, Image, Input, Select, Switch, Tag, Tooltip, Upload } from "antd";
-import { MAX_ATTACHMENT_COUNT, type PendingAttachment } from "../assistantUtils";
+import {
+  ASSISTANT_ACCEPT,
+  MAX_ATTACHMENT_COUNT,
+  canPreviewImage,
+  type PendingAttachment,
+} from "../assistantUtils";
+
+/** 文档按扩展名区分图标：pdf 和 docx 混在一串标签里时，图标比文件名更好认。 */
+function attachmentIcon(attachment: PendingAttachment) {
+  if (attachment.kind !== "document") return <FileTextOutlined />;
+  return attachment.name.toLowerCase().endsWith(".pdf") ? (
+    <FilePdfOutlined />
+  ) : (
+    <FileWordOutlined />
+  );
+}
 
 interface Props {
   content: string;
@@ -77,7 +99,7 @@ export default function AssistantComposer({
       {attachments.length > 0 && (
         <div className="assistant-composer-attachments">
           {attachments.map((attachment) =>
-            attachment.kind === "image" ? (
+            attachment.kind === "image" && canPreviewImage(attachment.mime_type) ? (
               <div key={attachment.id} className="assistant-composer-image-item">
                 <Image
                   src={attachment.data}
@@ -99,6 +121,7 @@ export default function AssistantComposer({
               <Tooltip key={attachment.id} title={attachment.name}>
                 <Tag
                   className="assistant-attachment-tag"
+                  icon={attachmentIcon(attachment)}
                   closable={!sending}
                   onClose={() => onRemoveAttachment(attachment.id)}
                 >
@@ -125,7 +148,7 @@ export default function AssistantComposer({
       <div className="assistant-composer-actions">
         <div className="assistant-composer-utility">
           <Upload
-            accept=".txt,.md,.json,.csv,image/png,image/jpeg,image/webp,image/gif"
+            accept={ASSISTANT_ACCEPT}
             multiple
             showUploadList={false}
             disabled={sending || attachmentReads > 0 || attachments.length >= MAX_ATTACHMENT_COUNT}
@@ -134,7 +157,7 @@ export default function AssistantComposer({
               return Upload.LIST_IGNORE;
             }}
           >
-            <Tooltip title="添加文本或图片附件">
+            <Tooltip title="添加文本、图片或文档附件">
               <Button
                 aria-label="添加附件"
                 icon={<PaperClipOutlined />}

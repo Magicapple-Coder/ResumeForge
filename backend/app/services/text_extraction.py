@@ -185,26 +185,38 @@ def mark_local_fallback(result: Any, reason: str) -> Any:
     return result.model_copy(update={"warnings": warnings, "recognition_source": "local"})
 
 
-# 下面两条文案按"有没有图片"分流：图片识别本地规则完全帮不上忙，含糊的
-# "已使用本地规则识别"会让用户以为表单里的空结果是识别不出来的正常现象。
+# 下面的文案按"用户给了什么"分流：图片识别本地规则完全帮不上忙，文档则相反——文字
+# 已经在本机提取出来，本地规则照样能解析。含糊地说一句"已使用本地规则识别"，会让用户
+# 以为表单里的空结果是识别不出来的正常现象。
 _NO_MODEL_TEXT = "未配置大模型，已使用本地规则识别，请核对后保存。"
-_NO_MODEL_IMAGES = (
-    "未配置大模型，图片识别无法进行（本地规则读不了图片）；已使用本地规则处理文本，请核对后保存。"
-)
+_NO_MODEL_IMAGE_NOTE = "图片识别无法进行（本地规则读不了图片）；"
+_NO_MODEL_DOCUMENT_NOTE = "文档文字已在本机提取；"
+
 _AI_FAILED_TEXT = "AI 识别暂不可用，已使用本地规则识别，请核对后保存。"
-_AI_FAILED_IMAGES = (
-    "图片识别失败，可能是当前模型不支持图片输入（需要多模态模型）；已使用本地规则处理文本，请核对后保存。"
-)
+_AI_FAILED_IMAGE_NOTE = "图片识别失败，可能是当前模型不支持图片输入（需要多模态模型）；"
+_AI_FAILED_DOCUMENT_NOTE = "文档文字已在本机提取；"
 
 
-def no_model_warning(has_images: bool) -> str:
-    return _NO_MODEL_IMAGES if has_images else _NO_MODEL_TEXT
+def no_model_warning(has_images: bool, has_documents: bool = False) -> str:
+    notes = ""
+    if has_images:
+        notes += _NO_MODEL_IMAGE_NOTE
+    if has_documents:
+        notes += _NO_MODEL_DOCUMENT_NOTE
+    if not notes:
+        return _NO_MODEL_TEXT
+    return f"未配置大模型，{notes}已使用本地规则识别，请核对后保存。"
 
 
-def ai_failed_warning(has_images: bool, detail: str = "") -> str:
-    if not has_images:
+def ai_failed_warning(has_images: bool, detail: str = "", has_documents: bool = False) -> str:
+    notes = ""
+    if has_images:
+        notes += _AI_FAILED_IMAGE_NOTE
+    if has_documents:
+        notes += _AI_FAILED_DOCUMENT_NOTE
+    if not notes:
         return _AI_FAILED_TEXT
-    message = _AI_FAILED_IMAGES
+    message = f"{notes}已使用本地规则识别，请核对后保存。"
     if detail:
         message = f"{message}（{detail}）"
     return message
@@ -218,3 +230,23 @@ def attach_image_review_warning(result: Any, has_images: bool) -> Any:
         dict.fromkeys([*getattr(result, "warnings", []), "识别结果来自截图，请对照截图核对后再保存。"])
     )
     return result.model_copy(update={"warnings": warnings})
+
+
+def attach_warnings(result: Any, extra: Sequence[str]) -> Any:
+    """把识别过程中的说明补进结果的 warnings（保持顺序并去重）。"""
+    filtered = [item for item in extra if item]
+    if not filtered:
+        return result
+    warnings = list(dict.fromkeys([*getattr(result, "warnings", []), *filtered]))
+    return result.model_copy(update={"warnings": warnings})
+
+
+def finalize_recognition_result(
+    result: Any, *, has_images: bool, document_warnings: Sequence[str] = ()
+) -> Any:
+    """识别结果收尾：截图核对提示 + 文档提取过程中的说明。
+
+    两个识别入口（岗位与个人资料）的每条返回路径都要走这里，否则"文档内容被截断"
+    这类说明只在模型成功时出现，用户看不出区别。
+    """
+    return attach_warnings(attach_image_review_warning(result, has_images), document_warnings)

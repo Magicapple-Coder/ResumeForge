@@ -76,10 +76,13 @@ class ChatConversationUpdate(BaseModel):
 class ChatAttachmentOut(BaseModel):
     name: str
     mime_type: str
-    kind: Literal["text", "image"]
+    # document：PDF/DOCX 等文档，文字已在本地提取进 ``text``，原始文件不外发。
+    kind: Literal["text", "image", "document"]
     size_bytes: int
     text: str = ""
     data_url: str = ""
+    # 提取过程中的说明（例如内容过长只取了前一部分）；目前只有文档会产生。
+    notes: list[str] = Field(default_factory=list)
 
 
 class ChatMessageOut(BaseModel):

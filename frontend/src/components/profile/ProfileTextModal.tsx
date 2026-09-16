@@ -1,9 +1,9 @@
-/** 粘贴整段个人资料（或资料截图）并结构化识别的弹窗。 */
+/** 粘贴整段个人资料（或资料截图、简历文档）并结构化识别的弹窗。 */
 
 import { FileSearchOutlined } from "@ant-design/icons";
 import { Alert, Button, Input, Modal, Typography } from "antd";
-import type { StagedImage } from "../../hooks/useImageStaging";
-import ImageStagingField from "../ImageStagingField";
+import type { StagedFile } from "../../hooks/useRecognitionFiles";
+import RecognitionFileField from "../RecognitionFileField";
 import RecognitionOutcome from "../RecognitionOutcome";
 import type { RecognitionSource } from "../../types";
 
@@ -15,12 +15,12 @@ interface Props {
   recognizedText: string;
   /** 这次识别是 AI 还是本地规则；还没识别过时为 null。 */
   recognitionSource: RecognitionSource | null;
-  images: StagedImage[];
-  imagesReading: boolean;
+  files: StagedFile[];
+  filesReading: boolean;
   onTextChange: (value: string) => void;
-  onAddImages: (files: File[]) => void;
-  onRemoveImage: (id: number) => void;
-  onPasteImages: (event: React.ClipboardEvent<HTMLElement>) => void;
+  onAddFiles: (files: File[]) => void;
+  onRemoveFile: (id: number) => void;
+  onPasteFiles: (event: React.ClipboardEvent<HTMLElement>) => void;
   onClose: () => void;
   onParse: () => void;
 }
@@ -32,12 +32,12 @@ export default function ProfileTextModal({
   parsing,
   recognizedText,
   recognitionSource,
-  images,
-  imagesReading,
+  files,
+  filesReading,
   onTextChange,
-  onAddImages,
-  onRemoveImage,
-  onPasteImages,
+  onAddFiles,
+  onRemoveFile,
+  onPasteFiles,
   onClose,
   onParse,
 }: Props) {
@@ -66,15 +66,15 @@ export default function ProfileTextModal({
     >
       <Typography.Paragraph type="secondary">
         可粘贴包含基本信息、教育经历、实习/工作经历、校园经历、项目经历、技能和获奖情况的整段文字，
-        也可以直接贴上这些内容的截图（在下面的输入框里按
-        Ctrl+V）。若已配置大模型，内容会发送到该模型进行
-        结构化识别；结果会直接回填当前编辑表单，请核对后再保存。识别图片需要支持图片输入的多模态模型。
+        也可以贴上这些内容的截图（在下面的输入框里按 Ctrl+V），或者上传简历文档（pdf/docx）。
+        文档文字在本机提取，不上传原文件；若已配置大模型，内容会发送到该模型进行
+        结构化识别。结果会直接回填当前编辑表单，请核对后再保存。识别图片需要支持图片输入的多模态模型。
       </Typography.Paragraph>
       <Input.TextArea
         aria-label="个人资料文本"
         value={text}
         disabled={parsing}
-        onPaste={onPasteImages}
+        onPaste={onPasteFiles}
         onChange={(event) => onTextChange(event.target.value)}
         maxLength={100_000}
         showCount
@@ -83,12 +83,12 @@ export default function ProfileTextModal({
         }
         autoSize={{ minRows: 14, maxRows: 24 }}
       />
-      <ImageStagingField
-        images={images}
-        reading={imagesReading}
+      <RecognitionFileField
+        files={files}
+        reading={filesReading}
         disabled={parsing}
-        onAddFiles={onAddImages}
-        onRemove={onRemoveImage}
+        onAddFiles={onAddFiles}
+        onRemove={onRemoveFile}
       />
       <RecognitionOutcome source={recognitionSource} text={recognizedText} />
       {warnings.length > 0 && (

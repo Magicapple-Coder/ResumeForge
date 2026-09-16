@@ -138,22 +138,44 @@ describe("JobFormModal 图片识别", () => {
     expect(payload.images[0].name).toBe("shot.png");
     expect(payload.images[0].data.startsWith("data:image/png;base64,")).toBe(true);
     // 只有图片、没有文本时不该再提示"请先粘贴招聘信息"
-    expect(screen.queryByText("请先粘贴招聘信息或添加截图")).not.toBeInTheDocument();
+    expect(screen.queryByText("请先粘贴招聘信息，或添加截图、上传文档")).not.toBeInTheDocument();
     expect(screen.getByLabelText("职位名称")).toHaveValue("门店店长");
+  });
+
+  it("sends an uploaded document in its own field", async () => {
+    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    renderModal();
+    const input = document.querySelector(
+      'input[type="file"][aria-label="添加截图或文档"]',
+    ) as HTMLInputElement;
+    const file = new File([new Uint8Array(64)], "jd.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByText("jd.docx")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    const payload = apiMocks.parseJobText.mock.calls[0][0];
+    // 图片与文档是两个请求字段：后端对它们的处理方式完全不同
+    expect(payload.images).toEqual([]);
+    expect(payload.documents).toHaveLength(1);
+    expect(payload.documents[0].name).toBe("jd.docx");
   });
 
   it("accepts an image chosen from the file picker and lets it be removed", async () => {
     renderModal();
     // 弹窗内容被 portal 到 body，不能用 render 的 container 查
     const input = document.querySelector(
-      'input[type="file"][aria-label="添加截图"]',
+      'input[type="file"][aria-label="添加截图或文档"]',
     ) as HTMLInputElement;
     const file = new File([new Uint8Array(64)], "picker.png", { type: "image/png" });
 
     fireEvent.change(input, { target: { files: [file] } });
     await waitFor(() => expect(screen.getByAltText("picker.png")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "移除截图 picker.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "移除文件 picker.png" }));
     await waitFor(() => expect(screen.queryByAltText("picker.png")).not.toBeInTheDocument());
   });
 

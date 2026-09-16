@@ -2,9 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  ASSISTANT_ACCEPT,
+  DOCUMENT_MIME_BY_EXTENSION,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_COUNT,
   MAX_TOTAL_ATTACHMENT_BYTES,
+  RECOGNITION_ACCEPT,
+  canPreviewImage,
   classifyAttachment,
 } from "./attachments";
 
@@ -24,13 +28,41 @@ describe("classifyAttachment", () => {
     });
   });
 
+  it("accepts the image formats the backend transcodes", () => {
+    expect(classifyAttachment(fileOf("board.bmp", "image/bmp"))).toEqual({
+      kind: "image",
+      mimeType: "image/bmp",
+    });
+    expect(classifyAttachment(fileOf("scan.tiff", "image/tiff"))).toEqual({
+      kind: "image",
+      mimeType: "image/tiff",
+    });
+  });
+
+  it("accepts documents", () => {
+    expect(classifyAttachment(fileOf("jd.pdf", "application/pdf"))).toEqual({
+      kind: "document",
+      mimeType: "application/pdf",
+    });
+    expect(classifyAttachment(fileOf("resume.docx", DOCUMENT_MIME_BY_EXTENSION.docx))).toEqual({
+      kind: "document",
+      mimeType: DOCUMENT_MIME_BY_EXTENSION.docx,
+    });
+    // 少数系统报 application/octet-stream，交给后端按文件头判定
+    expect(classifyAttachment(fileOf("resume.docx", "application/octet-stream"))).toEqual({
+      kind: "document",
+      mimeType: DOCUMENT_MIME_BY_EXTENSION.docx,
+    });
+  });
+
   it("rejects a file whose extension and declared type disagree", () => {
     expect(classifyAttachment(fileOf("shot.png", "image/jpeg"))).toBeNull();
     expect(classifyAttachment(fileOf("resume.exe", "text/plain"))).toBeNull();
+    expect(classifyAttachment(fileOf("resume.docx", "application/pdf"))).toBeNull();
   });
 
   it("rejects unsupported extensions", () => {
-    expect(classifyAttachment(fileOf("notes.pdf", "application/pdf"))).toBeNull();
+    expect(classifyAttachment(fileOf("photo.heic", "image/heic"))).toBeNull();
     expect(classifyAttachment(fileOf("archive.zip", "application/zip"))).toBeNull();
   });
 
@@ -44,6 +76,28 @@ describe("classifyAttachment", () => {
       kind: "text",
       mimeType: "text/plain",
     });
+  });
+});
+
+describe("accept lists", () => {
+  it("covers the formats each entry point accepts", () => {
+    // 识别弹窗只收截图与文档：文本直接粘在输入框里
+    expect(RECOGNITION_ACCEPT).toContain(".png");
+    expect(RECOGNITION_ACCEPT).toContain(".tiff");
+    expect(RECOGNITION_ACCEPT).toContain(".pdf");
+    expect(RECOGNITION_ACCEPT).toContain(".docx");
+    expect(RECOGNITION_ACCEPT).not.toContain(".txt");
+    // 助手附件三类都收
+    expect(ASSISTANT_ACCEPT).toContain(".txt");
+    expect(ASSISTANT_ACCEPT).toContain(".pdf");
+  });
+});
+
+describe("canPreviewImage", () => {
+  it("keeps TIFF out of the preview", () => {
+    expect(canPreviewImage("image/png")).toBe(true);
+    expect(canPreviewImage("image/bmp")).toBe(true);
+    expect(canPreviewImage("image/tiff")).toBe(false);
   });
 });
 

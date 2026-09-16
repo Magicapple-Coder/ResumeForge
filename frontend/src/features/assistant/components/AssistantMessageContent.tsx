@@ -3,7 +3,9 @@
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  FilePdfOutlined,
   FileTextOutlined,
+  FileWordOutlined,
   PushpinFilled,
   StarFilled,
 } from "@ant-design/icons";
@@ -13,10 +15,17 @@ import type { ReactNode } from "react";
 import type { AssistantAttachment, AssistantSource, AssistantToolCall } from "../../../types";
 import {
   attachmentStyle,
+  canPreviewImage,
   isMarkdownTableDivider,
   parseMarkdownTableRow,
   renderInlineMarkdown,
 } from "../assistantUtils";
+
+/** 文档按扩展名区分图标：pdf 和 docx 混在一串标签里时，图标比文件名更好认。 */
+function attachmentIcon(name: string, kind: string) {
+  if (kind !== "document") return <FileTextOutlined />;
+  return name.toLowerCase().endsWith(".pdf") ? <FilePdfOutlined /> : <FileWordOutlined />;
+}
 
 export function AssistantMessageContent({ content }: { content: string }) {
   const lines = content.split(/\r?\n/);
@@ -169,29 +178,42 @@ export function ConversationTitle({
 export function MessageAttachments({
   attachments,
 }: {
-  attachments: Array<AssistantAttachment | { name: string; kind: "text" | "image"; data: string }>;
+  attachments: Array<
+    AssistantAttachment | { name: string; kind: "text" | "image" | "document"; data: string }
+  >;
 }) {
   if (!attachments.length) return null;
+  const notes = attachments.flatMap((attachment) =>
+    "notes" in attachment ? attachment.notes : [],
+  );
   return (
     <div className="assistant-message-attachments">
       {attachments.map((attachment, index) => {
         const dataUrl = "data_url" in attachment ? attachment.data_url : attachment.data;
-        return attachment.kind === "image" && dataUrl ? (
-          <Image
-            key={`${attachment.name}-${index}`}
-            src={dataUrl}
-            alt={attachment.name}
-            className="assistant-message-image"
-          />
-        ) : (
+        const mimeType = "mime_type" in attachment ? attachment.mime_type : "";
+        if (attachment.kind === "image" && dataUrl && canPreviewImage(mimeType)) {
+          return (
+            <Image
+              key={`${attachment.name}-${index}`}
+              src={dataUrl}
+              alt={attachment.name}
+              className="assistant-message-image"
+            />
+          );
+        }
+        return (
           // 文件名是用户给的，长度没有上限；标签本身不换行，不截断就会顶出气泡。
           <Tooltip key={`${attachment.name}-${index}`} title={attachment.name}>
-            <Tag className="assistant-attachment-tag" icon={<FileTextOutlined />}>
+            <Tag
+              className="assistant-attachment-tag"
+              icon={attachmentIcon(attachment.name, attachment.kind)}
+            >
               {attachment.name}
             </Tag>
           </Tooltip>
         );
       })}
+      {notes.length > 0 && <span className="assistant-attachment-notes">{notes.join("；")}</span>}
     </div>
   );
 }

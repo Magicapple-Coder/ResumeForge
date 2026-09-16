@@ -33,13 +33,15 @@ describe("UserGuideModal", () => {
 
     goToStep("完善资料");
     expect(screen.getByText("建立你的事实资料库")).toBeInTheDocument();
+    // 文档识别是用户看得见的能力，指南必须提到，否则用户不会想到可以传 PDF。
+    expect(screen.getByText(/pdf\/docx 简历文档/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /前往我的资料/ }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onNavigate).toHaveBeenCalledWith("/profile");
   });
 
-  it("explains manual, pasted-text and screenshot job entry", () => {
+  it("explains manual, pasted-text, screenshot and document job entry", () => {
     render(<UserGuideModal open onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     goToStep("导入岗位");
@@ -47,7 +49,7 @@ describe("UserGuideModal", () => {
     expect(screen.getByText("手动填写或粘贴招聘信息")).toBeInTheDocument();
     expect(screen.getByText(/粘贴完整招聘信息/)).toBeInTheDocument();
     expect(screen.getByText(/识别结果不会自动保存/)).toBeInTheDocument();
-    expect(screen.getByText(/截图都能识别/)).toBeInTheDocument();
+    expect(screen.getByText(/pdf\/docx 招聘文档都能识别/)).toBeInTheDocument();
   });
 
   it("says the assistant can change data but never delete it", () => {
