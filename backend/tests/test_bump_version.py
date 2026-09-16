@@ -93,6 +93,8 @@ def test_render_changelog_moves_unreleased_into_a_dated_entry():
     # 顶部重新留出空的 Unreleased，供下个版本继续累积
     assert rendered.index("## Unreleased") < rendered.index("## 0.3.0")
     assert "- 新功能" not in rendered[: rendered.index("## 0.3.0")]
+    # 新条目与上一个版本之间必须留着空行：标题紧贴上一段正文会被 Markdown 并进那一段
+    assert "\n\n## 0.2.0 - 2026-08-21" in rendered
 
 
 def test_render_changelog_refuses_an_empty_unreleased_section():

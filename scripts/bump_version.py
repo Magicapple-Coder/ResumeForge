@@ -111,7 +111,8 @@ def render_changelog(text: str, version: str, released_on: str) -> str:
         raise BumpError("CHANGELOG 里找不到 `## Unreleased` 段落")
     body_start = start + len(UNRELEASED_HEADING)
     next_heading = text.find("\n## ", body_start)
-    body_end = len(text) if next_heading < 0 else next_heading + 1
+    # 停在换行符**之前**：它属于后面的版本标题，留下来才有一段空行分隔两个条目。
+    body_end = len(text) if next_heading < 0 else next_heading
     body = text[body_start:body_end].strip("\n")
     if not body.strip():
         raise BumpError("CHANGELOG 的 Unreleased 段落是空的，没有可发布的改动记录")
