@@ -219,3 +219,24 @@ def test_masked_api_key_url_binding_normalizes_host_but_preserves_path_case(clie
     response = client.put("/api/settings/llm", json=changed_path)
     assert response.status_code == 400
     assert "重新填写 API Key" in response.json()["detail"]
+
+
+def test_create_provider_forwards_request_overrides():
+    """工厂的 request_overrides 参数必须真的生效。
+
+    它曾经只是"文档里有"：构造函数不收这个关键字，照签名调用会直接 TypeError，
+    调用方只能改成构造完再赋属性——看起来能用，实际绕过了工厂的契约。
+    """
+    from app.schemas.setting import LLMConfig
+    from app.services.llm import create_provider
+
+    config = LLMConfig(base_url="https://api.example.com/v1", model="m")
+    provider = create_provider(config, request_overrides={"reasoning_effort": "high"})
+
+    assert provider.request_overrides == {"reasoning_effort": "high"}
+
+    # 白名单之外的键不会被采纳，但也不该炸。
+    ignored = create_provider(config, request_overrides={"messages": "覆盖对话"})
+    payload: dict = {}
+    ignored._apply_request_overrides(payload)
+    assert "messages" not in payload

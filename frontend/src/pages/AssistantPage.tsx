@@ -105,6 +105,7 @@ export default function AssistantPage() {
     sending,
     sendingConversationId,
     pendingUserText,
+    pendingSentAt,
     pendingUserAttachments,
     streamingText,
     streamingSources,
@@ -136,11 +137,16 @@ export default function AssistantPage() {
   useEffect(() => {
     if (requestedConversationId === undefined || conversationsLoading) return;
     if (deepLinkAppliedRef.current === requestedConversationId) return;
-    const exists = (conversations ?? []).some((item) => item.id === requestedConversationId);
+    if (conversations === undefined) return;
     deepLinkAppliedRef.current = requestedConversationId;
-    if (!exists) return;
+    if (!conversations.some((item) => item.id === requestedConversationId)) {
+      // 链接指向的会话不在已加载的列表里（列表只取最近 100 条）。静默不响应会让用户
+      // 以为链接坏了，所以明说一次。
+      message.info("链接里的对话不在当前列表中，可能超出了最近 100 条对话的范围。");
+      return;
+    }
     selectConversation(requestedConversationId);
-  }, [conversations, conversationsLoading, requestedConversationId, selectConversation]);
+  }, [conversations, conversationsLoading, message, requestedConversationId, selectConversation]);
 
   // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
   useEffect(() => {
@@ -265,6 +271,7 @@ export default function AssistantPage() {
           activeStream={isActiveStream}
           sending={sending}
           pendingUserText={pendingUserText}
+          pendingSentAt={pendingSentAt}
           pendingUserAttachments={pendingUserAttachments}
           streamingText={streamingText}
           streamingSources={streamingSources}

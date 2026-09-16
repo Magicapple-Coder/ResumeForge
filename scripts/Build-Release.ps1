@@ -46,6 +46,7 @@ $RequiredFiles = @(
     "backend/app/preflight.py",
     "backend/app/data/skills.json",
     "backend/app/prompts/assistant_system.md",
+    "backend/app/prompts/assistant_welcome.md",
     "backend/app/prompts/image_extraction_addendum.md",
     "backend/app/prompts/job_analysis.md",
     "backend/app/prompts/job_text_extract.md",
@@ -55,6 +56,11 @@ $RequiredFiles = @(
     "backend/app/prompts/resume_generate_user.md",
     "backend/app/prompts/resume_quality_retry.md",
     "backend/app/prompts/resume_suggestions.md",
+    "backend/app/templates/resume.html.j2",
+    "backend/app/templates/resume_modern.html.j2",
+    "backend/app/templates/resume_compact.html.j2",
+    "backend/app/templates/_resume_sections.j2",
+    "backend/app/templates/_resume_fit_script.j2",
     "backend/requirements.txt",
     "backend/alembic.ini",
     "frontend/package.json",
@@ -183,8 +189,10 @@ foreach ($required in $RequiredFiles) {
     }
 }
 foreach ($requiredPrefix in $RequiredPrefixes) {
-    $matches = @($relativePaths | Where-Object { $_.StartsWith($requiredPrefix, [StringComparison]::OrdinalIgnoreCase) })
-    if ($matches.Count -eq 0) {
+    # Not $matches: that is the automatic variable -match writes into, and
+    # clobbering it makes later -match tests in this scope read stale data.
+    $matchedPaths = @($relativePaths | Where-Object { $_.StartsWith($requiredPrefix, [StringComparison]::OrdinalIgnoreCase) })
+    if ($matchedPaths.Count -eq 0) {
         $problems += "missing directory contents: $requiredPrefix"
     }
 }

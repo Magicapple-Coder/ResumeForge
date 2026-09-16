@@ -32,6 +32,13 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/prompts/resume_generate_user.md", "简历生成用户提示词"),
     ("app/prompts/resume_quality_retry.md", "简历质量重试提示词"),
     ("app/prompts/resume_suggestions.md", "简历改进建议提示词"),
+    # 简历模板：三套版式加两段共用片段。缺了它们在生成简历时才会炸，而那时用户
+    # 已经等了一轮模型调用；在这里拦住，报的是"包不完整"而不是一段渲染栈。
+    ("app/templates/resume.html.j2", "经典简历模板"),
+    ("app/templates/resume_modern.html.j2", "现代简历模板"),
+    ("app/templates/resume_compact.html.j2", "精简简历模板"),
+    ("app/templates/_resume_sections.j2", "简历正文片段（三套模板共用）"),
+    ("app/templates/_resume_fit_script.j2", "简历放不下时的测量脚本"),
     ("alembic.ini", "数据库迁移配置"),
 )
 

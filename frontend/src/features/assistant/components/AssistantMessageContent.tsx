@@ -218,7 +218,13 @@ export function MessageAttachments({
   );
 }
 
-/** 工具名的中文说法；没列到的直接显示原名。 */
+/**
+ * 工具名的中文说法；没列到的直接显示原名。
+ *
+ * 必须覆盖后端注册的**全部**工具：漏掉的那些会在"助手做了什么"这一行里露出
+ * `import_candidate_job` 这样的内部名字，而这一行正是用户用来确认助手改动了什么的地方。
+ * 后端新增工具时这里要一起补（`services/assistant_tools.py` 的 `_TOOLS`）。
+ */
 const TOOL_LABELS: Record<string, string> = {
   get_overview: "查看整体概览",
   list_jobs: "查询岗位",
@@ -229,6 +235,26 @@ const TOOL_LABELS: Record<string, string> = {
   create_job: "新增岗位",
   update_job: "修改岗位",
   update_profile: "更新个人资料",
+  // 资料箱
+  list_materials: "查询资料箱",
+  get_material: "查看资料详情",
+  create_material: "新增资料",
+  update_material: "修改资料",
+  // 备选岗位
+  list_candidate_jobs: "查询备选岗位",
+  get_candidate_job: "查看备选岗位详情",
+  create_candidate_job: "新增备选岗位",
+  update_candidate_job: "修改备选岗位",
+  import_candidate_job: "把备选岗位导入岗位广场",
+  // 技能
+  list_skills: "查询助手技能",
+  get_skill: "查看技能详情",
+  create_skill: "新建助手技能",
+  update_skill: "修改助手技能",
+  read_skill_knowledge: "查阅技能知识文件",
+  // 简历版式与联网
+  update_resume_layout: "调整简历版式",
+  web_search: "联网搜索",
 };
 
 export function MessageToolCalls({ calls }: { calls: AssistantToolCall[] }) {

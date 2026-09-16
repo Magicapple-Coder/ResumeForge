@@ -690,6 +690,12 @@ describe("SettingsPage skills", () => {
     return view;
   }
 
+  /** 打开技能行的「更多」菜单（删除收在里面）。 */
+  async function openRowActionsMenu() {
+    fireEvent.click(screen.getAllByRole("button", { name: "更多操作" })[0]);
+    await screen.findByText("删除技能");
+  }
+
   it("lists skills with their status and knowledge file count", async () => {
     await renderPage([interviewSkill, disabledSkill]);
 
@@ -736,11 +742,14 @@ describe("SettingsPage skills", () => {
     skillMocks.deleteSkill.mockResolvedValue(undefined);
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "删除技能 面试模拟官" }));
+    // 删除收在「更多」菜单里：同岗位/简历/收藏夹/技能工作台四处一致，
+    // 不再是一枚常驻的红色图标。
+    await openRowActionsMenu();
+    fireEvent.click(await screen.findByText("删除技能"));
 
     expect(skillMocks.deleteSkill).not.toHaveBeenCalled();
     const confirm = await waitFor(() =>
-      document.querySelector<HTMLButtonElement>(".ant-popconfirm-buttons .ant-btn-primary")!,
+      document.querySelector<HTMLButtonElement>(".ant-modal-confirm-btns .ant-btn-primary")!,
     );
     fireEvent.click(confirm);
 
@@ -749,12 +758,15 @@ describe("SettingsPage skills", () => {
     await waitFor(() => expect(screen.queryByText("面试模拟官")).not.toBeInTheDocument());
   });
 
-  it("warns what deleting a skill takes with it, before the click", async () => {
+  it("says what deleting a skill takes with it", async () => {
+    skillMocks.deleteSkill.mockResolvedValue(undefined);
     await renderPage();
 
-    // 只有图标，说明只能靠悬停给；删除范围（含知识文件）此前要点开确认框才知道。
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "删除技能 面试模拟官" }));
+    // 删除范围（含知识文件）要写在确认框里，而不是等用户点下去才发现。
+    await openRowActionsMenu();
+    fireEvent.click(await screen.findByText("删除技能"));
+    const dialog = await screen.findByRole("dialog");
 
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("提示词与知识文件一起删除");
+    expect(dialog).toHaveTextContent("提示词和它附带的知识文件都会被删除");
   });
 });

@@ -383,11 +383,13 @@ def _tool_get_material(db: Session, arguments: dict) -> ToolResult:
 
 
 def _tool_create_material(db: Session, arguments: dict) -> ToolResult:
+    # 只放行工具**声明过**的字段：附件（files）不在 create_material 的参数里，
+    # 留着它只会让人以为助手能给资料挂附件。
     payload = MaterialCreate.model_validate(
         {
             key: value
             for key, value in arguments.items()
-            if key in {"title", "category", "content", "url", "note", "files"}
+            if key in {"title", "category", "content", "url", "note"}
         }
     )
     material = create_material_record(db, payload)
@@ -404,7 +406,7 @@ def _tool_update_material(db: Session, arguments: dict) -> ToolResult:
     fields = {
         key: value
         for key, value in arguments.items()
-        if key in {"title", "category", "content", "url", "note", "files"}
+        if key in {"title", "category", "content", "url", "note"}
     }
     if not fields:
         raise ValueError("没有给出要修改的字段")

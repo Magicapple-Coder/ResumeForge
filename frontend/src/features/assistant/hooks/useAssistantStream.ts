@@ -45,6 +45,8 @@ export function useAssistantStream({
   const [sending, setSending] = useState(false);
   const [sendingConversationId, setSendingConversationId] = useState<number | null>(null);
   const [pendingUserText, setPendingUserText] = useState("");
+  // 正在发送的这条消息还没有服务端时间戳，用它被发出的时刻顶上。
+  const [pendingSentAt, setPendingSentAt] = useState("");
   const [pendingUserAttachments, setPendingUserAttachments] = useState<PendingAttachment[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [streamingSources, setStreamingSources] = useState<AssistantSource[]>([]);
@@ -82,6 +84,7 @@ export function useAssistantStream({
       const optimisticAttachments = [...attachmentsRef.current];
       clearContent();
       setPendingUserText(trimmedText || "[附件]");
+      setPendingSentAt(new Date().toISOString());
       setPendingUserAttachments(optimisticAttachments);
       setStreamingText("");
       setStreamingSources([]);
@@ -171,6 +174,7 @@ export function useAssistantStream({
     sending,
     sendingConversationId,
     pendingUserText,
+    pendingSentAt,
     pendingUserAttachments,
     streamingText,
     streamingSources,

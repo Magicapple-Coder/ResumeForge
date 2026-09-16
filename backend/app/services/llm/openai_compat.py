@@ -149,8 +149,12 @@ class OpenAICompatProvider(BaseLLMProvider):
         config: LLMConfig,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        request_overrides: dict | None = None,
     ):
-        super().__init__(config)
+        # request_overrides 必须转发给基类：`create_provider(..., request_overrides=...)`
+        # 是文档化的入口，这里不接的话它会直接抛 TypeError，而调用方只能改成
+        # 构造完再赋值属性——看起来能跑，实际绕过了工厂的契约。
+        super().__init__(config, request_overrides=request_overrides)
         self._transport = transport
 
     async def chat(self, messages: list[dict]) -> str:

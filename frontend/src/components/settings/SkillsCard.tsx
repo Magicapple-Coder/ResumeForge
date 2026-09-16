@@ -1,20 +1,9 @@
 /** 助手技能管理：导入、点击查看详情、启用/停用与删除。 */
 
 import { DeleteOutlined, UploadOutlined } from "@ant-design/icons";
-import {
-  Button,
-  Card,
-  Empty,
-  List,
-  Popconfirm,
-  Space,
-  Switch,
-  Tag,
-  Tooltip,
-  Typography,
-  Upload,
-} from "antd";
+import { Button, Card, Empty, List, Space, Switch, Tag, Tooltip, Typography, Upload } from "antd";
 import type { AssistantSkill } from "../../types";
+import { RowActions } from "../common/RowActions";
 import { formatDateTime } from "../../utils/format";
 
 interface Props {
@@ -103,27 +92,23 @@ export default function SkillsCard({
                   onChange={(checked) => onToggle(skill, checked)}
                 />
               </Tooltip>,
-              <Popconfirm
-                key="delete"
-                title={`确定删除技能“${skill.name}”？`}
-                description="提示词和它附带的知识文件都会被删除，需要时可以重新导入"
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
+              // 删除收进「更多」里并二次确认：这一处此前漏了，仍是一枚常驻的红色图标，
+              // 与岗位/简历/收藏夹/技能工作台四处已经统一的"主操作 + 更多"不一致。
+              <RowActions
+                key="more"
                 disabled={busy}
-                onConfirm={() => onDelete(skill)}
-              >
-                <Tooltip title="删除（提示词与知识文件一起删除）">
-                  <Button
-                    type="text"
-                    danger
-                    aria-label={`删除技能 ${skill.name}`}
-                    icon={<DeleteOutlined />}
-                    loading={deletingId === skill.id}
-                    disabled={busy}
-                  />
-                </Tooltip>
-              </Popconfirm>,
+                more={[
+                  {
+                    key: "delete",
+                    label: "删除技能",
+                    danger: true,
+                    icon: <DeleteOutlined />,
+                    disabled: deletingId === skill.id,
+                    confirm: `确定删除技能「${skill.name}」？提示词和它附带的知识文件都会被删除，需要时可以重新导入。`,
+                    onClick: () => onDelete(skill),
+                  },
+                ]}
+              />,
             ]}
           >
             <List.Item.Meta

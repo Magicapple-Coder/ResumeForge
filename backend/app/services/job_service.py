@@ -38,8 +38,12 @@ def note_with_source(note: str, recognition_source: str) -> str:
     marker = f"来源：{source}"
     if marker in note:
         return note[:MAX_JOB_NOTE_CHARS]
-    merged = f"{note}\n{marker}" if note else marker
-    return merged[:MAX_JOB_NOTE_CHARS]
+    if not note:
+        return marker[:MAX_JOB_NOTE_CHARS]
+    # 先给用户正文留出标记的位置，再拼上标记。反过来（先拼再整体截断）在正文接近
+    # 上限时会把刚加上的来源行裁掉——标注静默消失，用户还以为这条是手填的。
+    budget = MAX_JOB_NOTE_CHARS - len(marker) - 1
+    return f"{note[: max(0, budget)]}\n{marker}"
 
 
 def create_job_record(db: Session, payload: JobCreate) -> Job:

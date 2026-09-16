@@ -25,6 +25,8 @@ interface Props {
   activeStream: boolean;
   sending: boolean;
   pendingUserText: string;
+  /** 正在发送的那条消息的发出时刻（服务端时间戳还没有）。 */
+  pendingSentAt: string;
   pendingUserAttachments: PendingAttachment[];
   streamingText: string;
   streamingSources: AssistantSource[];
@@ -44,6 +46,7 @@ export default function AssistantMessageList({
   activeStream,
   sending,
   pendingUserText,
+  pendingSentAt,
   pendingUserAttachments,
   streamingText,
   streamingSources,
@@ -87,14 +90,24 @@ export default function AssistantMessageList({
       )}
       {activeStream && (pendingUserText || pendingUserAttachments.length > 0) && (
         <article className="assistant-message assistant-message--user">
-          <Typography.Text strong>你</Typography.Text>
+          <div className="assistant-message-head">
+            <Typography.Text strong>你</Typography.Text>
+            <Typography.Text type="secondary" className="assistant-message-time">
+              {formatDateTime(pendingSentAt)}
+            </Typography.Text>
+          </div>
           <AssistantMessageContent content={pendingUserText} />
           <MessageAttachments attachments={pendingUserAttachments} />
         </article>
       )}
       {activeStream && sending && (
         <article className="assistant-message assistant-message--assistant">
-          <Typography.Text strong>求职助手</Typography.Text>
+          <div className="assistant-message-head">
+            <Typography.Text strong>求职助手</Typography.Text>
+            <Typography.Text type="secondary" className="assistant-message-time">
+              {formatDateTime(pendingSentAt)}
+            </Typography.Text>
+          </div>
           <AssistantMessageContent content={streamingText || progressText || "正在思考…"} />
           <StreamingStatus
             message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}

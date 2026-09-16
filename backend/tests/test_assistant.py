@@ -503,3 +503,27 @@ def test_web_search_never_exceeds_the_documented_limit(client, monkeypatch):
     assert len(executed) == MAX_WEB_SEARCHES
     # 确实是被搜索上限拦下的，而不是因为工具轮次用尽才停。
     assert MAX_WEB_SEARCHES < MAX_TOOL_ROUNDS
+
+
+def test_every_tool_has_a_chinese_label_in_the_ui():
+    """后端注册的每个工具都要在助手界面里有中文说法。
+
+    「助手做了什么」那一行是用户用来确认助手改动的地方：漏标一个工具，那里就会
+    露出 `import_candidate_job` 这种内部名字。两边隔着一个仓库，只能靠测试拴住。
+    """
+    from pathlib import Path
+
+    from app.services import assistant_tools
+
+    labels_source = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "features"
+        / "assistant"
+        / "components"
+        / "AssistantMessageContent.tsx"
+    ).read_text(encoding="utf-8")
+
+    missing = [tool.name for tool in assistant_tools._TOOLS if f"{tool.name}:" not in labels_source]
+    assert missing == []

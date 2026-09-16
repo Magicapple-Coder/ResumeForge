@@ -341,3 +341,20 @@ def test_resume_pdf_export_reports_its_page_count(client):
     pages = int(response.headers["X-Resume-Pages"])
     assert pages >= 1
     assert int(response.headers["X-Resume-Page-Limit"]) == 1
+
+
+def test_a_long_note_still_keeps_its_source_line():
+    """备注接近上限时，来源标注不能被截掉。
+
+    之前是先拼再整体截断：正文一长，刚加上的"来源："就被裁没了，功能静默失效——
+    用户以为这条是手填的，而实际上它来自图片识别。
+    """
+    from app.services.job_service import MAX_JOB_NOTE_CHARS, note_with_source
+
+    long_note = "备" * MAX_JOB_NOTE_CHARS
+    merged = note_with_source(long_note, "图片识别")
+
+    assert "来源：图片识别" in merged
+    assert len(merged) <= MAX_JOB_NOTE_CHARS
+    # 用户原文照旧保留在前面，只是被裁到给标注让位。
+    assert merged.startswith("备")

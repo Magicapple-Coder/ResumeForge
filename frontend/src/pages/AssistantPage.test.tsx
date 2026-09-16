@@ -466,6 +466,33 @@ describe("AssistantPage", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent(longName);
   });
 
+  it("stamps the reply being sent, before the server has a timestamp for it", async () => {
+    const stream = deferred<void>();
+    apiMocks.sendAssistantMessage.mockImplementation(
+      async (_id: number, _payload: unknown, onEvent: (event: AssistantStreamEvent) => void) => {
+        onEvent({ type: "progress", message: "正在分析" });
+        await stream.promise;
+      },
+    );
+
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
+      target: { value: "看看这个岗位" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    // 这条消息还没写进服务端，没有 created_at；但"什么时候发的"此时就该看得见。
+    await screen.findByText("看看这个岗位");
+    const stamp = await waitFor(() => {
+      const node = document.querySelector(".assistant-message--user .assistant-message-time");
+      if (!node) throw new Error("正在发送的气泡没有时间标记");
+      return node;
+    });
+    expect(stamp.textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+
+    stream.resolve();
+  });
+
   it("shows an accessible generating status", () => {
     render(<StreamingStatus message="正在生成回答" />);
 
