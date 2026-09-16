@@ -8,11 +8,12 @@ import {
   InfoCircleOutlined,
   LinkOutlined,
   MessageOutlined,
+  PictureOutlined,
   PushpinOutlined,
   StarFilled,
   StarOutlined,
 } from "@ant-design/icons";
-import { Button, Descriptions, Divider, Drawer, Space, Tooltip, Typography } from "antd";
+import { Button, Descriptions, Divider, Drawer, Image, Space, Tooltip, Typography } from "antd";
 import type { ReactNode } from "react";
 import type { Job } from "../types";
 import SkillTags from "./SkillTags";
@@ -128,6 +129,9 @@ export default function JobDetailDrawer({
             <Descriptions.Item label="岗位类型">{job.job_type || "-"}</Descriptions.Item>
             <Descriptions.Item label="状态">{job.status || "-"}</Descriptions.Item>
             <Descriptions.Item label="发布时间">{job.posted_at || "-"}</Descriptions.Item>
+            <Descriptions.Item label="信息来源">
+              {job.recognition_source || "未记录"}
+            </Descriptions.Item>
           </Descriptions>
 
           {job.keywords.length > 0 && (
@@ -168,6 +172,26 @@ export default function JobDetailDrawer({
               emptyText="暂无备注"
               variant="note"
             />
+            {(job.note_images?.length ?? 0) > 0 && (
+              <section className="job-detail-text-section job-detail-text-section--note">
+                <div className="job-detail-section-heading">
+                  <span className="job-detail-section-icon">
+                    <PictureOutlined />
+                  </span>
+                  <Typography.Text strong>备注图片</Typography.Text>
+                </div>
+                <Space wrap>
+                  {job.note_images.map((source, index) => (
+                    <Image
+                      key={`${index}-${source.slice(-16)}`}
+                      src={source}
+                      alt={`备注图片 ${index + 1}`}
+                      width={150}
+                    />
+                  ))}
+                </Space>
+              </section>
+            )}
           </div>
         </>
       )}

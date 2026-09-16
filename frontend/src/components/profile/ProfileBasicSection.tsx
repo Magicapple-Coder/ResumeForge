@@ -1,26 +1,17 @@
-/** 个人资料基本信息与简历照片表单。 */
+/** 个人资料基本信息与简历照片（多张可切换）。 */
 
-import { CameraOutlined, DeleteOutlined, UserOutlined } from "@ant-design/icons";
-import { Button, Card, Col, Form, Image, Input, Row, Space, Typography, Upload } from "antd";
-import type { UploadProps } from "antd";
+import { Card, Col, Form, Input, Row } from "antd";
+import ProfilePhotoPanel from "./ProfilePhotoPanel";
 
 interface Props {
   photo: string;
   editing: boolean;
   saving: boolean;
-  photoReading: boolean;
-  beforePhotoUpload: UploadProps["beforeUpload"];
-  onRemovePhoto: () => void;
+  /** 切换照片时同步到资料表单（照片本身在照片库里已经落库）。 */
+  onPhotoSelect: (dataUrl: string) => void;
 }
 
-export default function ProfileBasicSection({
-  photo,
-  editing,
-  saving,
-  photoReading,
-  beforePhotoUpload,
-  onRemovePhoto,
-}: Props) {
+export default function ProfileBasicSection({ photo, editing, saving, onPhotoSelect }: Props) {
   return (
     <Row gutter={[16, 16]} align="stretch" style={{ marginBottom: 16 }}>
       <Col xs={{ span: 24, order: 2 }} xl={{ span: 18, order: 1 }}>
@@ -86,41 +77,11 @@ export default function ProfileBasicSection({
 
       <Col xs={{ span: 24, order: 1 }} xl={{ span: 6, order: 2 }}>
         <Card size="small" title="简历照片" className="profile-top-card">
-          <div className="profile-photo-panel">
-            <div className="profile-photo-frame">
-              {photo ? (
-                <Image src={photo} alt="简历照片" preview={false} />
-              ) : (
-                <UserOutlined className="profile-photo-placeholder" />
-              )}
-            </div>
-            <Space wrap>
-              <Upload
-                accept="image/jpeg,image/png,image/webp"
-                beforeUpload={beforePhotoUpload}
-                showUploadList={false}
-                maxCount={1}
-                disabled={!editing || saving || photoReading}
-              >
-                <Button icon={<CameraOutlined />} loading={photoReading}>
-                  {photo ? "更换照片" : "选择照片"}
-                </Button>
-              </Upload>
-              {photo && (
-                <Button
-                  danger
-                  icon={<DeleteOutlined />}
-                  disabled={!editing || saving || photoReading}
-                  onClick={onRemovePhoto}
-                >
-                  移除
-                </Button>
-              )}
-            </Space>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              JPG、PNG 或 WebP，最大 2 MB
-            </Typography.Text>
-          </div>
+          <ProfilePhotoPanel
+            activePhoto={photo}
+            disabled={!editing || saving}
+            onSelect={onPhotoSelect}
+          />
         </Card>
       </Col>
     </Row>

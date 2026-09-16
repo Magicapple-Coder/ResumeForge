@@ -26,7 +26,7 @@ export default function AssistantSkillsHint({
         <>
           回答已按这些技能的要求生成：{names}
           <br />
-          点击前往设置管理
+          点击前往技能工作台管理
         </>
       }
     >

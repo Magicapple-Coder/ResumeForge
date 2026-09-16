@@ -2,6 +2,7 @@ import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEMPLATE_CATALOG } from "../test/resumeFixtures";
 import type { ResumeBrief } from "../types";
 import ResumesPage from "./ResumesPage";
 
@@ -11,7 +12,10 @@ const apiMocks = vi.hoisted(() => ({
   updateResumeFavorite: vi.fn(),
 }));
 
-vi.mock("../api/resumes", () => ({
+// 展开真实模块再覆盖：显式列导出时，生产代码新增一个导出就会让调用方直接抛
+// "export is not defined"，看起来像组件崩了。
+vi.mock("../api/resumes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/resumes")>()),
   deleteResume: apiMocks.deleteResume,
   listResumes: apiMocks.listResumes,
   updateResumeFavorite: apiMocks.updateResumeFavorite,
@@ -19,6 +23,7 @@ vi.mock("../api/resumes", () => ({
   fetchResumeHtml: vi.fn(),
   renderResume: vi.fn(),
   updateResume: vi.fn(),
+  fetchResumeTemplates: vi.fn().mockResolvedValue(TEMPLATE_CATALOG),
 }));
 
 const RESUME: ResumeBrief = {
@@ -32,6 +37,9 @@ const RESUME: ResumeBrief = {
   model: "",
   enhancement_enabled: false,
   enhancement_level: "balanced",
+  template: "classic",
+  page_limit: 1,
+  font_scale: "standard",
   created_at: "2026-08-20T10:00:00",
 };
 
@@ -100,7 +108,8 @@ describe("ResumesPage favorites", () => {
 
     expect(apiMocks.updateResumeFavorite).toHaveBeenCalledWith(RESUME.id, true);
     expect(apiMocks.updateResumeFavorite).toHaveBeenCalledOnce();
-    expect(favoriteButton).toBeDisabled();
+    // 悬停提示会在状态变化时重挂子节点，抓在手里的旧引用会变成游离节点——重新查一次。
+    expect(screen.getByRole("button", { name: "收藏简历" })).toBeDisabled();
     resolveUpdate();
     await waitFor(() => expect(apiMocks.listResumes).toHaveBeenCalledTimes(2));
   });

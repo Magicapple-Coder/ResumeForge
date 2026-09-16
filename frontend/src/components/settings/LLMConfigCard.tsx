@@ -1,6 +1,6 @@
-/** 大模型配置表单与连接测试入口。 */
+/** 大模型配置表单：预设、连接测试、获取可用模型与高级调整。 */
 
-import { ApiOutlined } from "@ant-design/icons";
+import { ApiOutlined, CloudDownloadOutlined } from "@ant-design/icons";
 import {
   Alert,
   Button,
@@ -10,14 +10,17 @@ import {
   Form,
   Input,
   InputNumber,
+  List,
+  Modal,
   Row,
   Select,
   Slider,
   Tooltip,
+  Typography,
 } from "antd";
 import type { FormInstance } from "antd/es/form";
-import { useRef } from "react";
-import type { LLMTestResult } from "../../types";
+import { useRef, useState } from "react";
+import type { LLMModelsResult, LLMTestResult } from "../../types";
 import ApiKeyInput from "./ApiKeyInput";
 import {
   DEFAULT_MAX_TOKENS,
@@ -40,6 +43,8 @@ interface Props {
   onRevealApiKey: () => Promise<string>;
   onRevealError: (message: string) => void;
   onTest: () => void;
+  /** 拉取服务商当前可用的模型列表（失败时由 result.message 说明原因）。 */
+  onFetchModels: () => Promise<LLMModelsResult>;
 }
 
 export default function LLMConfigCard({
@@ -54,11 +59,17 @@ export default function LLMConfigCard({
   onRevealApiKey,
   onRevealError,
   onTest,
+  onFetchModels,
 }: Props) {
   const maxTokens = Form.useWatch("max_tokens", form);
   const unlimitedTokens = maxTokens === UNLIMITED_MAX_TOKENS;
   // 记住勾选「不限制」之前的值，取消勾选时原样还回去，免得用户重填。
   const lastLimitedTokens = useRef(DEFAULT_MAX_TOKENS);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelsMessage, setModelsMessage] = useState("");
 
   const setUnlimitedTokens = (unlimited: boolean) => {
     if (unlimited) {
@@ -71,13 +82,28 @@ export default function LLMConfigCard({
     form.setFieldValue("max_tokens", unlimited ? UNLIMITED_MAX_TOKENS : lastLimitedTokens.current);
   };
 
+  const fetchModels = async () => {
+    if (fetchingModels) return;
+    setFetchingModels(true);
+    try {
+      const result = await onFetchModels();
+      setModelsMessage(result.message);
+      if (result.models.length > 0) {
+        setModelOptions(result.models);
+        setModelPickerOpen(true);
+      }
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
   return (
     <Card title="大模型 API 配置" className="settings-card">
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、智谱、OpenAI、Ollama 等。API Key 保存在本地数据库中，仅本机可访问。"
+        message="支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、通义千问、智谱、MiniMax、硅基流动、OpenRouter、OpenAI、Gemini、Ollama 等。API Key 保存在本地数据库中，仅本机可访问。"
       />
       <Form
         form={form}
@@ -91,7 +117,12 @@ export default function LLMConfigCard({
           <Input />
         </Form.Item>
         <Form.Item name="preset" label="快速预设（选择后自动填充 Base URL 与模型名）">
-          <Select options={PRESET_OPTIONS} onChange={onPresetChange} />
+          <Select
+            options={PRESET_OPTIONS}
+            onChange={onPresetChange}
+            showSearch
+            optionFilterProp="label"
+          />
         </Form.Item>
         <Row gutter={[16, 0]}>
           <Col xs={24} lg={16}>
@@ -108,10 +139,26 @@ export default function LLMConfigCard({
             <Form.Item
               name="model"
               label="模型名称"
-              rules={[{ required: true, message: "必填" }]}
-              tooltip="各厂商模型名不同，请以官方文档为准"
+              tooltip="各厂商模型名不同：可以点输入框右侧的「获取可用模型」按当前账号拉取，也可以照官方文档手填"
             >
-              <Input placeholder="deepseek-chat" />
+              {/* 按钮放输入框的后缀里，不放 label 里也不另包一层：进 label 的按钮会被算成
+                  「模型名称」标注的控件，而包一层（如 Space.Compact）会让 Form.Item 生成的
+                  id 落在那层 div 上，label 就指不到输入框了。addonAfter 两种问题都没有。 */}
+              <Input
+                placeholder="deepseek-chat"
+                addonAfter={
+                  <Button
+                    type="text"
+                    size="small"
+                    className="llm-fetch-models-button"
+                    icon={<CloudDownloadOutlined />}
+                    loading={fetchingModels}
+                    onClick={() => void fetchModels()}
+                  >
+                    获取可用模型
+                  </Button>
+                }
+              />
             </Form.Item>
           </Col>
         </Row>
@@ -177,6 +224,85 @@ export default function LLMConfigCard({
             </Form.Item>
           </Col>
         </Row>
+
+        <Button
+          type="link"
+          className="llm-advanced-toggle"
+          onClick={() => setAdvancedOpen((current) => !current)}
+        >
+          {advancedOpen ? "收起高级调整" : "高级调整（Top P、惩罚项、随机种子）"}
+        </Button>
+        {advancedOpen && (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="留空的参数不会发送给模型服务，由服务商使用默认值。这些参数并非所有服务商都支持，填写前请先看官方文档。"
+            />
+            <Row gutter={[16, 0]}>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="top_p"
+                  label="Top P"
+                  tooltip="核采样：只从累计概率达到该值的候选里取词。与 temperature 叠加使用，通常只调其中一个。"
+                >
+                  <InputNumber
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="frequency_penalty"
+                  label="频率惩罚"
+                  tooltip="-2 到 2。正值降低重复用词，负值鼓励重复。"
+                >
+                  <InputNumber
+                    min={-2}
+                    max={2}
+                    step={0.1}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="presence_penalty"
+                  label="存在惩罚"
+                  tooltip="-2 到 2。正值鼓励谈新话题，负值让模型更贴题。"
+                >
+                  <InputNumber
+                    min={-2}
+                    max={2}
+                    step={0.1}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="seed"
+                  label="随机种子"
+                  tooltip="固定种子后同一请求更容易复现相同输出；是否生效取决于服务商。"
+                >
+                  <InputNumber
+                    min={0}
+                    step={1}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </>
+        )}
       </Form>
       <Button icon={<ApiOutlined />} loading={testing} disabled={saving} onClick={onTest}>
         测试连接
@@ -193,6 +319,38 @@ export default function LLMConfigCard({
           }
         />
       )}
+      <Modal
+        title="选择模型"
+        open={modelPickerOpen}
+        footer={null}
+        onCancel={() => setModelPickerOpen(false)}
+      >
+        <Typography.Paragraph type="secondary">{modelsMessage}</Typography.Paragraph>
+        <List
+          size="small"
+          dataSource={modelOptions}
+          style={{ maxHeight: 360, overflowY: "auto" }}
+          renderItem={(model) => (
+            <List.Item
+              actions={[
+                <Button
+                  key="pick"
+                  type="link"
+                  size="small"
+                  onClick={() => {
+                    form.setFieldValue("model", model);
+                    setModelPickerOpen(false);
+                  }}
+                >
+                  使用
+                </Button>,
+              ]}
+            >
+              <Typography.Text code>{model}</Typography.Text>
+            </List.Item>
+          )}
+        />
+      </Modal>
     </Card>
   );
 }

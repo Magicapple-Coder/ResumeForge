@@ -5,8 +5,32 @@ export interface AssistantConversationBrief {
   title: string;
   pinned: boolean;
   favorite: boolean;
+  /** 已归档的会话默认收进「已归档」筛选，不参与置顶排序。 */
+  archived: boolean;
+  /** 分组名（"移动到项目"）；空串表示未分组。 */
+  group_name: string;
+  message_count: number;
   created_at: string;
   updated_at: string;
+}
+
+/** 会话列表筛选：全部 / 收藏 / 已归档。 */
+export type ConversationFilter = "all" | "favorite" | "archived";
+
+/** 思考强度：空串表示不发送该参数，沿用服务商默认。 */
+export type ReasoningEffort = "" | "none" | "low" | "medium" | "high";
+
+export const REASONING_EFFORT_OPTIONS: { value: ReasoningEffort; label: string }[] = [
+  { value: "", label: "默认" },
+  { value: "none", label: "关闭" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+];
+
+export interface AssistantConversationForkPayload {
+  title?: string;
+  message_limit?: number;
 }
 
 export interface AssistantAttachment {

@@ -1,9 +1,19 @@
-/** 助手技能接口：列出、导入、启用/停用与删除。 */
+/** 助手技能接口：列出、查看详情、导入、创建、更新、启用/停用与删除。 */
 import { ApiError, extractError, request } from "./client";
-import type { AssistantSkill } from "../types";
+import type {
+  AssistantSkill,
+  AssistantSkillCreatePayload,
+  AssistantSkillDetail,
+  AssistantSkillUpdatePayload,
+} from "../types";
 
 export function listSkills(): Promise<AssistantSkill[]> {
   return request("/assistant/skills");
+}
+
+/** 技能详情：含提示词正文，用于查看与编辑。 */
+export function getSkill(id: number): Promise<AssistantSkillDetail> {
+  return request(`/assistant/skills/${id}`);
 }
 
 /**
@@ -28,6 +38,25 @@ export async function importSkill(file: File): Promise<AssistantSkill> {
   });
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
   return (await resp.json()) as AssistantSkill;
+}
+
+/** 在工作台手动创建技能。 */
+export function createSkill(payload: AssistantSkillCreatePayload): Promise<AssistantSkillDetail> {
+  return request("/assistant/skills", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 更新技能；`files` 提交时整体替换知识文件。 */
+export function updateSkill(
+  id: number,
+  payload: AssistantSkillUpdatePayload,
+): Promise<AssistantSkillDetail> {
+  return request(`/assistant/skills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function setSkillEnabled(id: number, enabled: boolean): Promise<AssistantSkill> {

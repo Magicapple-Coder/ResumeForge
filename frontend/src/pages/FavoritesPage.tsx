@@ -2,10 +2,12 @@
 import { FileTextOutlined, SearchOutlined, StarFilled } from "@ant-design/icons";
 import { App, Button, Empty, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listJobs, updateJob } from "../api/jobs";
 import { listResumes, updateResumeFavorite } from "../api/resumes";
+import { RowActions, RowContextMenu, type RowActionItem } from "../components/common/RowActions";
 import ResumeDetailModal from "../components/ResumeDetailModal";
 import { useApi } from "../hooks/useApi";
 import type { Job, Page, ResumeBrief } from "../types";
@@ -87,6 +89,30 @@ export default function FavoritesPage() {
     </Tooltip>
   );
 
+  /** 收藏行的操作：星标按钮 + 「更多」菜单，右键也能唤起同一份菜单。 */
+  const actionsFor = (item: Job | ResumeBrief): RowActionItem[] =>
+    kind === "jobs"
+      ? [
+          {
+            key: "open",
+            label: "打开岗位详情",
+            onClick: () => navigate(`/jobs?job_id=${item.id}`),
+          },
+          {
+            key: "unfavorite",
+            label: "取消收藏",
+            onClick: () => void removeJobFavorite(item as Job),
+          },
+        ]
+      : [
+          { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(item.id) },
+          {
+            key: "unfavorite",
+            label: "取消收藏",
+            onClick: () => void removeResumeFavorite(item as ResumeBrief),
+          },
+        ];
+
   const jobColumns: ColumnsType<Job> = [
     {
       title: "岗位",
@@ -106,9 +132,14 @@ export default function FavoritesPage() {
     { title: "发布时间", dataIndex: "posted_at", width: 150, render: (value) => value || "-" },
     {
       title: "操作",
-      width: 92,
+      width: 130,
       align: "center",
-      render: (_, job) => favoriteButton(`job-${job.id}`, () => void removeJobFavorite(job)),
+      render: (_, job) => (
+        <Space size={4}>
+          {favoriteButton(`job-${job.id}`, () => void removeJobFavorite(job))}
+          <RowActions more={actionsFor(job)} />
+        </Space>
+      ),
     },
   ];
 
@@ -146,10 +177,14 @@ export default function FavoritesPage() {
     },
     {
       title: "操作",
-      width: 92,
+      width: 130,
       align: "center",
-      render: (_, resume) =>
-        favoriteButton(`resume-${resume.id}`, () => void removeResumeFavorite(resume)),
+      render: (_, resume) => (
+        <Space size={4}>
+          {favoriteButton(`resume-${resume.id}`, () => void removeResumeFavorite(resume))}
+          <RowActions more={actionsFor(resume)} />
+        </Space>
+      ),
     },
   ];
 
@@ -200,6 +235,20 @@ export default function FavoritesPage() {
           emptyText: <Empty description={kind === "jobs" ? "暂无收藏岗位" : "暂无收藏简历"} />,
         }}
         scroll={{ x: 760 }}
+        components={{
+          body: {
+            row: (props: HTMLAttributes<HTMLTableRowElement>) => {
+              const rowKey = String((props as { "data-row-key"?: string })["data-row-key"] ?? "");
+              const item = items.find((entry) => String(entry.id) === rowKey);
+              if (!item) return <tr {...props} />;
+              return (
+                <RowContextMenu items={actionsFor(item)}>
+                  <tr {...props} />
+                </RowContextMenu>
+              );
+            },
+          },
+        }}
         pagination={{
           current: page,
           pageSize,

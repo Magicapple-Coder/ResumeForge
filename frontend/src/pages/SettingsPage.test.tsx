@@ -55,6 +55,22 @@ const llmConfig = {
   max_tokens: 4096,
 };
 
+/**
+ * 选一个快速预设。
+ *
+ * 预设现在有 17 项，antd 的下拉是虚拟列表：末尾的两项（自定义模型、纯手动配置）
+ * 不滚到就根本没渲染，直接 findByText 是找不到的。先打字筛选——这也正是用户
+ * 在这个长度的列表里会做的事，顺带覆盖了搜索本身。
+ */
+async function choosePreset(label: string) {
+  const combobox = screen.getByRole("combobox", { name: /快速预设/ });
+  fireEvent.mouseDown(combobox);
+  fireEvent.change(combobox, { target: { value: label } });
+  // 用回车选中筛出来的那一项，而不是点击选项节点：下拉是虚拟列表，过滤后会重渲染，
+  // 查到的节点可能在点击前就失效了（点了个空）。
+  fireEvent.keyDown(combobox, { key: "Enter", code: "Enter", keyCode: 13 });
+}
+
 function tooltipTriggerFor(label: string): HTMLElement {
   const labelNode = screen.getByText(label).closest("label");
   const trigger = labelNode?.querySelector<HTMLElement>(".ant-form-item-tooltip");
@@ -184,8 +200,7 @@ describe("SettingsPage model presets", () => {
     await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
-    fireEvent.click(await screen.findByText("纯手动配置（不套用任何预设）"));
+    await choosePreset("纯手动配置（不套用任何预设）");
 
     // 关键区别：自定义模型保留当前内容，纯手动配置要一套空的
     expect(screen.getByLabelText("Base URL")).toHaveValue("");
@@ -239,8 +254,7 @@ describe("SettingsPage model presets", () => {
     await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
-    fireEvent.click(await screen.findByText("DeepSeek（深度求索）"));
+    await choosePreset("DeepSeek（深度求索）");
     fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
 
     await waitFor(() =>
@@ -265,8 +279,7 @@ describe("SettingsPage model presets", () => {
     await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: /快速预设/ }));
-    fireEvent.click(await screen.findByText("自定义模型（OpenAI 兼容）"));
+    await choosePreset("自定义模型（OpenAI 兼容）");
 
     expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.openai.com/v1");
     fireEvent.change(screen.getByLabelText("Base URL"), {

@@ -26,4 +26,4 @@ export const STARTER_PROMPTS: readonly StarterPrompt[] = [
   },
 ] as const;
 
-export type ConversationFilter = "all" | "favorite";
+export type { ConversationFilter } from "../../types";

@@ -4,25 +4,40 @@ import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEMPLATE_CATALOG } from "../test/resumeFixtures";
 import GenerateResumeModal from "./GenerateResumeModal";
 
 const apiMocks = vi.hoisted(() => ({
   generateResume: vi.fn(),
   renderResume: vi.fn(),
   updateResume: vi.fn(),
+  updateResumeLayout: vi.fn(),
+  fetchResumeTemplates: vi.fn(),
   getLLMConfig: vi.fn(),
 }));
 
-vi.mock("../api/resumes", () => apiMocks);
+// 展开真实模块再覆盖：显式列导出的话，生产代码新增一个导出就会让这里的
+// 调用直接抛"export is not defined"，看起来像组件挂了。
+vi.mock("../api/resumes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/resumes")>()),
+  generateResume: apiMocks.generateResume,
+  renderResume: apiMocks.renderResume,
+  updateResume: apiMocks.updateResume,
+  updateResumeLayout: apiMocks.updateResumeLayout,
+  fetchResumeTemplates: apiMocks.fetchResumeTemplates,
+}));
 vi.mock("../api/settings", () => ({ getLLMConfig: apiMocks.getLLMConfig }));
 
 beforeEach(() => {
   apiMocks.generateResume.mockReset();
   apiMocks.renderResume.mockReset();
   apiMocks.updateResume.mockReset();
+  apiMocks.updateResumeLayout.mockReset();
+  apiMocks.fetchResumeTemplates.mockReset();
   apiMocks.getLLMConfig.mockReset();
   apiMocks.getLLMConfig.mockResolvedValue({ base_url: "https://api.example.com/v1", model: "m" });
   apiMocks.generateResume.mockResolvedValue(undefined);
+  apiMocks.fetchResumeTemplates.mockResolvedValue(TEMPLATE_CATALOG);
 });
 
 afterEach(() => {

@@ -5,12 +5,14 @@ import {
   ClearOutlined,
   CloseCircleOutlined,
   DeleteOutlined,
+  InboxOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
 import { App, Button, Input, Popconfirm, Select, Space, Typography } from "antd";
 import type { TableRowSelection } from "antd/es/table/interface";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { markCandidateJobImported } from "../api/candidateJob";
 import {
   batchDeleteJobs,
   batchUpdateJobStatus,
@@ -24,9 +26,10 @@ import JobAnalysisModal from "../components/JobAnalysisModal";
 import JobDetailDrawer from "../components/JobDetailDrawer";
 import JobFormModal from "../components/JobFormModal";
 import ManualResumeModal from "../components/ManualResumeModal";
+import CandidateJobsDrawer from "../components/jobs/CandidateJobsDrawer";
 import JobTable from "../components/jobs/JobTable";
 import { useApi } from "../hooks/useApi";
-import type { Job } from "../types";
+import type { CandidateJob, Job } from "../types";
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
@@ -53,6 +56,10 @@ export default function JobsPage() {
   const [batchStatus, setBatchStatus] = useState<string>();
   const [batchAction, setBatchAction] = useState<BatchAction>(null);
   const [favoriteJobId, setFavoriteJobId] = useState<number | null>(null);
+  // 备选岗位：抽屉里暂存未核对的招聘信息，导入时走正式岗位表单。
+  const [candidatesOpen, setCandidatesOpen] = useState(false);
+  const [importCandidate, setImportCandidate] = useState<CandidateJob | null>(null);
+  const [importedCandidateId, setImportedCandidateId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const linkedJobId = Number(searchParams.get("job_id")) || null;
   const [openedLinkedJobId, setOpenedLinkedJobId] = useState<number | null>(null);
@@ -246,6 +253,13 @@ export default function JobsPage() {
             </Button>
           )}
           <Button
+            icon={<InboxOutlined />}
+            disabled={batchAction !== null}
+            onClick={() => setCandidatesOpen(true)}
+          >
+            备选岗位
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             disabled={batchAction !== null}
@@ -345,11 +359,35 @@ export default function JobsPage() {
       <JobFormModal
         open={formOpen}
         initial={editingJob}
+        // 从备选岗位导入时，把原文预填进表单并标注来源。
+        presetRawText={importCandidate?.raw_text ?? ""}
+        presetSource={importCandidate ? "备选岗位导入" : undefined}
         onClose={() => {
           setFormOpen(false);
           setEditingJob(null);
+          setImportCandidate(null);
         }}
-        onSaved={() => void reload()}
+        onSaved={(jobId) => {
+          void reload();
+          const candidate = importCandidate;
+          if (!candidate || !jobId) return;
+          setImportCandidate(null);
+          setImportedCandidateId(candidate.id);
+          void markCandidateJobImported(candidate.id, jobId)
+            .then(() => message.success("备选岗位已导入正式岗位"))
+            .catch((err) => message.error(err instanceof Error ? err.message : "标记导入状态失败"));
+        }}
+      />
+      <CandidateJobsDrawer
+        open={candidatesOpen}
+        importedCandidateId={importedCandidateId}
+        onClose={() => setCandidatesOpen(false)}
+        onImport={(candidate) => {
+          setImportCandidate(candidate);
+          setEditingJob(null);
+          setFormOpen(true);
+          setCandidatesOpen(false);
+        }}
       />
       <GenerateResumeModal
         job={generateJob}

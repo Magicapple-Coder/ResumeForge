@@ -1,7 +1,6 @@
 /** 个人资料各大分区的排序布局。 */
 
 import { Card, Form, Input } from "antd";
-import type { UploadProps } from "antd";
 import type { ReactNode } from "react";
 import { AwardSection } from "./AwardSection";
 import { CampusExperienceSection } from "./CampusExperienceSection";
@@ -19,11 +18,9 @@ interface Props {
   sectionReorderMode: boolean;
   editing: boolean;
   saving: boolean;
-  photoReading: boolean;
   photo: string;
   dragOverSection: ProfileSectionKey | null;
-  beforePhotoUpload: UploadProps["beforeUpload"];
-  onRemovePhoto: () => void;
+  onPhotoSelect: (dataUrl: string) => void;
   onHandlePointerDown: ProfileSectionPointerDownHandler;
   onMoveByOffset: (sectionKey: ProfileSectionKey, offset: -1 | 1) => void;
 }
@@ -33,11 +30,9 @@ export default function ProfileSectionStack({
   sectionReorderMode,
   editing,
   saving,
-  photoReading,
   photo,
   dragOverSection,
-  beforePhotoUpload,
-  onRemovePhoto,
+  onPhotoSelect,
   onHandlePointerDown,
   onMoveByOffset,
 }: Props) {
@@ -64,9 +59,7 @@ export default function ProfileSectionStack({
           photo={photo}
           editing={editing}
           saving={saving}
-          photoReading={photoReading}
-          beforePhotoUpload={beforePhotoUpload}
-          onRemovePhoto={onRemovePhoto}
+          onPhotoSelect={onPhotoSelect}
         />,
       )}
       {section("educations", <EducationSection editable={editing} />)}

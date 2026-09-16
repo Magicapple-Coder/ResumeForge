@@ -1,10 +1,12 @@
 /** 简历中心：生成历史列表、收藏、预览与导出。 */
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { App, Button, Input, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { App, Button, Input, Modal, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { deleteResume, listResumes, updateResumeFavorite } from "../api/resumes";
+import { deleteResume, listResumes, renameResume, updateResumeFavorite } from "../api/resumes";
+import { RowActions, RowContextMenu, type RowActionItem } from "../components/common/RowActions";
 import ResumeDetailModal from "../components/ResumeDetailModal";
 import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
 import { useApi } from "../hooks/useApi";
@@ -21,6 +23,9 @@ export default function ResumesPage() {
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [favoriteResumeId, setFavoriteResumeId] = useState<number | null>(null);
   const favoriteResumeIdRef = useRef<number | null>(null);
+  const [renameTarget, setRenameTarget] = useState<ResumeBrief | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const jobIdParam = searchParams.get("job_id");
   const jobId = jobIdParam && /^\d+$/.test(jobIdParam) ? Number(jobIdParam) : undefined;
 
@@ -164,21 +169,62 @@ export default function ResumesPage() {
     {
       title: "操作",
       key: "actions",
-      width: 140,
+      width: 150,
       render: (_, record) => (
-        <Space size="small">
-          <Button type="link" size="small" onClick={() => setPreviewId(record.id)}>
-            预览 / 导出
-          </Button>
-          <Popconfirm title="确定删除这条记录？" onConfirm={() => void remove(record.id)}>
-            <Button type="link" size="small" danger>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <RowActions
+          primary={[
+            { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(record.id) },
+          ]}
+          more={actionsFor(record)}
+        />
       ),
     },
   ];
+
+  /** 行的完整操作清单：三点菜单与整行右键共用同一份。 */
+  const actionsFor = (record: ResumeBrief): RowActionItem[] => [
+    { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(record.id) },
+    {
+      key: "rename",
+      label: "重命名",
+      onClick: () => {
+        setRenameTarget(record);
+        setRenameValue(record.title);
+      },
+    },
+    {
+      key: "favorite",
+      label: record.favorite ? "取消收藏" : "收藏",
+      onClick: () => void toggleFavorite(record),
+    },
+    {
+      key: "delete",
+      label: "删除",
+      danger: true,
+      confirm: "确定删除这条记录？",
+      onClick: () => void remove(record.id),
+    },
+  ];
+
+  const confirmRename = async () => {
+    if (!renameTarget || renaming) return;
+    const title = renameValue.trim();
+    if (!title) {
+      message.warning("简历名称不能为空");
+      return;
+    }
+    setRenaming(true);
+    try {
+      await renameResume(renameTarget.id, title);
+      message.success("已重命名");
+      setRenameTarget(null);
+      void reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "重命名失败");
+    } finally {
+      setRenaming(false);
+    }
+  };
 
   return (
     <div>
@@ -205,6 +251,21 @@ export default function ResumesPage() {
         dataSource={data?.items ?? []}
         loading={loading}
         scroll={{ x: 1024 }}
+        components={{
+          body: {
+            // 整行右键即可重命名、收藏或删除，不必先找到右侧的按钮。
+            row: (props: HTMLAttributes<HTMLTableRowElement>) => {
+              const rowKey = String((props as { "data-row-key"?: string })["data-row-key"] ?? "");
+              const record = (data?.items ?? []).find((item) => String(item.id) === rowKey);
+              if (!record) return <tr {...props} />;
+              return (
+                <RowContextMenu items={actionsFor(record)}>
+                  <tr {...props} />
+                </RowContextMenu>
+              );
+            },
+          },
+        }}
         pagination={{
           current: page,
           pageSize,
@@ -218,6 +279,23 @@ export default function ResumesPage() {
         }}
       />
       <ResumeDetailModal recordId={previewId} onClose={() => setPreviewId(null)} />
+      <Modal
+        title="重命名简历"
+        open={renameTarget !== null}
+        okText="保存"
+        confirmLoading={renaming}
+        onCancel={() => {
+          if (!renaming) setRenameTarget(null);
+        }}
+        onOk={() => void confirmRename()}
+      >
+        <Input
+          value={renameValue}
+          maxLength={256}
+          placeholder="简历名称"
+          onChange={(event) => setRenameValue(event.target.value)}
+        />
+      </Modal>
     </div>
   );
 }

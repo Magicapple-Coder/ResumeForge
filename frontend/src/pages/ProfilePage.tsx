@@ -44,7 +44,6 @@ export default function ProfilePage() {
     photo,
     submit,
     cancelEditing,
-    beforePhotoUpload,
     handleSectionPointerDown,
     toggleSectionReorderMode,
     moveSectionByOffset,
@@ -131,11 +130,9 @@ export default function ProfilePage() {
           sectionReorderMode={sectionReorderMode}
           editing={editing}
           saving={saving}
-          photoReading={photoReading}
           photo={photo}
           dragOverSection={dragOverSection}
-          beforePhotoUpload={beforePhotoUpload}
-          onRemovePhoto={() => form.setFieldValue("photo", "")}
+          onPhotoSelect={(dataUrl) => form.setFieldValue("photo", dataUrl)}
           onHandlePointerDown={handleSectionPointerDown}
           onMoveByOffset={moveSectionByOffset}
         />

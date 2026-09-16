@@ -4,6 +4,7 @@ import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEMPLATE_CATALOG } from "../../test/resumeFixtures";
 import GeneralResumeSection from "./GeneralResumeSection";
 
 const apiMocks = vi.hoisted(() => ({
@@ -14,9 +15,15 @@ const apiMocks = vi.hoisted(() => ({
   fetchResumeHtml: vi.fn(),
   renderResume: vi.fn(),
   updateResume: vi.fn(),
+  updateResumeLayout: vi.fn(),
+  fetchResumeTemplates: vi.fn(),
 }));
 
-vi.mock("../../api/resumes", () => apiMocks);
+// 展开真实模块再覆盖，避免生产代码新增导出后这里抛"export is not defined"。
+vi.mock("../../api/resumes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/resumes")>()),
+  ...apiMocks,
+}));
 
 const GENERAL = {
   id: 7,
@@ -49,7 +56,9 @@ beforeEach(() => {
   apiMocks.listResumes.mockReset();
   apiMocks.renameResume.mockReset();
   apiMocks.deleteResume.mockReset();
+  apiMocks.fetchResumeTemplates.mockReset();
   apiMocks.listResumes.mockResolvedValue({ items: [GENERAL], total: 1 });
+  apiMocks.fetchResumeTemplates.mockResolvedValue(TEMPLATE_CATALOG);
 });
 
 afterEach(() => {

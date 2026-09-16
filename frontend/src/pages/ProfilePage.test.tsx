@@ -4,6 +4,7 @@ import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEMPLATE_CATALOG } from "../test/resumeFixtures";
 import type { Profile } from "../types";
 import ProfilePage from "./ProfilePage";
 
@@ -13,7 +14,10 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/profile", () => ({ getProfile: apiMocks.getProfile }));
-vi.mock("../api/resumes", () => ({
+// 展开真实模块再覆盖：显式列导出时，生产代码新增一个导出就会让调用方直接抛
+// "export is not defined"，看起来像组件崩了。
+vi.mock("../api/resumes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/resumes")>()),
   listResumes: apiMocks.listResumes,
   deleteResume: vi.fn(),
   renameResume: vi.fn(),
@@ -23,6 +27,7 @@ vi.mock("../api/resumes", () => ({
   updateResume: vi.fn(),
   generateResume: vi.fn(),
   createManualResume: vi.fn(),
+  fetchResumeTemplates: vi.fn().mockResolvedValue(TEMPLATE_CATALOG),
 }));
 vi.mock("../api/settings", () => ({ getLLMConfig: vi.fn().mockResolvedValue({}) }));
 

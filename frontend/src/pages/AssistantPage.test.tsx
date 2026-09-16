@@ -1,5 +1,5 @@
 import { App as AntdApp } from "antd";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -50,6 +50,9 @@ const CONVERSATIONS: AssistantConversationBrief[] = [
     title: "会话一",
     pinned: false,
     favorite: false,
+    archived: false,
+    group_name: "",
+    message_count: 0,
     created_at: CREATED_AT,
     updated_at: CREATED_AT,
   },
@@ -58,6 +61,9 @@ const CONVERSATIONS: AssistantConversationBrief[] = [
     title: "会话二",
     pinned: false,
     favorite: false,
+    archived: false,
+    group_name: "",
+    message_count: 0,
     created_at: CREATED_AT,
     updated_at: CREATED_AT,
   },
@@ -184,13 +190,15 @@ describe("AssistantPage", () => {
       if (!menu) throw new Error("conversation action menu has not opened");
       return menu;
     });
-    fireEvent.click(actionMenu.querySelector("button:nth-of-type(2)") as HTMLButtonElement);
+    // 按文案点，不按位置：菜单顺序会变，位置断言会静默指到别的操作上。
+    fireEvent.click(within(actionMenu as HTMLElement).getByText("置顶对话"));
 
     await waitFor(() =>
       expect(apiMocks.updateAssistantConversation).toHaveBeenCalledWith(1, { pinned: true }),
     );
-    expect(screen.queryByRole("radio", { name: "置顶" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "收藏" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "已归档" })).toBeInTheDocument();
   });
 
   it("offers starter prompts for an empty conversation", async () => {
@@ -234,22 +242,22 @@ describe("AssistantPage", () => {
     // 停用的技能不参与作答，就不该出现在"正在生效"的说明里。
     expect(screen.queryByText(/暂时不用/)).not.toBeInTheDocument();
     // 有技能在生效时页头已经写着了，空态不再重复推销同一个功能。
-    expect(screen.queryByText("去设置里添加技能")).not.toBeInTheDocument();
+    expect(screen.queryByText("到技能工作台添加技能")).not.toBeInTheDocument();
   });
 
-  it("takes the user to the settings page that manages skills", async () => {
+  it("takes the user to the skill workbench that manages skills", async () => {
     skillApiMocks.listSkills.mockResolvedValue([makeSkill(1, "面试官追问", true)]);
 
     renderPageWithLocationProbe();
     fireEvent.click(await screen.findByRole("button", { name: "已启用 1 个助手技能，点击管理" }));
 
-    expect(screen.getByTestId("current-path")).toHaveTextContent("/settings");
+    expect(screen.getByTestId("current-path")).toHaveTextContent("/skills");
   });
 
   it("tells a first-time user that skills exist", async () => {
     renderPage();
 
-    expect(await screen.findByText("去设置里添加技能")).toBeInTheDocument();
+    expect(await screen.findByText("到技能工作台添加技能")).toBeInTheDocument();
   });
 
   it("keeps loaded messages visible while refreshing the active conversation", async () => {

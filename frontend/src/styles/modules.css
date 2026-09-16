@@ -1,0 +1,240 @@
+/* 新增模块的样式：行操作菜单、资料箱、技能工作台、助手补充信息、照片面板、版式控件。
+   与既有文件的分工：这里只放"这次新增的界面"的规则，老模块的样式仍留在各自文件里。 */
+
+/* ===== 列表行操作 ===== */
+
+/* 主操作 + 「更多」下拉：让操作区高度固定，不会因为按钮数量不同而参差。 */
+.row-actions {
+  flex-wrap: nowrap;
+}
+
+.row-actions .ant-btn-link {
+  padding-inline: 4px;
+}
+
+.row-actions-more {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.row-actions-more:hover {
+  color: #16365c !important;
+}
+
+/* 表格行右键：给一点悬停反馈，让用户知道整行都可以右键。 */
+.ant-table-tbody > tr.ant-table-row:hover > td {
+  background: #fafcff;
+}
+
+/* ===== 岗位备注图片 ===== */
+
+.job-note-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.job-note-image-tag {
+  align-self: flex-start;
+  margin-inline-end: 0;
+}
+
+.job-note-image-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ===== 资料箱 ===== */
+
+.materials-page-header,
+.skills-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.materials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.material-card {
+  height: 100%;
+}
+
+.material-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.material-card-content {
+  margin-bottom: 8px !important;
+}
+
+.material-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.material-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.material-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #eef1f5;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.material-file-icon {
+  color: #8c9bab;
+}
+
+.material-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+/* ===== 技能工作台 ===== */
+
+.skills-intro-card {
+  margin-bottom: 16px;
+}
+
+.skills-intro-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: #4b5563;
+  line-height: 1.9;
+}
+
+.skill-file-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #eef1f5;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+/* ===== 助手补充信息 ===== */
+
+.assistant-message-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assistant-message-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.assistant-conversation-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.assistant-conversation-meta {
+  font-size: 12px;
+}
+
+.assistant-reasoning-select {
+  min-width: 84px;
+}
+
+/* ===== 简历版式控件 ===== */
+
+.resume-layout-controls {
+  row-gap: 8px;
+}
+
+.generate-layout-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* ===== 个人照片面板 ===== */
+
+.profile-photo-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.profile-photo-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.profile-photo-thumb-button {
+  position: relative;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.profile-photo-thumb-button img {
+  width: 56px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.profile-photo-thumb.is-active .profile-photo-thumb-button {
+  border-color: #16365c;
+}
+
+.profile-photo-thumb .ant-tag {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-inline-end: 0;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+/* ===== 大模型配置 ===== */
+
+.llm-fetch-models-button {
+  padding-inline: 0;
+  height: auto;
+}
+
+.llm-advanced-toggle {
+  padding-inline: 0;
+}

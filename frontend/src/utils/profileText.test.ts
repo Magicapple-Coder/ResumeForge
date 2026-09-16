@@ -34,7 +34,7 @@ const parsed: ProfileTextParseResult = {
   projects: [],
   skills: [],
   warnings: [],
-  recognition_source: "local",
+  parse_engine: "local",
   recognized_text: "",
 };
 

@@ -4,7 +4,9 @@ import type {
   LLMApiKeyRevealResult,
   LLMConfig,
   LLMConfigRecord,
+  LLMModelsResult,
   LLMTestResult,
+  UpdateCheckResult,
 } from "../types";
 import { ApiError, extractError, getFilenameFromDisposition, request } from "./client";
 
@@ -14,6 +16,26 @@ export function getLLMConfig(): Promise<LLMConfig> {
 
 export function saveLLMConfig(config: LLMConfig): Promise<LLMConfig> {
   return request("/settings/llm", { method: "PUT", body: JSON.stringify(config) });
+}
+
+/**
+ * 拉取服务商当前可用的模型列表。
+ *
+ * `api_key` 传空（或脱敏占位符）时后端会回退到已保存的密钥，所以用户不必先保存
+ * 一遍配置才能看到模型列表。
+ */
+export function listLLMModels(
+  config: Pick<LLMConfig, "base_url" | "api_key">,
+): Promise<LLMModelsResult> {
+  return request("/settings/llm/models", {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+/** 检查是否有新版本（只对比版本号，不下载、不自动更新）。 */
+export function checkForUpdate(refresh = false): Promise<UpdateCheckResult> {
+  return request(`/update/check${refresh ? "?refresh=true" : ""}`);
 }
 
 export function revealLLMApiKey(): Promise<LLMApiKeyRevealResult> {

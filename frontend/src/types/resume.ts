@@ -68,6 +68,41 @@ export interface ResumeContent {
 
 export type EnhancementLevel = "light" | "balanced" | "strong";
 
+/** 字号档位（后端 ResumeFontScale）。 */
+export type ResumeFontScale = "small" | "standard" | "large";
+
+/** 最大篇幅：A4 页数，与后端 MAX_RESUME_PAGES 一致。 */
+export const RESUME_PAGE_LIMITS = [1, 2, 3] as const;
+
+export type ResumePageLimit = (typeof RESUME_PAGE_LIMITS)[number];
+
+export interface ResumeTemplateOption {
+  name: string;
+  label: string;
+  description: string;
+}
+
+export interface ResumeFontScaleOption {
+  name: ResumeFontScale;
+  label: string;
+  description: string;
+}
+
+export interface ResumeTemplateCatalog {
+  templates: ResumeTemplateOption[];
+  font_scales: ResumeFontScaleOption[];
+  defaults: { template: string; font_scale: ResumeFontScale };
+  /** 系统里是否找到中文字体：决定「直接下载 PDF」是否可用。 */
+  pdf_direct_available: boolean;
+}
+
+/** 版式参数：模板 + 页数 + 字号，三处（生成、预览、导出）共用。 */
+export interface ResumeLayout {
+  template: string;
+  page_limit: ResumePageLimit | number;
+  font_scale: ResumeFontScale;
+}
+
 export interface ResumeBrief {
   id: number;
   title: string;
@@ -79,6 +114,9 @@ export interface ResumeBrief {
   model: string;
   enhancement_enabled: boolean;
   enhancement_level: EnhancementLevel;
+  template: string;
+  page_limit: number;
+  font_scale: ResumeFontScale;
   created_at: string;
 }
 
@@ -108,6 +146,11 @@ export interface ResumeSuggestions {
 export interface GenerateOptions {
   enhance: boolean;
   enhancement_level: EnhancementLevel;
+  page_limit: number;
+  font_scale: ResumeFontScale;
+  template: string;
+  /** 用户自己补充的生成要求（≤2000 字），作为附加上下文交给模型。 */
+  custom_instruction: string;
 }
 
 /** 生成接口 SSE 事件（与后端 generator 事件一一对应）。 */

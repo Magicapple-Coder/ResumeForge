@@ -1,10 +1,12 @@
 /** 岗位列表表格、列渲染和分页。 */
 
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { Button, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Button, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { TableRowSelection } from "antd/es/table/interface";
+import type { HTMLAttributes } from "react";
 import type { Job, Page } from "../../types";
+import { RowActions, RowContextMenu, type RowActionItem } from "../common/RowActions";
 import SkillTags from "../SkillTags";
 
 type BatchAction = "status" | "delete" | null;
@@ -109,15 +111,28 @@ export default function JobTable({
       title: "备注",
       dataIndex: "note",
       width: 180,
-      render: (value: string) => (
-        <Typography.Text
-          type={value ? undefined : "secondary"}
-          ellipsis={value ? { tooltip: value } : undefined}
-          style={{ display: "block", maxWidth: 160 }}
-        >
-          {value || "-"}
-        </Typography.Text>
-      ),
+      render: (_, job) => {
+        const hasImages = (job.note_images?.length ?? 0) > 0;
+        const text = job.note || "";
+        return (
+          <div className="job-note-cell">
+            <Typography.Text
+              type={text ? undefined : "secondary"}
+              ellipsis={text ? { tooltip: text } : undefined}
+              style={{ display: "block", maxWidth: 160 }}
+            >
+              {text || "-"}
+            </Typography.Text>
+            {hasImages && (
+              <Tooltip title={`备注里有 ${job.note_images.length} 张图片，打开详情查看`}>
+                <Tag color="blue" className="job-note-image-tag">
+                  {job.note_images.length} 张图
+                </Tag>
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "发布时间",
@@ -128,60 +143,34 @@ export default function JobTable({
     {
       title: "操作",
       key: "actions",
-      width: 290,
+      width: 170,
       render: (_, job) => (
-        <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => onOpenDetail(job)}
-          >
-            详情
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => onGenerate(job)}
-          >
-            生成简历
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => onWrite(job)}
-          >
-            自行编写
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => onViewResumes(job)}
-          >
-            相关简历
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            disabled={batchAction !== null}
-            onClick={() => onEdit(job)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该岗位？"
-            disabled={batchAction !== null}
-            onConfirm={() => onDelete(job)}
-          >
-            <Button type="link" size="small" danger disabled={batchAction !== null}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <RowActions
+          disabled={batchAction !== null}
+          // 只留最常用的两个：其余（含删除）收进「更多」，避免一排红色按钮挤在一起。
+          primary={[
+            { key: "detail", label: "详情", onClick: () => onOpenDetail(job) },
+            { key: "generate", label: "生成简历", onClick: () => onGenerate(job) },
+          ]}
+          more={actionsFor(job)}
+        />
       ),
+    },
+  ];
+
+  /** 行的完整操作清单：三点菜单与整行右键共用同一份。 */
+  const actionsFor = (job: Job): RowActionItem[] => [
+    { key: "detail", label: "查看详情", onClick: () => onOpenDetail(job) },
+    { key: "generate", label: "生成简历", onClick: () => onGenerate(job) },
+    { key: "write", label: "自行编写", onClick: () => onWrite(job) },
+    { key: "resumes", label: "相关简历", onClick: () => onViewResumes(job) },
+    { key: "edit", label: "编辑", onClick: () => onEdit(job) },
+    {
+      key: "delete",
+      label: "删除",
+      danger: true,
+      confirm: "确定删除该岗位？",
+      onClick: () => onDelete(job),
     },
   ];
 
@@ -193,6 +182,21 @@ export default function JobTable({
       dataSource={jobs?.items ?? []}
       loading={loading}
       scroll={{ x: 1330 }}
+      components={{
+        body: {
+          // 整行右键即可编辑/删除；批量模式下不拦截右键，避免和选择操作打架。
+          row: (props: HTMLAttributes<HTMLTableRowElement>) => {
+            const rowKey = String((props as { "data-row-key"?: string })["data-row-key"] ?? "");
+            const job = (jobs?.items ?? []).find((item) => String(item.id) === rowKey);
+            if (batchAction !== null || !job) return <tr {...props} />;
+            return (
+              <RowContextMenu items={actionsFor(job)}>
+                <tr {...props} />
+              </RowContextMenu>
+            );
+          },
+        },
+      }}
       pagination={{
         current: page,
         pageSize,

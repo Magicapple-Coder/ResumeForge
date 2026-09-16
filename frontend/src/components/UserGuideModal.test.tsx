@@ -59,7 +59,9 @@ describe("UserGuideModal", () => {
 
     expect(screen.getByText("让助手直接帮你处理数据")).toBeInTheDocument();
     expect(screen.getByText(/但它不会替你删除任何数据/)).toBeInTheDocument();
-    expect(screen.getByText(/助手技能/)).toBeInTheDocument();
+    // 技能在助手页的入口（输入框下方工具条）和新建入口（技能工作台）都要指明。
+    expect(screen.getByText(/「技能」按钮可以直接开关/)).toBeInTheDocument();
+    expect(screen.getByText(/技能工作台/)).toBeInTheDocument();
   });
 
   it("finishes by pointing at the data backup step", () => {

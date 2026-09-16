@@ -1,12 +1,14 @@
 import {
   FileTextOutlined,
   HomeOutlined,
+  InboxOutlined,
   MessageOutlined,
   ProfileOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
   SettingOutlined,
   StarOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Skeleton, Tooltip, Typography } from "antd";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -20,6 +22,8 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const ResumesPage = lazy(() => import("./pages/ResumesPage"));
 const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
+const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
+const SkillsPage = lazy(() => import("./pages/SkillsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UserGuideModal = lazy(() => import("./components/UserGuideModal"));
 
@@ -31,6 +35,8 @@ const MENU_ITEMS = [
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
   { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
   { key: "/assistant", icon: <MessageOutlined />, label: "求职助手" },
+  { key: "/materials", icon: <InboxOutlined />, label: "资料箱" },
+  { key: "/skills", icon: <ToolOutlined />, label: "技能工作台" },
   { key: "/profile", icon: <ProfileOutlined />, label: "我的资料" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
@@ -127,6 +133,8 @@ export default function App() {
         <Route path="/resumes" element={<ResumesPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/assistant" element={<AssistantPage />} />
+        <Route path="/materials" element={<MaterialsPage />} />
+        <Route path="/skills" element={<SkillsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

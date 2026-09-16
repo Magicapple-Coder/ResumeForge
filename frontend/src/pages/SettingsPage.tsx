@@ -11,6 +11,7 @@ import {
   importDataset,
   listDatasets,
   listLLMConfigRecords,
+  listLLMModels,
   renameDataset,
   revealLLMApiKey,
   saveLLMConfig,
@@ -23,6 +24,7 @@ import DatasetsCard from "../components/settings/DatasetsCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
 import SkillsCard from "../components/settings/SkillsCard";
+import UpdateCard from "../components/settings/UpdateCard";
 import {
   API_KEY_MASK,
   CUSTOM_PRESET,
@@ -34,11 +36,13 @@ import {
   sameConfig,
   type SettingsFormValues,
 } from "../components/settings/SettingsConfig";
+import SkillEditorModal from "../components/skills/SkillEditorModal";
 import type {
   AssistantSkill,
   DatasetInfo,
   LLMConfig,
   LLMConfigRecord,
+  LLMModelsResult,
   LLMTestResult,
 } from "../types";
 import { downloadBlob } from "../utils/download";
@@ -69,6 +73,8 @@ export default function SettingsPage() {
   const [skillImporting, setSkillImporting] = useState(false);
   const [skillTogglingId, setSkillTogglingId] = useState<number | null>(null);
   const [skillDeletingId, setSkillDeletingId] = useState<number | null>(null);
+  const [skillEditorOpen, setSkillEditorOpen] = useState(false);
+  const [skillEditorId, setSkillEditorId] = useState<number | null>(null);
 
   const loadSkillList = useCallback(async () => {
     setSkillsLoading(true);
@@ -297,6 +303,22 @@ export default function SettingsPage() {
     }
   };
 
+  /** 按表单里当前填的 Base URL / API Key 拉取可用模型（失败原因由后端给出）。 */
+  const fetchModels = async (): Promise<LLMModelsResult> => {
+    const values = form.getFieldsValue(true) as SettingsFormValues;
+    try {
+      return await listLLMModels({
+        base_url: values.base_url ?? "",
+        api_key: values.api_key ?? "",
+      });
+    } catch (err) {
+      return {
+        models: [],
+        message: err instanceof Error ? err.message : "获取模型列表失败",
+      };
+    }
+  };
+
   const test = async () => {
     if (saving || testing) return;
     const values = await collectValues();
@@ -466,6 +488,7 @@ export default function SettingsPage() {
         onRevealApiKey={revealSavedApiKey}
         onRevealError={(error) => message.error(error)}
         onTest={() => void test()}
+        onFetchModels={fetchModels}
       />
 
       <LLMConfigRecordsCard
@@ -499,6 +522,10 @@ export default function SettingsPage() {
         onImport={(file) => void importSkillFile(file)}
         onToggle={(skill, enabled) => void toggleSkill(skill, enabled)}
         onDelete={(skill) => void removeSkill(skill)}
+        onOpen={(skill) => {
+          setSkillEditorId(skill.id);
+          setSkillEditorOpen(true);
+        }}
       />
 
       <DatasetsCard
@@ -524,6 +551,16 @@ export default function SettingsPage() {
           if (renamingDatasetId === null) setRenameTarget(null);
         }}
         onDelete={(dataset) => void removeDataset(dataset)}
+      />
+
+      <UpdateCard />
+
+      {/* 设置页里点技能名查看详情，与技能工作台共用同一个编辑弹窗。 */}
+      <SkillEditorModal
+        open={skillEditorOpen}
+        skillId={skillEditorId}
+        onClose={() => setSkillEditorOpen(false)}
+        onSaved={() => void loadSkillList()}
       />
     </div>
   );

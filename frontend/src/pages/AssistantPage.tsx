@@ -1,6 +1,6 @@
-/** AI 求职助手：流式对话、历史记录、附件与项目上下文联动。 */
-import { App, Typography } from "antd";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+/** AI 求职助手：流式对话、历史记录、技能开关、附件与项目上下文联动。 */
+import { App, Input, Modal, Typography } from "antd";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AssistantComposer from "../features/assistant/components/AssistantComposer";
 import AssistantMessageList from "../features/assistant/components/AssistantMessageList";
@@ -12,12 +12,23 @@ import { useAssistantAttachments } from "../features/assistant/hooks/useAssistan
 import { useAssistantConversations } from "../features/assistant/hooks/useAssistantConversations";
 import { useAssistantSkills } from "../features/assistant/hooks/useAssistantSkills";
 import { useAssistantStream } from "../features/assistant/hooks/useAssistantStream";
+import type { AssistantConversationBrief, ReasoningEffort } from "../types";
 
 export {
   AssistantMessageContent,
   MessageSources,
   StreamingStatus,
 } from "../features/assistant/components/AssistantMessageContent";
+
+/** 思考强度是本机偏好，跟着浏览器而不是数据库走（换数据集时不该被重置）。 */
+const REASONING_EFFORT_STORAGE_KEY = "resumeforge.assistant.reasoning_effort";
+
+function readStoredEffort(): ReasoningEffort {
+  const raw = window.localStorage.getItem(REASONING_EFFORT_STORAGE_KEY) ?? "";
+  return (["", "none", "low", "medium", "high"] as const).includes(raw as ReasoningEffort)
+    ? (raw as ReasoningEffort)
+    : "";
+}
 
 export default function AssistantPage() {
   const { message } = App.useApp();
@@ -32,8 +43,12 @@ export default function AssistantPage() {
   );
   const [includeProfile, setIncludeProfile] = useState(false);
   const [webSearch, setWebSearch] = useState(false);
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(readStoredEffort);
+  const [groupTarget, setGroupTarget] = useState<AssistantConversationBrief | null>(null);
+  const [groupValue, setGroupValue] = useState("");
   const mountedRef = useRef(true);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const requestedConversationId = positiveId(searchParams.get("conversation"));
   const conversationsState = useAssistantConversations({ message });
   const {
     activeId,
@@ -47,12 +62,16 @@ export default function AssistantPage() {
     loadDetail,
     selectConversation,
     createConversation,
+    ensureWelcomeConversation,
     removeConversation,
     saveConversationTitle,
+    updateConversation,
     updateConversationFlags,
+    forkConversation,
   } = conversationsState;
-  const { enabledSkills, skillsLoaded } = useAssistantSkills();
-  const openSkillSettings = () => navigate("/settings");
+  const { skills, enabledSkills, skillsLoaded, togglingSkillId, toggleSkill, reloadSkills } =
+    useAssistantSkills();
+  const openSkillWorkbench = () => navigate("/skills");
   const attachmentsState = useAssistantAttachments({ mountedRef });
   const {
     attachments,
@@ -76,6 +95,7 @@ export default function AssistantPage() {
     resumeId,
     includeProfile,
     webSearch,
+    reasoningEffort,
   });
   const {
     sending,
@@ -99,6 +119,24 @@ export default function AssistantPage() {
     };
   }, [stop]);
 
+  // 思考强度：切一次记一次，下次打开助手页沿用上次的选择。
+  useEffect(() => {
+    window.localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, reasoningEffort);
+  }, [reasoningEffort]);
+
+  // 深链：从「复制分享链接」打开时直接定位到那一段对话。
+  useEffect(() => {
+    if (requestedConversationId === undefined || conversationsLoading) return;
+    const exists = (conversations ?? []).some((item) => item.id === requestedConversationId);
+    if (exists) selectConversation(requestedConversationId);
+  }, [conversations, conversationsLoading, requestedConversationId, selectConversation]);
+
+  // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
+  useEffect(() => {
+    if (conversationsLoading || requestedConversationId !== undefined) return;
+    if ((conversations?.length ?? 0) === 0) void ensureWelcomeConversation();
+  }, [conversations, conversationsLoading, ensureWelcomeConversation, requestedConversationId]);
+
   const historyMessages = detail?.messages ?? [];
   const isActiveStream = activeId !== null && activeId === sendingConversationId;
   const hasActiveDetail = detail?.id === activeId;
@@ -118,6 +156,33 @@ export default function AssistantPage() {
   const chooseStarterPrompt = (prompt: StarterPrompt) => {
     setContent(prompt.content);
     if (prompt.enableWebSearch) setWebSearch(true);
+  };
+
+  const handleToggleSkill = useCallback(
+    async (skill: (typeof skills)[number], enabled: boolean) => {
+      try {
+        await toggleSkill(skill, enabled);
+        message.success(`已${enabled ? "启用" : "停用"}技能「${skill.name}」`);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : "切换技能失败");
+        await reloadSkills();
+      }
+    },
+    [message, reloadSkills, toggleSkill],
+  );
+
+  const openGroupModal = (conversation: AssistantConversationBrief) => {
+    setGroupTarget(conversation);
+    setGroupValue(conversation.group_name);
+  };
+
+  const confirmGroup = async () => {
+    if (!groupTarget) return;
+    const updated = await updateConversation(groupTarget.id, { group_name: groupValue.trim() });
+    if (updated) {
+      message.success(groupValue.trim() ? `已移动到「${groupValue.trim()}」` : "已移出分组");
+      setGroupTarget(null);
+    }
   };
 
   // 在浏览器绘制前定位到末尾，避免详情刷新时先闪现旧的顶部位置。
@@ -151,6 +216,11 @@ export default function AssistantPage() {
         onDelete={(id) => void removeConversation(id)}
         onRename={(id, title) => void saveConversationTitle(id, title)}
         onToggleFlag={(conversation, field) => void updateConversationFlags(conversation, field)}
+        onArchive={(conversation, archived) =>
+          void updateConversation(conversation.id, { archived })
+        }
+        onFork={(conversation) => void forkConversation(conversation.id)}
+        onMoveToGroup={openGroupModal}
       />
       <section className="assistant-workspace">
         <header className="assistant-header">
@@ -160,7 +230,7 @@ export default function AssistantPage() {
             </Typography.Title>
             <Typography.Text type="secondary">当前回复由「设置」中的模型配置提供。</Typography.Text>
           </div>
-          <AssistantSkillsHint skills={enabledSkills} onManage={openSkillSettings} />
+          <AssistantSkillsHint skills={enabledSkills} onManage={openSkillWorkbench} />
         </header>
         <AssistantMessageList
           detail={detail}
@@ -178,7 +248,7 @@ export default function AssistantPage() {
           enabledSkillCount={enabledSkills.length}
           skillsLoaded={skillsLoaded}
           onChoosePrompt={chooseStarterPrompt}
-          onManageSkills={openSkillSettings}
+          onManageSkills={openSkillWorkbench}
         />
         <AssistantComposer
           content={content}
@@ -189,6 +259,10 @@ export default function AssistantPage() {
           resumeId={resumeId}
           includeProfile={includeProfile}
           webSearch={webSearch}
+          reasoningEffort={reasoningEffort}
+          skills={skills}
+          skillsLoaded={skillsLoaded}
+          togglingSkillId={togglingSkillId}
           jobOptions={jobOptions}
           resumeOptions={resumeOptions}
           onContentChange={setContent}
@@ -196,12 +270,32 @@ export default function AssistantPage() {
           onResumeChange={setResumeId}
           onIncludeProfileChange={setIncludeProfile}
           onWebSearchChange={setWebSearch}
+          onReasoningEffortChange={setReasoningEffort}
+          onToggleSkill={(skill, enabled) => void handleToggleSkill(skill, enabled)}
+          onManageSkills={openSkillWorkbench}
           onAddAttachment={(file) => void addAttachment(file)}
           onRemoveAttachment={removeAttachment}
           onSend={() => void send(content, () => setContent(""))}
           onStop={stop}
         />
       </section>
+      <Modal
+        title="移动到分组"
+        open={groupTarget !== null}
+        okText="保存"
+        onCancel={() => setGroupTarget(null)}
+        onOk={() => void confirmGroup()}
+      >
+        <Typography.Paragraph type="secondary">
+          给这段对话归个类（例如「字节」「面试准备」）。留空表示移出分组。分组只影响侧栏的显示，不会动对话内容。
+        </Typography.Paragraph>
+        <Input
+          value={groupValue}
+          maxLength={64}
+          placeholder="分组名称"
+          onChange={(event) => setGroupValue(event.target.value)}
+        />
+      </Modal>
     </div>
   );
 }

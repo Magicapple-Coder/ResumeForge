@@ -51,6 +51,8 @@ const JOB: Job = {
   posted_at: "",
   status: "开放中",
   note: "",
+  note_images: [],
+  recognition_source: "",
   favorite: false,
   created_at: "2026-08-20T09:00:00",
   updated_at: "2026-08-20T09:00:00",

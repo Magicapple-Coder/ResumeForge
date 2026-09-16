@@ -1,6 +1,7 @@
-/** 求职助手消息输入、上下文选择和附件预览。 */
+/** 求职助手消息输入、上下文选择、技能开关与附件预览。 */
 
 import {
+  ExperimentOutlined,
   FilePdfOutlined,
   FileTextOutlined,
   FileWordOutlined,
@@ -8,13 +9,15 @@ import {
   SendOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Image, Input, Select, Switch, Tag, Tooltip, Upload } from "antd";
+import { Alert, Button, Dropdown, Image, Input, Select, Switch, Tag, Tooltip, Upload } from "antd";
 import {
   ASSISTANT_ACCEPT,
   MAX_ATTACHMENT_COUNT,
   canPreviewImage,
   type PendingAttachment,
 } from "../assistantUtils";
+import type { AssistantSkill } from "../../../types";
+import { REASONING_EFFORT_OPTIONS, type ReasoningEffort } from "../../../types";
 
 /** 文档按扩展名区分图标：pdf 和 docx 混在一串标签里时，图标比文件名更好认。 */
 function attachmentIcon(attachment: PendingAttachment) {
@@ -35,6 +38,11 @@ interface Props {
   resumeId: number | undefined;
   includeProfile: boolean;
   webSearch: boolean;
+  reasoningEffort: ReasoningEffort;
+  /** 全部技能（含停用的），用于在下拉里直接开关。 */
+  skills: AssistantSkill[];
+  skillsLoaded: boolean;
+  togglingSkillId: number | null;
   jobOptions: Array<{ value: number; label: string }>;
   resumeOptions: Array<{ value: number; label: string }>;
   onContentChange: (value: string) => void;
@@ -42,6 +50,9 @@ interface Props {
   onResumeChange: (value: number | undefined) => void;
   onIncludeProfileChange: (value: boolean) => void;
   onWebSearchChange: (value: boolean) => void;
+  onReasoningEffortChange: (value: ReasoningEffort) => void;
+  onToggleSkill: (skill: AssistantSkill, enabled: boolean) => void;
+  onManageSkills: () => void;
   onAddAttachment: (file: File) => void;
   onRemoveAttachment: (id: number) => void;
   onSend: () => void;
@@ -57,6 +68,10 @@ export default function AssistantComposer({
   resumeId,
   includeProfile,
   webSearch,
+  reasoningEffort,
+  skills,
+  skillsLoaded,
+  togglingSkillId,
   jobOptions,
   resumeOptions,
   onContentChange,
@@ -64,11 +79,16 @@ export default function AssistantComposer({
   onResumeChange,
   onIncludeProfileChange,
   onWebSearchChange,
+  onReasoningEffortChange,
+  onToggleSkill,
+  onManageSkills,
   onAddAttachment,
   onRemoveAttachment,
   onSend,
   onStop,
 }: Props) {
+  const enabledSkills = skills.filter((skill) => skill.enabled);
+
   return (
     <div className="assistant-composer">
       <div className="assistant-context-controls">
@@ -168,6 +188,45 @@ export default function AssistantComposer({
               </Button>
             </Tooltip>
           </Upload>
+          <Dropdown
+            trigger={["click"]}
+            placement="topLeft"
+            menu={{
+              // 勾选状态即"已启用"，点一下就能开关，不用跳到设置页。
+              selectable: true,
+              multiple: true,
+              selectedKeys: enabledSkills.map((skill) => String(skill.id)),
+              items: [
+                ...skills.map((skill) => ({
+                  key: String(skill.id),
+                  label: skill.description ? `${skill.name} · ${skill.description}` : skill.name,
+                  disabled: togglingSkillId === skill.id,
+                })),
+                { type: "divider" as const },
+                { key: "manage", label: "打开技能工作台" },
+              ],
+              onClick: ({ key }) => {
+                if (key === "manage") {
+                  onManageSkills();
+                  return;
+                }
+                const skill = skills.find((item) => String(item.id) === key);
+                if (skill) onToggleSkill(skill, !skill.enabled);
+              },
+            }}
+            disabled={sending}
+          >
+            <Tooltip title="点击开关助手技能；勾选表示已启用">
+              <Button
+                aria-label="技能"
+                icon={<ExperimentOutlined />}
+                loading={!skillsLoaded}
+                disabled={sending}
+              >
+                技能{enabledSkills.length > 0 ? `（${enabledSkills.length}）` : ""}
+              </Button>
+            </Tooltip>
+          </Dropdown>
           <div className="assistant-context-toggles">
             <label className="assistant-context-toggle">
               <Switch size="small" checked={includeProfile} onChange={onIncludeProfileChange} />
@@ -177,6 +236,17 @@ export default function AssistantComposer({
               <Switch size="small" checked={webSearch} onChange={onWebSearchChange} />
               <span>联网搜索</span>
             </label>
+            <Tooltip title="有思考模式的大模型可以在这里调推理强度；不支持该参数的服务商会忽略它">
+              <Select
+                size="small"
+                className="assistant-reasoning-select"
+                value={reasoningEffort}
+                options={REASONING_EFFORT_OPTIONS}
+                disabled={sending}
+                onChange={onReasoningEffortChange}
+                aria-label="思考强度"
+              />
+            </Tooltip>
           </div>
         </div>
         {sending ? (

@@ -73,6 +73,11 @@ export function formValuesFromConfig(config: LLMConfig): SettingsFormValues {
     temperature: config.temperature,
     timeout_seconds: config.timeout_seconds,
     max_tokens: config.max_tokens,
+    // 高级参数缺省是 null（= 不发送，沿用服务商默认），表单里也照此显示。
+    top_p: config.top_p ?? null,
+    frequency_penalty: config.frequency_penalty ?? null,
+    presence_penalty: config.presence_penalty ?? null,
+    seed: config.seed ?? null,
     // 纯手动配置保存后再打开时，下拉要停在它自己那一项上，而不是跳回"自定义模型"。
     preset:
       matched?.provider ?? (config.provider === MANUAL_PRESET ? MANUAL_PRESET : CUSTOM_PRESET),
@@ -88,6 +93,10 @@ export function configFromFormValues(values: SettingsFormValues): LLMConfig {
     temperature: values.temperature,
     timeout_seconds: values.timeout_seconds,
     max_tokens: values.max_tokens,
+    top_p: values.top_p ?? null,
+    frequency_penalty: values.frequency_penalty ?? null,
+    presence_penalty: values.presence_penalty ?? null,
+    seed: values.seed ?? null,
   };
 }
 
@@ -100,6 +109,10 @@ export function configFromRecord(record: LLMConfigRecord): LLMConfig {
     temperature: record.temperature,
     timeout_seconds: record.timeout_seconds,
     max_tokens: record.max_tokens,
+    top_p: record.top_p ?? null,
+    frequency_penalty: record.frequency_penalty ?? null,
+    presence_penalty: record.presence_penalty ?? null,
+    seed: record.seed ?? null,
   };
 }
 
@@ -111,6 +124,10 @@ export function sameConfig(left: LLMConfig, right: LLMConfig): boolean {
     left.model === right.model &&
     left.temperature === right.temperature &&
     left.timeout_seconds === right.timeout_seconds &&
-    left.max_tokens === right.max_tokens
+    left.max_tokens === right.max_tokens &&
+    (left.top_p ?? null) === (right.top_p ?? null) &&
+    (left.frequency_penalty ?? null) === (right.frequency_penalty ?? null) &&
+    (left.presence_penalty ?? null) === (right.presence_penalty ?? null) &&
+    (left.seed ?? null) === (right.seed ?? null)
   );
 }

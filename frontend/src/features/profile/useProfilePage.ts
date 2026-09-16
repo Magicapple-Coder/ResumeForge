@@ -202,7 +202,7 @@ export function useProfilePage() {
         documents: attachmentInputs(files, "document"),
       });
       if (requestId !== profileTextRequestId.current) return;
-      const { warnings, recognition_source: recognitionSource } = parsed;
+      const { warnings, parse_engine: recognitionSource } = parsed;
       const currentValues = form.getFieldsValue(true) as Partial<ProfileFormValues>;
       const merged = mergeParsedProfileValues(currentValues as ProfileFormValues, parsed);
       form.setFieldsValue({ ...merged, section_order: sectionOrder });

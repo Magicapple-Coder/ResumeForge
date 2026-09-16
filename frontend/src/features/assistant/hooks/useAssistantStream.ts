@@ -3,7 +3,12 @@
 import type { MutableRefObject } from "react";
 import { useCallback, useRef, useState } from "react";
 import { sendAssistantMessage } from "../../../api/assistant";
-import type { AssistantSource, AssistantStreamEvent, AssistantToolCall } from "../../../types";
+import type {
+  AssistantSource,
+  AssistantStreamEvent,
+  AssistantToolCall,
+  ReasoningEffort,
+} from "../../../types";
 import type { PendingAttachment } from "../assistantUtils";
 
 interface Options {
@@ -19,6 +24,7 @@ interface Options {
   resumeId: number | undefined;
   includeProfile: boolean;
   webSearch: boolean;
+  reasoningEffort: ReasoningEffort;
 }
 
 export function useAssistantStream({
@@ -34,6 +40,7 @@ export function useAssistantStream({
   resumeId,
   includeProfile,
   webSearch,
+  reasoningEffort,
 }: Options) {
   const [sending, setSending] = useState(false);
   const [sendingConversationId, setSendingConversationId] = useState<number | null>(null);
@@ -94,6 +101,7 @@ export function useAssistantStream({
             resume_id: resumeId,
             include_profile: includeProfile,
             web_search: webSearch,
+            reasoning_effort: reasoningEffort,
             attachments: attachmentPayload,
           },
           (event: AssistantStreamEvent) => {
@@ -152,6 +160,7 @@ export function useAssistantStream({
       jobId,
       loadDetail,
       mountedRef,
+      reasoningEffort,
       reloadConversations,
       resumeId,
       webSearch,

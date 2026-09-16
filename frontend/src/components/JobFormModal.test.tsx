@@ -11,9 +11,10 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../api/jobs", () => apiMocks);
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((next) => {
+/** createJob 的返回值会被读 `id`（备选岗位导入要靠它标记"已导入"），所以用真形状。 */
+function deferredJob() {
+  let resolve!: (value: { id: number }) => void;
+  const promise = new Promise<{ id: number }>((next) => {
     resolve = next;
   });
   return { promise, resolve };
@@ -62,7 +63,7 @@ describe("JobFormModal", () => {
   });
 
   it("submits only once when the save button is activated repeatedly", async () => {
-    const pending = deferred();
+    const pending = deferredJob();
     apiMocks.createJob.mockReturnValue(pending.promise);
     const onClose = vi.fn();
     const onSaved = vi.fn();
@@ -82,7 +83,7 @@ describe("JobFormModal", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => expect(apiMocks.createJob).toHaveBeenCalledTimes(1));
-    await act(async () => pending.resolve());
+    await act(async () => pending.resolve({ id: 42 }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -101,7 +102,7 @@ const DRAFT = {
   posted_at: "",
   status: "开放中",
   warnings: ["识别结果来自截图，请对照截图核对后再保存。"],
-  recognition_source: "ai" as const,
+  parse_engine: "ai" as const,
   recognized_text: "门店店长 示例超市 成都市武侯区",
 };
 
@@ -222,7 +223,7 @@ describe("JobFormModal 图片识别", () => {
   it("marks local-rule results as less trustworthy", async () => {
     apiMocks.parseJobText.mockResolvedValue({
       ...DRAFT,
-      recognition_source: "local" as const,
+      parse_engine: "local" as const,
       recognized_text: "",
       warnings: [],
     });
@@ -260,7 +261,7 @@ describe("JobFormModal 图片识别", () => {
       description: "",
       requirements: "",
       recognized_text: "",
-      recognition_source: "local" as const,
+      parse_engine: "local" as const,
     });
     renderModal();
     fireEvent.change(screen.getByLabelText("职位名称"), { target: { value: "我手填的岗位" } });

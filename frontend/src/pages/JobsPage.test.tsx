@@ -23,6 +23,8 @@ const JOB: Job = {
   posted_at: "2026年8月20日",
   status: "开放中",
   note: "",
+  note_images: [],
+  recognition_source: "",
   favorite: false,
   created_at: "2026-08-19T08:00:00",
   updated_at: "2026-08-21T09:30:00",

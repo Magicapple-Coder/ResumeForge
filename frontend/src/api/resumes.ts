@@ -5,13 +5,15 @@ import type {
   ResumeBrief,
   ResumeContent,
   ResumeDetail,
+  ResumeLayout,
   ResumeSuggestions,
+  ResumeTemplateCatalog,
   StreamEvent,
 } from "../types";
 import { ApiError, buildQuery, extractError, getFilenameFromDisposition, request } from "./client";
 import { consumeSSE } from "./stream";
 
-export type ExportFormat = "json" | "md" | "html";
+export type ExportFormat = "json" | "md" | "html" | "pdf";
 
 export function listResumes(
   params: {
@@ -79,13 +81,29 @@ export function generateResume(
   return consumeSSE("/api/resumes/generate", payload, onEvent, signal);
 }
 
+/** 可选的简历模板与字号档位；顺带告诉前端服务端能否直接生成 PDF。 */
+export function fetchResumeTemplates(): Promise<ResumeTemplateCatalog> {
+  return request("/resumes/templates");
+}
+
+/** 只调整版式参数（模板/页数/字号），不重新生成内容。 */
+export function updateResumeLayout(id: number, layout: ResumeLayout): Promise<ResumeDetail> {
+  return request(`/resumes/${id}/layout`, {
+    method: "PATCH",
+    body: JSON.stringify(layout),
+  });
+}
+
 /** 渲染简历内容为 HTML（生成完成后、落库前的即时预览） */
-export async function renderResume(content: ResumeContent): Promise<string> {
+export async function renderResume(
+  content: ResumeContent,
+  layout: Partial<ResumeLayout> = {},
+): Promise<string> {
   const resp = await fetch("/api/resumes/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // 后端 ResumeRenderRequest 的结构是 { content: ResumeContent }。
-    body: JSON.stringify({ content }),
+    // 后端 ResumeRenderRequest 的结构是 { content, template, page_limit, font_scale }。
+    body: JSON.stringify({ content, ...layout }),
   });
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
   return resp.text();

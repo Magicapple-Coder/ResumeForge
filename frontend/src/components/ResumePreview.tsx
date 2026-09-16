@@ -12,10 +12,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Props {
   html: string;
   warnings: string[];
-  /** 仅作为首次布局尚未测量时的占位高度，实际画布始终是 A4。 */
+  /** 预览页数：与渲染时的 page_limit 一致，多页时画布按 N 张 A4 叠起来。 */
+  pages?: number;
+  /** 仅作为首次布局尚未测量时的占位高度，实际画布始终是 A4 × 页数。 */
   height?: number;
   /** 提供后显示“点击编辑”模式，并返回结构化简历字段路径。 */
   onEditTarget?: (path: string) => void;
+  /** 渲染完成后的版式状态：当前页数、自动缩放比例与是否溢出。 */
+  onLayoutStatus?: (status: { pages: number; scale: number; overflow: boolean }) => void;
 }
 
 const A4_WIDTH_PX = 794;
@@ -41,14 +45,21 @@ type InteractionMode = "pan" | "edit";
 export default function ResumePreview({
   html,
   warnings,
-  height = A4_HEIGHT_PX,
+  pages = 1,
+  height,
   onEditTarget,
+  onLayoutStatus,
 }: Props) {
+  const pageCount = Math.max(1, Math.round(pages));
+  const paperHeight = A4_HEIGHT_PX * pageCount;
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const panStartRef = useRef<PanStart | null>(null);
   const frameCleanupRef = useRef<(() => void) | null>(null);
-  const [availableSpace, setAvailableSpace] = useState<AvailableSpace>({ width: 0, height });
+  const [availableSpace, setAvailableSpace] = useState<AvailableSpace>({
+    width: 0,
+    height: height ?? paperHeight,
+  });
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("pan");
@@ -77,21 +88,30 @@ export default function ResumePreview({
       document.head.appendChild(style);
     }
 
-    // 长内容也压缩到单页 A4 内，避免用户必须在 iframe 中滚动查看。
+    // 长内容压缩到所选页数内（与模板脚本同一套算法），避免用户必须在 iframe 中滚动查看。
     body.style.transform = "none";
     body.style.transformOrigin = "top left";
     body.style.width = "";
     body.style.height = "";
     const contentWidth = Math.max(body.scrollWidth, root.scrollWidth, A4_WIDTH_PX);
-    const contentHeight = Math.max(body.scrollHeight, root.scrollHeight, A4_HEIGHT_PX);
-    const contentScale = Math.min(1, A4_WIDTH_PX / contentWidth, A4_HEIGHT_PX / contentHeight);
+    const contentHeight = Math.max(body.scrollHeight, root.scrollHeight, paperHeight);
+    const contentScale = Math.min(1, A4_WIDTH_PX / contentWidth, paperHeight / contentHeight);
     if (contentScale < 1) {
       body.style.width = `${A4_WIDTH_PX / contentScale}px`;
-      body.style.height = `${A4_HEIGHT_PX / contentScale}px`;
+      body.style.height = `${paperHeight / contentScale}px`;
       body.style.transform = `scale(${contentScale})`;
     }
     root.style.overflow = "hidden";
-  }, []);
+
+    // 模板脚本把实际页数、缩放比例与溢出状态写在 body.dataset 上；读出来交给父组件，
+    // 内容塞不下时才能提示「增加页数 / 缩小字号」。
+    const reportedScale = Number(body.dataset.scale ?? "");
+    onLayoutStatus?.({
+      pages: Number(body.dataset.pages ?? "") || pageCount,
+      scale: Number.isFinite(reportedScale) && reportedScale > 0 ? reportedScale : contentScale,
+      overflow: body.dataset.overflow === "1" || contentHeight > paperHeight + 1,
+    });
+  }, [onLayoutStatus, pageCount, paperHeight]);
 
   useEffect(() => {
     setZoom(1);
@@ -108,12 +128,13 @@ export default function ResumePreview({
   }, [html, updateAvailableSpace]);
 
   const viewportWidth = availableSpace.width || A4_WIDTH_PX;
-  const viewportHeight = availableSpace.height || height;
-  const fitScale = Math.min(1, viewportWidth / A4_WIDTH_PX, viewportHeight / A4_HEIGHT_PX);
+  const viewportHeight = availableSpace.height || paperHeight;
+  const fitScale = Math.min(1, viewportWidth / A4_WIDTH_PX, viewportHeight / paperHeight);
   const scale = Math.min(2.5, fitScale * zoom);
-  const viewportHeightForPage = A4_HEIGHT_PX * fitScale;
+  // 多页时容器最多占满可用高度，剩下的靠滚动查看，不然弹窗会被撑到几千像素高。
+  const viewportHeightForPage = Math.min(paperHeight * fitScale, viewportHeight);
   const scaledWidth = A4_WIDTH_PX * scale;
-  const scaledHeight = A4_HEIGHT_PX * scale;
+  const scaledHeight = paperHeight * scale;
 
   const handleWheel = useCallback((event: globalThis.WheelEvent) => {
     // iframe 会独立接收滚轮；在外层用非被动监听确保每次都能缩放预览。
@@ -348,7 +369,7 @@ export default function ResumePreview({
             title="简历预览"
             className="resume-iframe"
             width={A4_WIDTH_PX}
-            height={A4_HEIGHT_PX}
+            height={paperHeight}
             srcDoc={html}
             sandbox="allow-same-origin"
             scrolling="no"
@@ -361,7 +382,7 @@ export default function ResumePreview({
             data-interaction-mode={interactionMode}
             style={{
               width: A4_WIDTH_PX,
-              height: A4_HEIGHT_PX,
+              height: paperHeight,
               transform: `scale(${scale})`,
               transformOrigin: "top left",
             }}

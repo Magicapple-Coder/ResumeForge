@@ -7,6 +7,7 @@ import type {
   AssistantSource,
   AssistantToolCall,
 } from "../../../types";
+import { formatDateTime } from "../../../utils/format";
 import AssistantEmptyState from "./AssistantEmptyState";
 import {
   AssistantMessageContent,
@@ -70,7 +71,12 @@ export default function AssistantMessageList({
       ) : (
         historyMessages.map((item) => (
           <article key={item.id} className={`assistant-message assistant-message--${item.role}`}>
-            <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
+            <div className="assistant-message-head">
+              <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
+              <Typography.Text type="secondary" className="assistant-message-time">
+                {formatDateTime(item.created_at)}
+              </Typography.Text>
+            </div>
             <AssistantMessageContent content={item.content} />
             <MessageAttachments attachments={item.attachments} />
             <MessageSources sources={item.context.sources ?? []} />

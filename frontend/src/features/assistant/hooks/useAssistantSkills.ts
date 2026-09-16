@@ -1,38 +1,50 @@
 /**
- * 已启用的助手技能。
+ * 助手技能状态。
  *
  * 技能会在服务端改变助手的作答方式，但界面上本来完全看不到这件事——用户只会觉得
- * "今天的助手有点不一样"。把启用中的技能取出来，才能让它可见。
+ * "今天的助手有点不一样"。这里既提供只读的启用列表（页头提示），也提供开关能力
+ * （助手页的「技能」下拉可以直接启停，不必跳去设置页）。
  */
 
-import { useEffect, useState } from "react";
-import { listSkills } from "../../../api/skill";
+import { useCallback, useEffect, useState } from "react";
+import { listSkills, setSkillEnabled } from "../../../api/skill";
 import type { AssistantSkill } from "../../../types";
 
 export function useAssistantSkills() {
   const [skills, setSkills] = useState<AssistantSkill[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  const reloadSkills = useCallback(async () => {
+    try {
+      setSkills(await listSkills());
+    } catch {
+      // 取不到技能列表不影响对话本身，静默退回"没有技能"。
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    void listSkills()
-      .then((items) => {
-        if (active) setSkills(items);
-      })
-      .catch(() => {
-        // 取不到技能列表不影响对话本身，静默退回"没有技能"。
-      })
-      .finally(() => {
-        if (active) setLoaded(true);
-      });
-    return () => {
-      active = false;
-    };
+    void reloadSkills();
+  }, [reloadSkills]);
+
+  const toggleSkill = useCallback(async (skill: AssistantSkill, enabled: boolean) => {
+    setTogglingId(skill.id);
+    try {
+      const updated = await setSkillEnabled(skill.id, enabled);
+      setSkills((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } finally {
+      setTogglingId(null);
+    }
   }, []);
 
   return {
     skills,
     enabledSkills: skills.filter((skill) => skill.enabled),
     skillsLoaded: loaded,
+    togglingSkillId: togglingId,
+    reloadSkills,
+    toggleSkill,
   };
 }

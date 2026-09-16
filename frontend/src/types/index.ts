@@ -13,3 +13,5 @@ export * from "./attachment";
 export * from "./skill";
 export * from "./settings";
 export * from "./search";
+export * from "./material";
+export * from "./photo";

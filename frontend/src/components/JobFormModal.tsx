@@ -1,19 +1,43 @@
-/** 岗位新增/编辑弹窗：手动添加岗位信息。 */
-import { FileSearchOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Form, Input, Modal, Select } from "antd";
+/** 岗位新增/编辑弹窗：手动添加、识别导入、备注图片与来源标注。 */
+import { DeleteOutlined, FileSearchOutlined, PictureOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Form,
+  Image,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Typography,
+  Upload,
+} from "antd";
 import { useEffect, useRef, useState } from "react";
 import { createJob, parseJobText, updateJob } from "../api/jobs";
 import { attachmentInputs, useRecognitionFiles } from "../hooks/useRecognitionFiles";
+import { readAsDataUrl } from "../utils/attachments";
 import RecognitionFileField from "./RecognitionFileField";
 import RecognitionOutcome from "./RecognitionOutcome";
-import type { Job, JobPayload, RecognitionSource } from "../types";
+import type { Job, JobPayload, JobRecognitionSource, RecognitionSource } from "../types";
+
+/** 与后端 MAX_JOB_NOTE_IMAGES / 图片体积上限一致（服务端仍是权威校验）。 */
+const MAX_NOTE_IMAGES = 2;
+const MAX_NOTE_IMAGE_BYTES = 2 * 1024 * 1024;
+
+type RecognitionInputKind = "text" | "image" | "document";
 
 interface Props {
   open: boolean;
   /** 传入岗位表示编辑，null 表示新增 */
   initial: Job | null;
+  /** 从备选岗位导入时预填的招聘原文（只用于新增）。 */
+  presetRawText?: string;
+  /** 从备选岗位导入时的来源标注；不填则按识别输入自动判定。 */
+  presetSource?: JobRecognitionSource;
   onClose: () => void;
-  onSaved: () => void;
+  /** 保存成功回调；新建时带上新岗位 id（备选岗位导入用它标记） 。 */
+  onSaved: (jobId?: number) => void;
 }
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
@@ -32,7 +56,14 @@ const RECOGNIZED_CONTENT_FIELDS = [
   "posted_at",
 ] as const;
 
-export default function JobFormModal({ open, initial, onClose, onSaved }: Props) {
+export default function JobFormModal({
+  open,
+  initial,
+  presetRawText,
+  presetSource,
+  onClose,
+  onSaved,
+}: Props) {
   const [form] = Form.useForm<JobPayload>();
   const { message } = App.useApp();
   const [rawText, setRawText] = useState("");
@@ -41,6 +72,9 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [recognizedText, setRecognizedText] = useState("");
   const [recognitionSource, setRecognitionSource] = useState<RecognitionSource | null>(null);
+  // 这次识别是用什么输入的：保存时据此把「图片识别 / 文档识别 / 粘贴文本识别」写进溯源字段。
+  const [inputKind, setInputKind] = useState<RecognitionInputKind>("text");
+  const [noteImages, setNoteImages] = useState<string[]>([]);
   const { files, reading, addFiles, removeFile, clear, onPaste } = useRecognitionFiles();
   const parseRequestId = useRef(0);
   const submittingRef = useRef(false);
@@ -55,15 +89,35 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
     if (!open) return;
     if (initial) {
       form.setFieldsValue(initial);
+      setNoteImages(initial.note_images ?? []);
     } else {
       form.resetFields();
-      setRawText("");
+      setRawText(presetRawText ?? "");
       setParseWarnings([]);
       setRecognizedText("");
       setRecognitionSource(null);
+      setInputKind("text");
+      setNoteImages([]);
       clear();
     }
-  }, [open, initial, form, clear]);
+  }, [open, initial, presetRawText, form, clear]);
+
+  const addNoteImage = async (file: File) => {
+    if (file.size > MAX_NOTE_IMAGE_BYTES) {
+      message.error("单张图片不能超过 2 MB");
+      return;
+    }
+    if (noteImages.length >= MAX_NOTE_IMAGES) {
+      message.warning(`备注最多放 ${MAX_NOTE_IMAGES} 张图片`);
+      return;
+    }
+    try {
+      const dataUrl = await readAsDataUrl(file);
+      setNoteImages((current) => [...current, dataUrl]);
+    } catch {
+      message.error("读取图片失败，请重试");
+    }
+  };
 
   const parseImport = async () => {
     if (submittingRef.current) return;
@@ -75,10 +129,14 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
 
     setParsing(true);
     const requestId = ++parseRequestId.current;
+    // 记录这次识别用的是什么输入，保存时写进「来源」字段。
+    const hasImages = files.some((file) => file.kind === "image");
+    const hasDocuments = files.some((file) => file.kind === "document");
+    setInputKind(hasImages ? "image" : hasDocuments ? "document" : "text");
     try {
       const {
         warnings,
-        recognition_source: recognitionSource,
+        parse_engine: recognitionSource,
         recognized_text: recognized,
         ...draft
       } = await parseJobText({
@@ -114,6 +172,14 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
     }
   };
 
+  /** 按"这次识别用了什么输入"决定溯源标注；没做过识别就是手动填写。 */
+  const recognitionSourceValue = (): JobRecognitionSource => {
+    if (!recognitionSource) return "手动填写";
+    if (inputKind === "image") return "图片识别";
+    if (inputKind === "document") return "文档识别";
+    return "粘贴文本识别";
+  };
+
   const close = (force = false) => {
     if (submittingRef.current && !force) return;
     parseRequestId.current += 1;
@@ -134,15 +200,27 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       return;
     }
 
+    // 录入方式：从备选岗位导入时用指定值，识别过的按输入类型标注，没识别过就是手动填写；
+    // 编辑时沿用原值。
+    const recognitionSource: JobRecognitionSource = isEdit
+      ? (initial?.recognition_source ?? "")
+      : (presetSource ?? recognitionSourceValue());
+    const payload: JobPayload = {
+      ...values,
+      note_images: noteImages,
+      recognition_source: recognitionSource,
+    };
+
     try {
       if (isEdit && initial) {
-        await updateJob(initial.id, values);
+        await updateJob(initial.id, payload);
         message.success("岗位已更新");
+        onSaved(initial.id);
       } else {
-        await createJob(values);
+        const created = await createJob(payload);
         message.success("岗位已添加");
+        onSaved(created.id);
       }
-      onSaved();
       close(true);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");
@@ -282,8 +360,46 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
             rows={3}
             maxLength={2000}
             showCount
-            placeholder="记录投递进展、内推联系人、面试安排等"
+            placeholder="记录投递进展、内推联系人、面试安排等；保存时会自动补一行「来源：…」"
           />
+        </Form.Item>
+        <Form.Item label={`备注图片（选填，最多 ${MAX_NOTE_IMAGES} 张）`}>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Space wrap>
+              <Upload
+                accept="image/jpeg,image/png,image/webp"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void addNoteImage(file as File);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<PictureOutlined />}>添加图片</Button>
+              </Upload>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                招聘截图、内推码等，每张不超过 2 MB
+              </Typography.Text>
+            </Space>
+            {noteImages.length > 0 && (
+              <Space wrap>
+                {noteImages.map((source, index) => (
+                  <div key={`${index}-${source.slice(-16)}`} className="job-note-image-item">
+                    <Image src={source} alt={`备注图片 ${index + 1}`} width={96} />
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      aria-label={`移除备注图片 ${index + 1}`}
+                      icon={<DeleteOutlined />}
+                      onClick={() =>
+                        setNoteImages((current) => current.filter((_, i) => i !== index))
+                      }
+                    />
+                  </div>
+                ))}
+              </Space>
+            )}
+          </Space>
         </Form.Item>
       </Form>
     </Modal>
