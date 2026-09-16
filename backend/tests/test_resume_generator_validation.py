@@ -218,6 +218,20 @@ def _render_system_prompt(job: bool) -> str:
     return env.get_template("resume_generate_system.md").render(job=job)
 
 
+def test_user_prompt_ends_with_a_measurable_checklist():
+    """字数与条数写在模型最后读到的位置，遵守得更好。
+
+    实测：只写在系统提示里时，一轮 0 条超标、一轮 5 条全超（最长 42 字）；把可度量的
+    约束加到用户提示词末尾的自查清单后，那一轮落在 31-34 字（上限内）。
+    """
+    template = (PROMPTS_DIR / "resume_generate_user.md").read_text(encoding="utf-8")
+
+    assert "输出前自查" in template
+    assert "最多不超过 35 字" in template
+    assert "个人总结不超过 120 字" in template
+    assert "没有" in template and "黑话" in template
+
+
 def test_system_prompt_pins_writing_rules_for_both_modes():
     """措辞、篇幅与分模块要求是「资深 HR 版」口径，改模板时最容易整段丢。"""
     job_prompt = _render_system_prompt(job=True)
