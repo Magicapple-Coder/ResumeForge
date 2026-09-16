@@ -28,6 +28,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# 中文 Windows 的控制台编码是 cp936，打印 "⚠" 这类符号会直接抛 UnicodeEncodeError：
+# 幅度都判定完了却因为一行提示崩掉。保留控制台原有编码（中文在 cmd 里仍要能看），
+# 只把无法编码的字符降级成问号。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PY = REPO_ROOT / "backend" / "app" / "config.py"
 PACKAGE_JSON = REPO_ROOT / "frontend" / "package.json"

@@ -31,7 +31,10 @@ interface Props {
   progressText: string;
   streamError: string;
   messageEndRef: RefObject<HTMLDivElement>;
+  enabledSkillCount: number;
+  skillsLoaded: boolean;
   onChoosePrompt: (prompt: StarterPrompt) => void;
+  onManageSkills: () => void;
 }
 
 export default function AssistantMessageList({
@@ -47,7 +50,10 @@ export default function AssistantMessageList({
   progressText,
   streamError,
   messageEndRef,
+  enabledSkillCount,
+  skillsLoaded,
   onChoosePrompt,
+  onManageSkills,
 }: Props) {
   const historyMessages = detail?.messages ?? [];
   return (
@@ -55,7 +61,12 @@ export default function AssistantMessageList({
       {showLoading ? (
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : historyMessages.length === 0 && !(sending && activeStream) ? (
-        <AssistantEmptyState onChoosePrompt={onChoosePrompt} />
+        <AssistantEmptyState
+          onChoosePrompt={onChoosePrompt}
+          enabledSkillCount={enabledSkillCount}
+          skillsLoaded={skillsLoaded}
+          onManageSkills={onManageSkills}
+        />
       ) : (
         historyMessages.map((item) => (
           <article key={item.id} className={`assistant-message assistant-message--${item.role}`}>

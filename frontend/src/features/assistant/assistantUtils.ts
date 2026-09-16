@@ -22,6 +22,15 @@ export interface PendingAttachment extends AssistantAttachmentInput {
   kind: "text" | "image";
 }
 
+/** 页头放不下太多技能名字，超过这个数量就收成"等 N 个"。 */
+const MAX_LISTED_SKILL_NAMES = 2;
+
+export function summarizeSkillNames(skills: { name: string }[]): string {
+  const names = skills.map((skill) => skill.name);
+  if (names.length <= MAX_LISTED_SKILL_NAMES) return names.join("、");
+  return `${names.slice(0, MAX_LISTED_SKILL_NAMES).join("、")} 等 ${names.length} 个`;
+}
+
 export function safeExternalUrl(value: string): string | null {
   try {
     const url = new URL(value);

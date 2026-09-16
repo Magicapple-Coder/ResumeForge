@@ -1,14 +1,16 @@
 /** AI 求职助手：流式对话、历史记录、附件与项目上下文联动。 */
 import { App, Typography } from "antd";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AssistantComposer from "../features/assistant/components/AssistantComposer";
 import AssistantMessageList from "../features/assistant/components/AssistantMessageList";
+import AssistantSkillsHint from "../features/assistant/components/AssistantSkillsHint";
 import ConversationSidebar from "../features/assistant/components/ConversationSidebar";
 import type { StarterPrompt } from "../features/assistant/assistantTypes";
 import { positiveId } from "../features/assistant/assistantUtils";
 import { useAssistantAttachments } from "../features/assistant/hooks/useAssistantAttachments";
 import { useAssistantConversations } from "../features/assistant/hooks/useAssistantConversations";
+import { useAssistantSkills } from "../features/assistant/hooks/useAssistantSkills";
 import { useAssistantStream } from "../features/assistant/hooks/useAssistantStream";
 
 export {
@@ -19,6 +21,7 @@ export {
 
 export default function AssistantPage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [content, setContent] = useState("");
   const [jobId, setJobId] = useState<number | undefined>(() =>
@@ -48,6 +51,8 @@ export default function AssistantPage() {
     saveConversationTitle,
     updateConversationFlags,
   } = conversationsState;
+  const { enabledSkills, skillsLoaded } = useAssistantSkills();
+  const openSkillSettings = () => navigate("/settings");
   const attachmentsState = useAssistantAttachments({ mountedRef });
   const {
     attachments,
@@ -97,7 +102,11 @@ export default function AssistantPage() {
   const historyMessages = detail?.messages ?? [];
   const isActiveStream = activeId !== null && activeId === sendingConversationId;
   const hasActiveDetail = detail?.id === activeId;
-  const showDetailLoading = detailLoading && !hasActiveDetail;
+  // "还没有会话"和"会话还在加载"在详情为空时长得一样，但只有后者该显示骨架屏。分不清的话
+  // 空态会先画出来、被骨架屏顶掉、再画回来（实测每次进入都闪一下）。
+  const hasNoConversations = !conversationsLoading && (conversations?.length ?? 0) === 0;
+  const awaitingConversation =
+    !hasNoConversations && (detail === null || (detailLoading && !hasActiveDetail));
   const jobOptions = (contextOptions?.jobs ?? []).map((job) => ({
     value: job.id,
     label: `${job.company ? `${job.company} · ` : ""}${job.title}`,
@@ -113,9 +122,9 @@ export default function AssistantPage() {
 
   // 在浏览器绘制前定位到末尾，避免详情刷新时先闪现旧的顶部位置。
   useLayoutEffect(() => {
-    if (showDetailLoading || (!historyMessages.length && !isActiveStream)) return;
+    if (awaitingConversation || (!historyMessages.length && !isActiveStream)) return;
     messageEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [detail?.id, detail?.messages, historyMessages.length, isActiveStream, showDetailLoading]);
+  }, [awaitingConversation, detail?.id, detail?.messages, historyMessages.length, isActiveStream]);
 
   useEffect(() => {
     if (!sending || !isActiveStream) return;
@@ -145,14 +154,15 @@ export default function AssistantPage() {
       />
       <section className="assistant-workspace">
         <header className="assistant-header">
-          <div>
+          <div className="assistant-header-titles">
             <Typography.Title level={3}>{detail?.title || "AI 求职助手"}</Typography.Title>
             <Typography.Text type="secondary">当前回复由「设置」中的模型配置提供。</Typography.Text>
           </div>
+          <AssistantSkillsHint skills={enabledSkills} onManage={openSkillSettings} />
         </header>
         <AssistantMessageList
           detail={detail}
-          showLoading={showDetailLoading}
+          showLoading={awaitingConversation}
           activeStream={isActiveStream}
           sending={sending}
           pendingUserText={pendingUserText}
@@ -163,7 +173,10 @@ export default function AssistantPage() {
           progressText={progressText}
           streamError={streamError}
           messageEndRef={messageEndRef}
+          enabledSkillCount={enabledSkills.length}
+          skillsLoaded={skillsLoaded}
           onChoosePrompt={chooseStarterPrompt}
+          onManageSkills={openSkillSettings}
         />
         <AssistantComposer
           content={content}

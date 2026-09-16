@@ -111,12 +111,36 @@
 }
 
 .assistant-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .assistant-header .ant-typography {
   margin: 0;
+}
+
+.assistant-header-titles {
+  min-width: 0;
+}
+
+/* 技能指示贴着标题行，不抢标题的位置，也不因为长名字把标题挤变形。 */
+.assistant-skills-hint.ant-btn {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  color: #1554ad;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.assistant-skills-hint.ant-btn:hover {
+  color: #003eb3;
+  background: #edf5ff;
 }
 
 .assistant-messages {
@@ -164,4 +188,13 @@
   color: #003eb3;
   border-color: #91caff;
   background: #edf5ff;
+}
+
+/* 空态里的技能引导：只在没启用任何技能时出现，负责让人知道有这个功能。 */
+.assistant-skills-discovery {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  max-width: 440px;
+  margin: 12px auto 0;
 }

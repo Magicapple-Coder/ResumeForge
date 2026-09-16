@@ -151,22 +151,28 @@ def _finish(name: str, description: str, prompt: str, rest, source_name: str, wa
     )
 
 
-def parse_markdown_skill(path: Path) -> ParsedSkill:
-    """导入单独一份 .md：只有提示词，没有知识文件。"""
-    text = _decode(path.read_bytes(), path.name)
+def parse_markdown_skill(path: Path, source_name: str | None = None) -> ParsedSkill:
+    """导入单独一份 .md：只有提示词，没有知识文件。
+
+    ``source_name`` 是使用者看到的原始文件名。上传时请求体是裸字节，落盘的临时文件只能用
+    随机名，所以名字必须由调用方传进来——否则"用文件名作为技能名称"会退化成随机 UUID。
+    """
+    display_name = source_name or path.name
+    text = _decode(path.read_bytes(), display_name)
     if len(text) > MAX_SKILL_FILE_CHARS:
         raise SkillImportError(f"技能提示词不能超过 {MAX_SKILL_FILE_CHARS} 个字符")
     meta, body = _strip_frontmatter(text)
     warnings = []
     name = meta.get("name", "")
     if not name:
-        name = path.stem
+        name = PurePosixPath(display_name).stem
         warnings.append("提示词没有 frontmatter 的 name，已用文件名作为技能名称")
-    return _finish(name, meta.get("description", ""), body, [], path.name, warnings)
+    return _finish(name, meta.get("description", ""), body, [], display_name, warnings)
 
 
-def parse_zip_skill(path: Path) -> ParsedSkill:
+def parse_zip_skill(path: Path, source_name: str | None = None) -> ParsedSkill:
     """导入一个技能包：一份提示词 + 若干知识文件。"""
+    display_name = source_name or path.name
     try:
         archive = zipfile.ZipFile(path)
     except zipfile.BadZipFile as exc:
@@ -180,6 +186,6 @@ def parse_zip_skill(path: Path) -> ParsedSkill:
     warnings = []
     name = meta.get("name", "")
     if not name:
-        name = path.stem
+        name = PurePosixPath(display_name).stem
         warnings.append("提示词没有 frontmatter 的 name，已用文件名作为技能名称")
-    return _finish(name, meta.get("description", ""), body, rest, path.name, warnings)
+    return _finish(name, meta.get("description", ""), body, rest, display_name, warnings)

@@ -5,6 +5,7 @@
 两者不在 CORS 简单请求允许的类型里，跨站页面必须先发预检，预检只放行本机前端。
 """
 import logging
+from urllib.parse import unquote
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,6 +31,24 @@ IMPORT_PATH = f"{router.prefix}/import"
 
 _ZIP_CONTENT_TYPES = frozenset({"application/zip", "application/x-zip-compressed"})
 _MARKDOWN_CONTENT_TYPES = frozenset({"text/markdown", "text/x-markdown", "text/plain"})
+
+# 请求体是裸字节，原始文件名带不进来；前端用这个头补上（头只能放 latin-1，所以是 URL 编码的）。
+FILENAME_HEADER = "x-skill-filename"
+MAX_SOURCE_NAME_CHARS = 120
+
+
+def _source_name(request: Request) -> str | None:
+    """取出使用者那份文件的名字，只当显示名与兜底名称用。
+
+    这个值来自客户端，所以在这里就剥掉路径部分和不可打印字符——它既会进数据库，也可能
+    被当成"没有 frontmatter 时用什么名字"，不能让它带出目录。
+    """
+    raw = request.headers.get(FILENAME_HEADER, "").strip()
+    if not raw:
+        return None
+    name = unquote(raw).replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(char for char in name if char.isprintable()).strip().strip(".")
+    return name[:MAX_SOURCE_NAME_CHARS] or None
 
 
 def _to_out(skill) -> AssistantSkillOut:
@@ -63,15 +82,17 @@ async def import_skill(request: Request, db: Session = Depends(get_db)):
             status_code=415, detail="请导入 .md 提示词文件或 .zip 技能包"
         )
 
+    source_name = _source_name(request)
     staging = restore_directory(db.get_bind())
     staging.mkdir(parents=True, exist_ok=True)
+    # 临时文件仍然用随机名，避免并发导入同名文件互相截断；真实文件名走 source_name。
     candidate = staging / f"{uuid4().hex}{suffix}"
     try:
         with candidate.open("wb") as target:
             async for chunk in request.stream():
                 target.write(chunk)
-        parsed = parse_zip_skill(candidate) if suffix == ".zip" else parse_markdown_skill(candidate)
-        skill = upsert_skill(db, parsed)
+        parser = parse_zip_skill if suffix == ".zip" else parse_markdown_skill
+        skill = upsert_skill(db, parser(candidate, source_name))
     except SkillImportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:

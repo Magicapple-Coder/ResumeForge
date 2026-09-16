@@ -11,12 +11,19 @@ export function listSkills(): Promise<AssistantSkill[]> {
  *
  * `Content-Type` 写死并用文件名区分，不信浏览器给的 `File.type`——系统映射给出的
  * 类型不可靠，而后端的类型白名单是拒绝导入的唯一依据。
+ *
+ * 请求体是裸文件字节，文件名不在里面，所以额外用一个头带上它：没有它，后端只能用
+ * 随机临时文件名当技能名，而且同一个文件反复导入会变成一堆新技能而不是覆盖更新。
+ * 头只能放 latin-1，中文文件名必须先编码。
  */
 export async function importSkill(file: File): Promise<AssistantSkill> {
   const contentType = /\.zip$/i.test(file.name) ? "application/zip" : "text/markdown";
   const resp = await fetch("/api/assistant/skills/import", {
     method: "POST",
-    headers: { "Content-Type": contentType },
+    headers: {
+      "Content-Type": contentType,
+      "X-Skill-Filename": encodeURIComponent(file.name),
+    },
     body: file,
   });
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);

@@ -1,10 +1,11 @@
 import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AssistantConversationBrief,
   AssistantConversationDetail,
+  AssistantSkill,
   AssistantStreamEvent,
 } from "../types";
 import AssistantPage, {
@@ -24,6 +25,7 @@ const apiMocks = vi.hoisted(() => ({
   listJobs: vi.fn(),
   listResumes: vi.fn(),
 }));
+const skillApiMocks = vi.hoisted(() => ({ listSkills: vi.fn() }));
 const scrollIntoViewMock = vi.fn();
 
 vi.mock("../api/assistant", () => ({
@@ -37,6 +39,8 @@ vi.mock("../api/assistant", () => ({
 }));
 vi.mock("../api/jobs", () => ({ listJobs: apiMocks.listJobs }));
 vi.mock("../api/resumes", () => ({ listResumes: apiMocks.listResumes }));
+// 页头会取一次技能列表；不拦掉的话 jsdom 里没有 fetch，会走到真实请求上。
+vi.mock("../api/skill", () => ({ listSkills: skillApiMocks.listSkills }));
 
 const CREATED_AT = "2026-08-20T10:00:00";
 const CONVERSATIONS: AssistantConversationBrief[] = [
@@ -64,6 +68,19 @@ function conversationDetail(id: number): AssistantConversationDetail {
   return { ...conversation, messages: [] };
 }
 
+function makeSkill(id: number, name: string, enabled: boolean): AssistantSkill {
+  return {
+    id,
+    name,
+    description: "",
+    enabled,
+    source_name: `${name}.md`,
+    prompt_chars: 120,
+    files: [],
+    updated_at: CREATED_AT,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -79,6 +96,49 @@ function renderPage() {
     <MemoryRouter>
       <AntdApp>
         <AssistantPage />
+      </AntdApp>
+    </MemoryRouter>,
+  );
+}
+
+/**
+ * 记录空态元素的挂载与卸载。
+ *
+ * "闪一下"没法用某个时刻的断言捕捉——它在任何一次 findBy 之前就已经演出完了——所以只能在
+ * 渲染前开始监听 DOM，事后数它被挂载了几次。
+ */
+function watchEmptyState() {
+  const events: string[] = [];
+  const classify = (nodes: NodeList, kind: string) => {
+    for (const node of Array.from(nodes)) {
+      if (node instanceof HTMLElement && node.classList.contains("assistant-empty-state")) {
+        events.push(kind);
+      }
+    }
+  };
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      classify(record.addedNodes, "add");
+      classify(record.removedNodes, "remove");
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  return () => {
+    observer.disconnect();
+    return events;
+  };
+}
+
+/** 带上路径探针，用来断言"点了之后去了哪"。 */
+function renderPageWithLocationProbe() {
+  function LocationProbe() {
+    return <span data-testid="current-path">{useLocation().pathname}</span>;
+  }
+  return render(
+    <MemoryRouter>
+      <AntdApp>
+        <AssistantPage />
+        <LocationProbe />
       </AntdApp>
     </MemoryRouter>,
   );
@@ -104,6 +164,7 @@ beforeEach(() => {
   apiMocks.sendAssistantMessage.mockReset().mockResolvedValue(undefined);
   apiMocks.listJobs.mockReset().mockResolvedValue({ items: [], total: 0 });
   apiMocks.listResumes.mockReset().mockResolvedValue({ items: [], total: 0 });
+  skillApiMocks.listSkills.mockReset().mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -141,6 +202,53 @@ describe("AssistantPage", () => {
       "请帮我查找与目标方向相关的招聘信息，并优先给出官网链接。",
     );
     expect(screen.getByRole("switch", { name: "联网搜索" })).toBeChecked();
+  });
+
+  it("does not flash the empty state while the conversation is still loading", async () => {
+    const delayedList = deferred<AssistantConversationBrief[]>();
+    apiMocks.listAssistantConversations.mockImplementation(() => delayedList.promise);
+
+    const stopWatching = watchEmptyState();
+    renderPage();
+    delayedList.resolve(CONVERSATIONS);
+
+    expect(await screen.findByText("可以这样问")).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
+
+    // 只挂载一次：先画引导、再被骨架屏顶掉、随后又画回来，会在这里留下 remove + add。
+    expect(stopWatching()).toEqual(["add"]);
+  });
+
+  it("shows an empty conversation which skills are shaping the reply", async () => {
+    skillApiMocks.listSkills.mockResolvedValue([
+      makeSkill(1, "面试官追问", true),
+      makeSkill(2, "简历诊断", true),
+      makeSkill(3, "暂时不用", false),
+    ]);
+
+    renderPage();
+
+    const hint = await screen.findByRole("button", { name: "已启用 2 个助手技能，点击管理" });
+    expect(hint).toHaveTextContent("技能：面试官追问、简历诊断");
+    // 停用的技能不参与作答，就不该出现在"正在生效"的说明里。
+    expect(screen.queryByText(/暂时不用/)).not.toBeInTheDocument();
+    // 有技能在生效时页头已经写着了，空态不再重复推销同一个功能。
+    expect(screen.queryByText("去设置里添加技能")).not.toBeInTheDocument();
+  });
+
+  it("takes the user to the settings page that manages skills", async () => {
+    skillApiMocks.listSkills.mockResolvedValue([makeSkill(1, "面试官追问", true)]);
+
+    renderPageWithLocationProbe();
+    fireEvent.click(await screen.findByRole("button", { name: "已启用 1 个助手技能，点击管理" }));
+
+    expect(screen.getByTestId("current-path")).toHaveTextContent("/settings");
+  });
+
+  it("tells a first-time user that skills exist", async () => {
+    renderPage();
+
+    expect(await screen.findByText("去设置里添加技能")).toBeInTheDocument();
   });
 
   it("keeps loaded messages visible while refreshing the active conversation", async () => {

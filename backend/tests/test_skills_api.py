@@ -1,6 +1,7 @@
 """技能接口测试：导入（.md / .zip）、启用切换、删除与临时文件清理。"""
 import io
 import zipfile
+from urllib.parse import quote
 
 from app import database
 from app.api import skills as skills_api
@@ -27,10 +28,16 @@ def _zip_bytes(members: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
-def _import(client, payload: bytes, content_type: str = "application/zip"):
-    return client.post(
-        "/api/assistant/skills/import", content=payload, headers={"Content-Type": content_type}
-    )
+def _import(
+    client,
+    payload: bytes,
+    content_type: str = "application/zip",
+    filename: str | None = None,
+):
+    headers = {"Content-Type": content_type}
+    if filename is not None:
+        headers["X-Skill-Filename"] = quote(filename, safe="")
+    return client.post("/api/assistant/skills/import", content=payload, headers=headers)
 
 
 def _list(client) -> list[dict]:
@@ -50,6 +57,61 @@ def test_import_a_prompt_only_markdown_skill(client):
     assert created["files"] == []
     assert created["prompt_chars"] > 0
     assert [item["name"] for item in _list(client)] == ["面试模拟官"]
+
+
+def test_a_markdown_without_frontmatter_is_named_after_the_uploaded_file(client):
+    """上传的是裸字节，文件名只能靠请求头带进来——带不进来的话这里会变成一串随机 UUID。"""
+    response = _import(
+        client,
+        "你是面试官，逐题追问。\n".encode(),
+        content_type="text/markdown",
+        filename="面试追问.md",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "面试追问"
+    assert response.json()["source_name"] == "面试追问.md"
+
+
+def test_a_zip_without_frontmatter_is_named_after_the_uploaded_file(client):
+    payload = _zip_bytes({"SKILL.md": "你是面试官，逐题追问。\n"})
+
+    created = _import(client, payload, filename="面试追问.zip").json()
+
+    assert created["name"] == "面试追问"
+    assert created["source_name"] == "面试追问.zip"
+
+
+def test_reimporting_a_file_without_frontmatter_updates_instead_of_duplicating(client):
+    """技能名就是"同一个技能"的判据；名字每次随机的话，反复导入会堆出一串副本。"""
+    first = _import(
+        client, "第一版。\n".encode(), content_type="text/markdown", filename="面试追问.md"
+    ).json()
+    second = _import(
+        client, "第二版。\n".encode(), content_type="text/markdown", filename="面试追问.md"
+    ).json()
+
+    assert second["id"] == first["id"]
+    assert [item["id"] for item in _list(client)] == [first["id"]]
+
+
+def test_the_uploaded_filename_cannot_smuggle_a_path(client):
+    created = _import(
+        client,
+        "内容。\n".encode(),
+        content_type="text/markdown",
+        filename="../../evil.md",
+    ).json()
+
+    assert created["name"] == "evil"
+    assert created["source_name"] == "evil.md"
+
+
+def test_importing_without_a_filename_still_works(client):
+    """裸调接口（没有文件名可退）不该崩，只是名字只能由后端临时凑一个。"""
+    created = _import(client, "没有 frontmatter 的提示词。\n".encode(), content_type="text/markdown").json()
+
+    assert created["name"]
 
 
 def test_import_a_zip_skill_with_knowledge_files(client):
