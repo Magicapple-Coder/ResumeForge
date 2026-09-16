@@ -2,9 +2,21 @@
 
 ResumeForge 是本地单用户应用。代码、Python/Node 依赖和本地业务数据分开管理：Git 只跟踪代码和配置示例，用户数据库位于 `backend/data/`，不会被正常的 `git pull` 覆盖。
 
+## 怎样算一次安全的升级
+
+不论哪种安装方式，都要满足三条：**代码换成新的、依赖跟着装、`data/` 与 `.env` 原地不动**。
+
+升级前先关闭正在运行的后端和前端进程。在项目目录双击 `update.cmd`（Windows）会自动完成前两条：
+Git 检出走 `git pull --ff-only` + 依赖同步，压缩包安装的目录则下载最新源码并覆盖程序文件，
+`backend/data/`、`backend/.env`、`runtime/`、`backend/.venv/`、`frontend/node_modules/` 一律保持原样。
+先预览而不改文件：`powershell -File scripts\Update-ResumeForge.ps1 -DryRun`。
+
+数据库结构由 Alembic 在下次启动时自动升级，升级前会在 `backend/data/backups/` 留一份快照。
+应用内 **设置 → 软件更新** 可以直接检查有没有新版本（只检查，不下载）。
+
 ## 推荐升级流程（Git 安装）
 
-升级前先关闭正在运行的后端和前端进程，在项目目录执行：
+如果想全程手动执行，按下面的步骤来：
 
 ### Windows PowerShell
 
@@ -96,7 +108,11 @@ git checkout <previous-stable-tag-or-commit>  # 例如已发布的 v0.1.0 标签
 
 ## 使用压缩包更新
 
-如果不使用 Git，请先退出程序并备份 `backend/data/` 和 `backend/.env`，再把新版本解压到新的目录。安装新版本依赖后，将旧目录的 `backend/data/` 和 `backend/.env` 复制到新目录；不要覆盖新版本的代码文件，也不要把数据库提交到公开仓库。
+如果不使用 Git，可以直接运行 `update.cmd`：它会下载最新源码并覆盖程序文件，同时保留 `backend/data/` 与 `backend/.env`（`-DryRun` 可先看它准备做什么）。
+
+也可以手工处理：先退出程序并备份 `backend/data/` 和 `backend/.env`，再把新版本解压到新的目录。安装新版本依赖后，将旧目录的 `backend/data/` 和 `backend/.env` 复制到新目录；不要覆盖新版本的代码文件，也不要把数据库提交到公开仓库。
+
+**旧版本导出的数据集备份可以直接在新版本导入**：导入时会先把备份里的数据库升级到当前版本再校验。反过来不成立——来自更新版本的备份会提示"请先升级应用再导入"并拒绝恢复，这是为了避免用旧代码打开新结构。
 
 解压后如果启动失败，控制台会打印 `runtime/backend.stderr.log` 的最后几行。**「安装包不完整，后端无法启动：缺少 backend/...」表示这份压缩包少了文件**（手工打包时漏掉目录是最常见的原因），重新下载完整压缩包即可，不必在本机排查代码或环境。务必重新下载，不要从旧目录复制缺失文件凑齐：内容可能属于另一个版本，对照不上。
 

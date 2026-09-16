@@ -17,3 +17,8 @@ alembic==1.19.1
 # or wheel-published, so the first-run installer stays build-tool free.
 pillow==12.3.0
 pypdf==6.18.1
+# Server-side PDF export: fpdf2 embeds a system CJK font so the resume PDF can be
+# downloaded directly. fonttools is its font-parsing backend; pinning it keeps
+# the first-run install reproducible.
+fpdf2==2.8.4
+fonttools==4.65.0
