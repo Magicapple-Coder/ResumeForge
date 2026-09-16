@@ -98,6 +98,28 @@ git checkout <previous-stable-tag-or-commit>  # 例如已发布的 v0.1.0 标签
 
 如果不使用 Git，请先退出程序并备份 `backend/data/` 和 `backend/.env`，再把新版本解压到新的目录。安装新版本依赖后，将旧目录的 `backend/data/` 和 `backend/.env` 复制到新目录；不要覆盖新版本的代码文件，也不要把数据库提交到公开仓库。
 
+解压后如果启动失败，控制台会打印 `runtime/backend.stderr.log` 的最后几行。**「安装包不完整，后端无法启动：缺少 backend/...」表示这份压缩包少了文件**（手工打包时漏掉目录是最常见的原因），重新下载完整压缩包即可，不必在本机排查代码或环境。务必重新下载，不要从旧目录复制缺失文件凑齐：内容可能属于另一个版本，对照不上。
+
+## 打包发行包（维护者）
+
+`scripts/Build-Release.ps1` 是唯一推荐的出包方式：
+
+```powershell
+# 打包某个标签（发布用）
+.\scripts\Build-Release.ps1 -Ref v0.6.0
+# 打包当前提交（本地试验）；输出目录默认是 <项目>\dist
+.\scripts\Build-Release.ps1 -OutputDirectory D:\tmp
+```
+
+它用 `git archive` 从指定的 ref 生成 `ResumeForge-<版本>.zip`（顶层是一个同名文件夹），所以：
+
+- **不会漏文件**：压缩包内容就是该 ref 跟踪的文件全集，`git ls-files` 里有什么就有什么。手工压缩最容易漏掉 `backend/app/data/`（内置技能词典），那种包在别的电脑上必然起不来。
+- **不会夹带私人数据**：`backend/data/`（数据库与迁移前备份）、`backend/.env`、`runtime/`、`node_modules/`、各种缓存都被 `.gitignore` 排除，因此不进包。`.env.example` 是例外，它本就要随包发送。
+- **写完后自检**：脚本会重新打开压缩包，逐个确认必需文件在、必需目录非空、禁止路径不在，并检查 `start.cmd` 保持 CRLF 行尾。任何一项不过就**删除该压缩包并报错**，不会留下一个半成品。
+- 工作区有未提交改动时会给出警告：压缩包内容是该 ref 的提交状态，不包含未提交的改动。
+
+出包后请把 zip 挂到 GitHub Releases（仓库目前只有 tag，没有 Release 附件），而不要用聊天工具零散发文件，否则用户拿到的版本无从核对。CI 在 Windows 上运行 `scripts/tests/Test-Build-Release.ps1`：它会真的打一次包，并断言压缩包包含的文件与 `git ls-tree -r HEAD` 完全一致、必需文件齐备、禁止路径没有泄漏、`.cmd` 保持 CRLF、以及出包清单与后端 `app/preflight.py` 的运行时清单一致。
+
 ## 保留哪些文件
 
 升级时需要保留：

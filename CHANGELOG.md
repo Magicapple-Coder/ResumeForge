@@ -14,8 +14,15 @@
 - 新增运行时依赖 `pillow==12.3.0`、`pypdf==6.18.1`（均钉死版本，纯 ASCII 注释）；Windows 一键启动器的依赖探针同步包含这两个包，旧虚拟环境会在下次启动时自动补装。
 - 不支持的文件给可执行的提示，而不是笼统的"格式不受支持"：HEIC/HEIF、SVG、旧版 `.doc`、RTF、ODT、xlsx/pptx 各有对应文案（例如 HEIC 提示先在系统里导出为 JPEG，`.doc` 提示另存为 `.docx` 或 PDF）。
 - 文档提取的说明会跟着附件回传并展示：`ChatAttachmentOut` 新增 `notes`，`kind` 增加 `document` 取值（旧记录与旧客户端不受影响，缺省为空）。
+- 新增 `scripts/Build-Release.ps1`：发行包只从 git 档案生成（`git archive <ref>`），因此不会漏掉跟踪的文件、也不会夹带私人数据——`backend/data/`、`backend/.env`、`runtime/`、`node_modules/` 与各种缓存都被 `.gitignore` 挡在外面，`.env.example` 是唯一例外（它本就要随包发送）。写完后脚本会重新打开压缩包自检：必需文件在、必需目录非空、禁止路径不在、`start.cmd` 保持 CRLF 行尾；任何一项不过就**删除该压缩包并报错**，不会留下半成品。CI 在 Windows 上运行 `scripts/tests/Test-Build-Release.ps1`，真的打一次包并断言包内文件与 `git ls-tree -r HEAD` 完全一致、出包清单与后端 `app/preflight.py` 的运行时清单一致。
 
 ### Fixed
+
+- **修复手工压缩包缺文件时"完全看不出病因"的问题**（真机反馈：朋友解压后双击 `start.cmd`，后端在导入阶段就抛 `FileNotFoundError: backend\app\data\skills.json`，而控制台只有一句 `Backend exited with code  before becoming healthy. See runtime\backend.stderr.log.`——退出码是空的，也没有任何可执行的线索）。三处一起改：
+  - **启动器把病因打出来**：后端/前端未就绪时，控制台直接打印 `runtime/backend.stderr.log`（或 `frontend.stderr.log`）的最后 12 行，并修掉退出码为空时印出 `exited with code  before` 的问题（`ExitCode` 在某些时刻仍是 null，`Get-ProcessExitCodeText` 现在会退回 `unknown`）。
+  - **启动器回收自己遗留的进程**：端口被上次启动留下的进程占着时，先按记录（PID + 启动时间 + 命令行三者都匹配）结束它再启动，而不是让用户自己去找。只有端口被别的程序占用时才报错，报错文案不变。
+  - **后端启动前自检**：新增 `app/preflight.py`，由 `app/__init__.py` 在导入任何子模块之前调用。缺文件或技能词典结构不对时抛一条中文消息（缺哪些文件、怎么处理），不再是一串导入栈。
+- 进程记录的读写原语从 `Stop-ResumeForge.ps1` 移入 `ResumeForge.Common.ps1`（`Stop-RecordedProcess` / `Get-ProcessRecordMatch` / `Get-ResumeForgeProcessPattern`），启动路径与停止路径共用同一套 PID、启动时间、命令行校验，避免两处各自漂移；属性读取改走 `PSObject`，手改过的记录在 `Set-StrictMode` 下也不会抛错。
 
 ### Changed
 

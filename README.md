@@ -93,7 +93,9 @@ start.cmd -NoBrowser
 
 参数用空格分隔（`-BackendPort=8010` 这种等号写法不会被识别）。等价的高级写法是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ResumeForge.ps1 -BackendPort 8010`。
 
-启动器会固定前端代理到本次启动的本地后端。若提示端口被其他程序占用，请先关闭旧的 ResumeForge 服务或冲突程序，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
+启动器会固定前端代理到本次启动的本地后端。若上次启动留下的进程仍占着端口，启动器会先结束**自己记录并校验过**的那个进程（PID、启动时间与命令行三者都匹配才动手）再重新启动；只有端口被其他程序占用时才需要你手动处理，不要在两个相同端口上重复启动。启动日志和临时进程记录位于 `runtime/`，不会提交到 Git。
+
+后端或前端没能启动时，控制台会直接打印 `runtime/backend.stderr.log`（或 `frontend.stderr.log`）的最后几行，不用自己去翻文件。其中「安装包不完整，后端无法启动」说明解压出来的文件不齐（压缩包漏了目录），重新下载完整压缩包即可；自行打包请用 `scripts\Build-Release.ps1`，它会在发布前校验压缩包内容。
 
 如果电脑尚未安装可用的 Python（3.10 – 3.13），启动器会先尝试通过 Windows `winget` 以当前用户身份静默安装；`winget` 不可用或安装失败时，会从固定的 [Python 官方安装器](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) 下载并校验 SHA-256 后再安装。只装了 Python 3.14 的电脑也会走这条自动准备路径——3.14 目前装不上锁定的依赖。
 

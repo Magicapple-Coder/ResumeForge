@@ -371,6 +371,101 @@ try {
         -Condition ($treeSurvivors.Count -eq 0) `
         -Message "Stop-StartedProcess left the cmd tree running; the port would stay bound."
 
+    # --- identifying our own processes ---
+
+    Assert-LauncherTest `
+        -Condition ("uvicorn app.main:app --host 127.0.0.1 --port 8005" -match (Get-ResumeForgeProcessPattern -Service "backend")) `
+        -Message "The backend pattern must match the command line the launcher starts."
+    Assert-LauncherTest `
+        -Condition ("cmd.exe /d /s /c `"C:\Program Files\nodejs\npm.cmd`" run dev -- --host 127.0.0.1" -match (Get-ResumeForgeProcessPattern -Service "frontend")) `
+        -Message "The frontend pattern must match the cmd.exe wrapper PowerShell builds around npm.cmd."
+
+    # --- failure messages must carry the cause ---
+
+    # A real report: an incomplete zip made the backend die at import time, and the
+    # only output was "Backend exited with code  before becoming healthy. See
+    # runtime\backend.stderr.log." -- a blank exit code and no cause to act on.
+    $failureLogPath = Join-Path $RuntimeDirectory "backend.stderr.log"
+    Set-Content -LiteralPath $failureLogPath -Encoding utf8 -Value @(
+        "",
+        "INFO:     Started server process",
+        "",
+        "RuntimeError: incomplete installation"
+    )
+    $tail = @(Get-LogTail -Path $failureLogPath)
+    Assert-LauncherTest `
+        -Condition ($tail.Count -eq 2) `
+        -Message "Get-LogTail must drop blank lines (got $($tail.Count))."
+    Assert-LauncherTest `
+        -Condition ($tail[-1] -like "*incomplete installation*") `
+        -Message "Get-LogTail must keep the last line."
+    $limitedTail = @(Get-LogTail -Path $failureLogPath -LineCount 1)
+    Assert-LauncherTest `
+        -Condition ($limitedTail.Count -eq 1 -and $limitedTail[0] -like "*incomplete installation*") `
+        -Message "Get-LogTail must honour LineCount."
+    Assert-LauncherTest `
+        -Condition (@(Get-LogTail -Path (Join-Path $RuntimeDirectory "no-such.log")).Count -eq 0) `
+        -Message "A missing log file must yield an empty tail instead of an error."
+
+    $exitedStub = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "exit 7") -WindowStyle Hidden -Wait -PassThru
+    Assert-LauncherTest `
+        -Condition ((Get-ProcessExitCodeText -Process $exitedStub) -eq "7") `
+        -Message "Get-ProcessExitCodeText must report the real exit code."
+
+    $liveStub = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "ping -n 30 127.0.0.1 > nul") -WindowStyle Hidden -PassThru
+    $liveExitCodeText = Get-ProcessExitCodeText -Process $liveStub
+    $failureMessage = Format-ServiceStartFailure `
+        -DisplayName "Backend" `
+        -Reason "exited with code $liveExitCodeText before becoming healthy" `
+        -LogPath $failureLogPath
+    Stop-StartedProcess -Process $liveStub
+    Assert-LauncherTest `
+        -Condition ($liveExitCodeText -eq "unknown") `
+        -Message "A process that has not exited has no exit code; the text must not be empty."
+    Assert-LauncherTest `
+        -Condition ($failureMessage.Contains($failureLogPath) -and $failureMessage -like "*incomplete installation*") `
+        -Message "The failure message must name the log and print its tail."
+
+    # --- only our own recorded processes are ever stopped ---
+
+    $stubRecordPath = Join-Path $RuntimeDirectory "recorded-stub.json"
+    $stubProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "ping -n 60 127.0.0.1 > nul") -WindowStyle Hidden -PassThru
+    Save-ProcessRecord -Process $stubProcess -Path $stubRecordPath
+    # cmd.exe cannot carry the real uvicorn command line, so match on its own.
+    $cmdPattern = "cmd\.exe"
+    Assert-LauncherTest `
+        -Condition ($null -ne (Get-ProcessRecordMatch -RecordPath $stubRecordPath -CommandPattern $cmdPattern)) `
+        -Message "A record written for a live process must match it."
+    Assert-LauncherTest `
+        -Condition ($null -eq (Get-ProcessRecordMatch -RecordPath $stubRecordPath -CommandPattern "uvicorn")) `
+        -Message "A record must not match when the command line disagrees."
+
+    Stop-RecordedProcess -DisplayName "stub backend" -RecordPath $stubRecordPath -CommandPattern $cmdPattern
+    Assert-LauncherTest `
+        -Condition (-not (Test-Path -LiteralPath $stubRecordPath)) `
+        -Message "Stop-RecordedProcess must remove the record it acted on."
+    Assert-LauncherTest `
+        -Condition ($null -eq (Get-Process -Id $stubProcess.Id -ErrorAction SilentlyContinue)) `
+        -Message "Stop-RecordedProcess must stop the recorded process."
+
+    # PID reuse: same PID, different start time. Refusing here is the property that
+    # keeps the launcher from killing an unrelated application.
+    $reusedProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @("/d", "/c", "ping -n 60 127.0.0.1 > nul") -WindowStyle Hidden -PassThru
+    $reusedRecordPath = Join-Path $RuntimeDirectory "reused-stub.json"
+    Save-ProcessRecord -Process $reusedProcess -Path $reusedRecordPath
+    $reusedRecord = Get-Content -LiteralPath $reusedRecordPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $reusedRecord.started_at_unix = [long]$reusedRecord.started_at_unix - 3600
+    $reusedRecord | ConvertTo-Json | Set-Content -LiteralPath $reusedRecordPath -Encoding utf8
+    Assert-LauncherTest `
+        -Condition ($null -eq (Get-ProcessRecordMatch -RecordPath $reusedRecordPath -CommandPattern $cmdPattern)) `
+        -Message "A record whose start time does not match the process must be rejected."
+    Stop-RecordedProcess -DisplayName "reused stub" -RecordPath $reusedRecordPath -CommandPattern $cmdPattern
+    Assert-LauncherTest `
+        -Condition ($null -ne (Get-Process -Id $reusedProcess.Id -ErrorAction SilentlyContinue)) `
+        -Message "A mismatched record must never stop the process it points at."
+    Stop-StartedProcess -Process $reusedProcess
+    Remove-Item -LiteralPath $reusedRecordPath -Force -ErrorAction SilentlyContinue
+
     Write-Host "Windows launcher tests passed."
 }
 finally {

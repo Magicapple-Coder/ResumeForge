@@ -13,15 +13,33 @@ function Start-ResumeForge {
 
     New-Item -ItemType Directory -Path $RuntimeDirectory -Force | Out-Null
 
+    # Named once and reused by the redirects and by the failure messages, so the
+    # path a user is told to look at is always the file the process writes.
+    $backendStandardOutputPath = Join-Path $RuntimeDirectory "backend.stdout.log"
+    $backendLogPath = Join-Path $RuntimeDirectory "backend.stderr.log"
+    $frontendStandardOutputPath = Join-Path $RuntimeDirectory "frontend.stdout.log"
+    $frontendLogPath = Join-Path $RuntimeDirectory "frontend.stderr.log"
+
     $startedBackend = $null
     $startedFrontend = $null
 
     try {
-        if (Test-ResumeForgeBackend -Url $BackendUrl) {
-            Write-Host "Backend is already running: $BackendUrl"
+        $backendRecordPattern = Get-ResumeForgeProcessPattern -Service "backend"
+        $backendRunning = Test-ResumeForgeBackend -Url $BackendUrl
+        if (-not $backendRunning -and (Test-TcpPortInUse -Port $BackendPort)) {
+            # A leftover backend of ours can hold the port while failing the health
+            # check (it crashed, or the process was replaced mid-flight). Stop that
+            # one and start clean instead of telling the user to hunt it down.
+            if ($null -eq (Get-ProcessRecordMatch -RecordPath $BackendPidPath -CommandPattern $backendRecordPattern)) {
+                throw "Port $BackendPort is in use by a non-ResumeForge backend. Close it or use -BackendPort."
+            }
+            Write-Warning "A previous ResumeForge backend still holds port $BackendPort; stopping it and starting a fresh one."
+            Stop-RecordedProcess -DisplayName "backend" -RecordPath $BackendPidPath -CommandPattern $backendRecordPattern
+            Start-Sleep -Milliseconds 800
         }
-        elseif (Test-TcpPortInUse -Port $BackendPort) {
-            throw "Port $BackendPort is in use by a non-ResumeForge backend. Close it or use -BackendPort."
+
+        if ($backendRunning) {
+            Write-Host "Backend is already running: $BackendUrl"
         }
         else {
             $pythonExecutable = Join-Path $BackendDirectory ".venv\Scripts\python.exe"
@@ -92,26 +110,40 @@ function Start-ResumeForge {
                 -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$BackendPort", "--log-level", "warning") `
                 -WorkingDirectory $BackendDirectory `
                 -WindowStyle Hidden `
-                -RedirectStandardOutput (Join-Path $RuntimeDirectory "backend.stdout.log") `
-                -RedirectStandardError (Join-Path $RuntimeDirectory "backend.stderr.log") `
+                -RedirectStandardOutput $backendStandardOutputPath `
+                -RedirectStandardError $backendLogPath `
                 -PassThru
             Save-ProcessRecord -Process $startedBackend -Path $BackendPidPath
 
             if (-not (Wait-ForCondition -Condition { Test-ResumeForgeBackend -Url $BackendUrl } `
                     -TimeoutSeconds $BackendStartTimeoutSeconds -FailFastProcess $startedBackend)) {
                 if ($startedBackend.HasExited) {
-                    throw "Backend exited with code $($startedBackend.ExitCode) before becoming healthy. See runtime\\backend.stderr.log."
+                    throw (Format-ServiceStartFailure -DisplayName "Backend" `
+                            -Reason "exited with code $(Get-ProcessExitCodeText -Process $startedBackend) before becoming healthy" `
+                            -LogPath $backendLogPath)
                 }
-                throw "Backend did not start within $BackendStartTimeoutSeconds seconds. See runtime\\backend.stderr.log."
+                throw (Format-ServiceStartFailure -DisplayName "Backend" `
+                        -Reason "did not start within $BackendStartTimeoutSeconds seconds" `
+                        -LogPath $backendLogPath)
             }
             Write-Host "Backend started: $BackendUrl"
         }
 
-        if (Test-ResumeForgeFrontend -Url $FrontendUrl) {
-            Write-Host "Frontend is already running: $FrontendUrl"
+        $frontendRecordPattern = Get-ResumeForgeProcessPattern -Service "frontend"
+        $frontendRunning = Test-ResumeForgeFrontend -Url $FrontendUrl
+        if (-not $frontendRunning -and (Test-TcpPortInUse -Port $FrontendPort)) {
+            # Same as the backend above: our own leftover Vite process fails the
+            # proxied health check once its backend is gone, and it is ours to stop.
+            if ($null -eq (Get-ProcessRecordMatch -RecordPath $FrontendPidPath -CommandPattern $frontendRecordPattern)) {
+                throw "Port $FrontendPort is in use by a frontend that is not connected to this ResumeForge backend. Close it or use -FrontendPort."
+            }
+            Write-Warning "A previous ResumeForge frontend still holds port $FrontendPort; stopping it and starting a fresh one."
+            Stop-RecordedProcess -DisplayName "frontend" -RecordPath $FrontendPidPath -CommandPattern $frontendRecordPattern
+            Start-Sleep -Milliseconds 800
         }
-        elseif (Test-TcpPortInUse -Port $FrontendPort) {
-            throw "Port $FrontendPort is in use by a frontend that is not connected to this ResumeForge backend. Close it or use -FrontendPort."
+
+        if ($frontendRunning) {
+            Write-Host "Frontend is already running: $FrontendUrl"
         }
         else {
             $nodeRuntime = Ensure-NodeRuntime
@@ -166,17 +198,21 @@ function Start-ResumeForge {
                 -ArgumentList @("run", "dev", "--", "--host", "127.0.0.1", "--port", "$FrontendPort", "--strictPort") `
                 -WorkingDirectory $FrontendDirectory `
                 -WindowStyle Hidden `
-                -RedirectStandardOutput (Join-Path $RuntimeDirectory "frontend.stdout.log") `
-                -RedirectStandardError (Join-Path $RuntimeDirectory "frontend.stderr.log") `
+                -RedirectStandardOutput $frontendStandardOutputPath `
+                -RedirectStandardError $frontendLogPath `
                 -PassThru
             Save-ProcessRecord -Process $startedFrontend -Path $FrontendPidPath
 
             if (-not (Wait-ForCondition -Condition { Test-ResumeForgeFrontend -Url $FrontendUrl } `
                     -TimeoutSeconds $FrontendStartTimeoutSeconds -FailFastProcess $startedFrontend)) {
                 if ($startedFrontend.HasExited) {
-                    throw "Frontend exited with code $($startedFrontend.ExitCode) before becoming healthy. See runtime\\frontend.stderr.log."
+                    throw (Format-ServiceStartFailure -DisplayName "Frontend" `
+                            -Reason "exited with code $(Get-ProcessExitCodeText -Process $startedFrontend) before becoming healthy" `
+                            -LogPath $frontendLogPath)
                 }
-                throw "Frontend did not start within $FrontendStartTimeoutSeconds seconds. See runtime\\frontend.stderr.log."
+                throw (Format-ServiceStartFailure -DisplayName "Frontend" `
+                        -Reason "did not start within $FrontendStartTimeoutSeconds seconds" `
+                        -LogPath $frontendLogPath)
             }
             Write-Host "Frontend started: $FrontendUrl"
         }
