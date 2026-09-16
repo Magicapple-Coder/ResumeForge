@@ -38,6 +38,8 @@ runtime/
 .vscode/
 .idea/
 .DS_Store
+# 本地 AI 代理工具目录（技能与运行脚本），不属于项目代码
+.claude/
 
 # ===== 日志 =====
 *.log
