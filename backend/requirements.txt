@@ -5,7 +5,7 @@
 # reads a single pin.
 fastapi==0.141.1
 starlette==1.6.0
-uvicorn[standard]==0.34.0
+uvicorn[standard]==0.52.4
 sqlalchemy==2.0.40
 pydantic==2.11.3
 pydantic-settings==2.9.1
