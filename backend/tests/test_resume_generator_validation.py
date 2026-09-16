@@ -226,8 +226,12 @@ def test_system_prompt_pins_writing_rules_for_both_modes():
     for prompt in (job_prompt, general_prompt):
         assert "分模块呈现要求" in prompt
         assert "不得升格职责范围" in prompt
-        assert "30 字以内" in prompt
+        # 字数写成区间：真机两轮里各有一条贴线超出，30 字是"左右"而不是硬边界
+        assert "30 字左右" in prompt and "不超过 35 字" in prompt
         assert "不超过 6 条" in prompt
+        assert "个人总结保持 2-3 句、不超过 120 字" in prompt
+        # 要点必须写清"做了什么 + 结果"，不是只堆技术名词
+        assert "不能只堆技术名词" in prompt
         # 真跑一次生成发现的问题：候选条目本身没有可写事实时，模型会输出只有名字的空壳
         assert "不要输出空壳条目" in prompt
 

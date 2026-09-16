@@ -49,6 +49,7 @@ from .resume_quality import (
     _quality_reference_points,
     _quality_shortfalls,
 )
+from .resume_wording import cliche_shortfalls, find_cliches
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 logger = logging.getLogger(__name__)
@@ -216,11 +217,19 @@ class ResumeGenerator:
             and options.enhancement_level == "strong"
             and has_reference_facts
         )
-        quality_shortfalls = (
+        content_shortfalls = (
             _quality_shortfalls(resume, selection.data, job) if quality_enabled else []
         )
-        if quality_shortfalls:
-            yield {"type": "progress", "message": "生成内容较简略，正在重新生成…"}
+        # 措辞门槛与美化档位无关，但只在允许改写时生效：关闭美化时正文是用户资料原文。
+        wording_enabled = options.enhance
+        wording_shortfalls = cliche_shortfalls(resume) if wording_enabled else []
+        if content_shortfalls or wording_shortfalls:
+            yield {
+                "type": "progress",
+                "message": "生成内容较简略，正在重新生成…"
+                if content_shortfalls
+                else "生成结果里有空话或套话，正在改写…",
+            }
             reference_facts = [
                 {
                     "name": _source_value(source, "name"),
@@ -230,7 +239,9 @@ class ResumeGenerator:
                 if _quality_reference_points(source)
             ]
             retry_prompt = self._env.get_template("resume_quality_retry.md").render(
-                shortfalls="\n".join(f"- {item}" for item in quality_shortfalls),
+                shortfalls="\n".join(
+                    f"- {item}" for item in [*content_shortfalls, *wording_shortfalls]
+                ),
                 reference_facts=json.dumps(reference_facts, ensure_ascii=False),
             )
             retry_messages = [*messages, {"role": "user", "content": retry_prompt}]
@@ -241,14 +252,31 @@ class ResumeGenerator:
             except Exception as exc:  # noqa: BLE001 - 质量重试失败应保留首轮结果
                 logger.warning("简历质量重试失败，将沿用首轮结果：%s", exc)
 
-            if retry_resume is not None and not _quality_shortfalls(
-                retry_resume, selection.data, job
-            ):
+            retry_content_shortfalls = (
+                _quality_shortfalls(retry_resume, selection.data, job)
+                if retry_resume is not None and quality_enabled
+                else []
+            )
+            retry_wording_shortfalls = (
+                cliche_shortfalls(retry_resume)
+                if retry_resume is not None and wording_enabled
+                else []
+            )
+            if retry_resume is not None and not retry_content_shortfalls and not retry_wording_shortfalls:
                 resume = retry_resume
 
         warnings = check_consistency(
             resume, profile, selection.data, source_label="完整资料" if general else None
         )
+        if wording_enabled:
+            # 重试用过之后仍然命中（或重试失败沿用首轮）时如实告知，不静默留下黑话。
+            remaining_cliches = find_cliches(resume)
+            if remaining_cliches:
+                warnings.append(
+                    "生成结果里仍有空话或黑话（"
+                    + "、".join(remaining_cliches)
+                    + "）：可以在「微调内容」里改掉，或重新生成一次。"
+                )
         if general:
             omitted_total = sum(selection.omitted_counts.values())
             if omitted_total:
