@@ -46,8 +46,15 @@ $RequiredFiles = @(
     "backend/app/preflight.py",
     "backend/app/data/skills.json",
     "backend/app/prompts/assistant_system.md",
+    "backend/app/prompts/image_extraction_addendum.md",
+    "backend/app/prompts/job_analysis.md",
+    "backend/app/prompts/job_text_extract.md",
+    "backend/app/prompts/profile_text_extract.md",
+    "backend/app/prompts/resume_fix_json.md",
     "backend/app/prompts/resume_generate_system.md",
     "backend/app/prompts/resume_generate_user.md",
+    "backend/app/prompts/resume_quality_retry.md",
+    "backend/app/prompts/resume_suggestions.md",
     "backend/requirements.txt",
     "backend/alembic.ini",
     "frontend/package.json",
@@ -59,10 +66,10 @@ $RequiredFiles = @(
     "stop.cmd"
 )
 
-# Must contain at least one file each.
+# Must contain at least one file each. Every prompt and the skill dictionary are
+# named individually above; these cover directories whose size is not fixed.
 $RequiredPrefixes = @(
     "backend/app/data/",
-    "backend/app/prompts/",
     "backend/migrations/versions/",
     "frontend/src/"
 )
@@ -82,11 +89,10 @@ $ForbiddenPatterns = @(
     "(^|/)\.pytest_cache/"
 )
 
-# Tracked files that only look forbidden: the example configuration is meant to
-# ship, and .gitignore keeps the real one out with a "!.env.example" exception.
-$AllowedPaths = @(
-    "backend/.env.example"
-)
+# Tracked paths that only look forbidden: the example configuration is meant to
+# ship, and .gitignore keeps the real .env out with a "!.env.example" exception.
+# Matches in any directory (backend/ and frontend/ both have one).
+$AllowedPathPattern = "(^|/)\.env\.example$"
 
 function Invoke-GitCapture {
     param([string[]]$Arguments)
@@ -183,7 +189,7 @@ foreach ($requiredPrefix in $RequiredPrefixes) {
     }
 }
 foreach ($pattern in $ForbiddenPatterns) {
-    $leaked = @($relativePaths | Where-Object { $AllowedPaths -notcontains $_ -and $_ -match $pattern })
+    $leaked = @($relativePaths | Where-Object { $_ -notmatch $AllowedPathPattern -and $_ -match $pattern })
     if ($leaked.Count -gt 0) {
         $problems += "must not be packaged: $($leaked[0])"
     }

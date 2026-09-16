@@ -25,7 +25,8 @@ $ForbiddenInArchive = @(
     "(^|/)\.env(\.|$)",
     "(^|/)__pycache__/"
 )
-$AllowedInArchive = @("backend/.env.example")
+# .env.example ships on purpose (backend/ and frontend/ both have one).
+$AllowedInArchive = "(^|/)\.env\.example$"
 
 function Assert-ReleaseTest {
     param(
@@ -184,7 +185,7 @@ try {
         }
 
         foreach ($forbidden in $ForbiddenInArchive) {
-            $leaked = @($relativePaths | Where-Object { $AllowedInArchive -notcontains $_ -and $_ -match $forbidden })
+            $leaked = @($relativePaths | Where-Object { $_ -notmatch $AllowedInArchive -and $_ -match $forbidden })
             Assert-ReleaseTest `
                 -Condition ($leaked.Count -eq 0) `
                 -Message "Personal data or caches leaked into the archive: $($leaked -join ', ')"
@@ -203,20 +204,34 @@ try {
         $zip.Dispose()
     }
 
-    # --- the packaging checklist and the in-app check must agree ---
+    # --- the packaging checklist must cover everything the app insists on ---
+    #
+    # Direction matters: every resource backend\app\preflight.py refuses to start
+    # without has to be required by the packager, or a package could ship while the
+    # app rejects it. The reverse does not hold -- the packager also checks code
+    # entry points, which the app cannot report on because it fails before preflight
+    # would speak.
     $buildRequiredFiles = Get-ScriptArrayValues -Ast $buildAst -Name '$RequiredFiles'
+    $buildRequiredPrefixes = Get-ScriptArrayValues -Ast $buildAst -Name '$RequiredPrefixes'
     Assert-ReleaseTest `
-        -Condition ($buildRequiredFiles.Count -ge 10) `
-        -Message "Could not read the required-file list from Build-Release.ps1."
+        -Condition ($buildRequiredFiles.Count -ge 10 -and $buildRequiredPrefixes.Count -ge 3) `
+        -Message "Could not read the required-path lists from Build-Release.ps1."
     $preflightContent = Read-TextFileAsUtf8 -Path $PreflightPath
-    foreach ($requiredPath in $buildRequiredFiles) {
-        if (-not $requiredPath.StartsWith("backend/")) {
-            continue
-        }
-        $backendRelative = $requiredPath.Substring("backend/".Length)
+    $preflightPaths = @(
+        [regex]::Matches($preflightContent, '"((?:app/|alembic|migrations/versions)[^"]*)"') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Select-Object -Unique
+    )
+    Assert-ReleaseTest `
+        -Condition ($preflightPaths.Count -ge 5) `
+        -Message "Could not read the required-resource list from backend/app/preflight.py."
+    $requiredByPackager = @($buildRequiredFiles) + @($buildRequiredPrefixes)
+    foreach ($preflightPath in $preflightPaths) {
+        $expected = "backend/$preflightPath"
+        $covered = ($requiredByPackager -contains $expected) -or ($requiredByPackager -contains "$expected/")
         Assert-ReleaseTest `
-            -Condition ($preflightContent.Contains('"' + $backendRelative + '"')) `
-            -Message "backend/app/preflight.py does not check '$backendRelative', but the packager requires it."
+            -Condition $covered `
+            -Message "Build-Release.ps1 does not require '$expected', but the app refuses to start without it."
     }
 
     Write-Host "Release packaging tests passed."
