@@ -245,6 +245,33 @@ def test_context_does_not_fill_unrelated_entries_when_job_has_clear_signals():
     assert context["educations"][0]["school"] == "天津工业大学"
 
 
+def test_awards_are_kept_regardless_of_job_relevance_and_in_profile_order():
+    """奖项不参与相关性筛选：JD 完全无关时也保留，按资料顺序取到栏目上限。
+
+    奖项名里几乎不会出现岗位技能词（"国家励志奖学金"对任何 JD 都是零分），所以打分
+    筛选等于每份定向简历都丢掉全部奖项。校园经历则相反，仍然按相关性丢弃。
+    """
+    profile = make_diverse_profile(
+        awards=[
+            {"id": 1, "name": "国家励志奖学金", "date": "2024.10", "description": "校级"},
+            {"id": 2, "name": "蓝桥杯省二等奖", "date": "2023.06"},
+            {"id": 3, "name": "优秀学生干部", "date": "2024.06"},
+            {"id": 4, "name": "校运动会 100 米第三名", "date": "2022.10"},
+        ]
+    )
+    job = make_job("Kubernetes 运维工程师", "负责集群运维", "熟悉 Kubernetes")
+
+    context = build_targeted_profile_prompt_data(profile, job)
+
+    # 上限 3 条：取资料里的前三条，不按相关度重排。
+    assert [item["name"] for item in context["awards"]] == [
+        "国家励志奖学金",
+        "蓝桥杯省二等奖",
+        "优秀学生干部",
+    ]
+    assert context["campus_experiences"] == []
+
+
 def test_context_uses_current_job_intent_and_filters_stale_summary():
     profile = make_diverse_profile(
         job_intent="产品运营",

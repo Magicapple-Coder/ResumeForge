@@ -200,6 +200,11 @@ def _select_entries(
     valid_items = [item for item in items if str(item.get(primary_field, "")).strip()]
     if not valid_items:
         return []
+    if section == "awards":
+        # 奖项不参与岗位相关性筛选。它的作用是背书，用词与 JD 几乎不会重合——"国家
+        # 励志奖学金"里没有任何岗位技能词，按相关度打分等于每份定向简历都静默丢掉全部
+        # 奖项。按资料录入顺序取到栏目上限；超出上限的部分交给用户自己排序决定去留。
+        return valid_items[: SECTION_LIMITS[section]]
     ranked = sorted(
         (
             (index, item, _score_item(item, section, focus), _matched_skills(item, focus))
@@ -212,8 +217,9 @@ def _select_entries(
     if matching:
         # 有明确匹配时不混入零分条目，避免"资料库越全，简历越跑题"。
         return _select_ranked_items(matching, limit)
-    if section in {"campus_experiences", "awards"}:
-        # 校园/奖项不是每个岗位都需要，用无关条目填充反而稀释重点。
+    if section == "campus_experiences":
+        # 校园经历不是每个岗位都需要，用无关条目填充反而稀释重点。
+        # （奖项在上面已经单独返回，不走这里。）
         return []
     if section == "educations":
         # 教育背景是校招简历的基础信息，即使 JD 未命中课程也保留一条。
@@ -250,8 +256,9 @@ def _take_entries(items: list[dict[str, Any]], section: str) -> list[dict[str, A
 
     通用简历（没有目标岗位）专用。**不能改用 ``_select_entries`` / ``_select_skills``**：
     那两个函数是按岗位信号打分的，在"没有信号"时它们的行为并不是"保留全部"——
-    ``_select_entries`` 会无条件丢掉校园经历与奖项，``_select_skills`` 只要证据里出现过
-    任一技能名就只保留那些技能。两者都会静默产生内容残缺的简历。
+    ``_select_entries`` 会丢掉校园经历（奖项是例外：两条路径都会保留），
+    ``_select_skills`` 只要证据里出现过任一技能名就只保留那些技能。两者都会静默产生
+    内容残缺的简历。
 
     仍然保留"主字段为空则丢弃"这一条：只有日期、没有学校/公司/项目名的条目写进提示词
     只会浪费预算。
