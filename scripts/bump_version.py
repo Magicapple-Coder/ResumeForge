@@ -51,6 +51,11 @@ _BREAKING_SUBJECT = re.compile(r"^[a-zA-Z]+(\([^)]*\))?!:")
 
 UNRELEASED_HEADING = "## Unreleased"
 EMPTY_UNRELEASED = "## Unreleased\n\n### Added\n\n### Fixed\n\n### Changed\n"
+# Keep a Changelog 的小节标题。上一次发版留下的空模板里只剩这些行，它们不算"内容"——
+# 把它们当内容会切出一个没有任何条目的版本。
+SECTION_HEADINGS = frozenset(
+    {"### added", "### fixed", "### changed", "### removed", "### deprecated", "### security"}
+)
 
 
 class BumpError(Exception):
@@ -104,6 +109,14 @@ def decide_bump(commits: list[tuple[str, str]]) -> tuple[str, list[str]]:
     return level, reasons
 
 
+def has_entries(body: str) -> bool:
+    """Unreleased 段落里是否有真正的记录（而不是只剩上次发版留下的空小节标题）。"""
+    return any(
+        line.strip() and line.strip().lower() not in SECTION_HEADINGS
+        for line in body.splitlines()
+    )
+
+
 def render_changelog(text: str, version: str, released_on: str) -> str:
     """把 Unreleased 的内容转到新版本条目下，并留一个空的 Unreleased 给下次。"""
     start = text.find(UNRELEASED_HEADING)
@@ -114,7 +127,7 @@ def render_changelog(text: str, version: str, released_on: str) -> str:
     # 停在换行符**之前**：它属于后面的版本标题，留下来才有一段空行分隔两个条目。
     body_end = len(text) if next_heading < 0 else next_heading
     body = text[body_start:body_end].strip("\n")
-    if not body.strip():
+    if not has_entries(body):
         raise BumpError("CHANGELOG 的 Unreleased 段落是空的，没有可发布的改动记录")
     released = f"## {version} - {released_on}\n\n{body}\n"
     return text[:start] + EMPTY_UNRELEASED + "\n" + released + text[body_end:]

@@ -103,6 +103,21 @@ def test_render_changelog_refuses_an_empty_unreleased_section():
         render_changelog("# 变更记录\n\n## Unreleased\n\n## 0.2.0 - 2026-08-21\n", "0.3.0", "2026-09-15")
 
 
+def test_render_changelog_refuses_a_template_left_by_the_previous_release():
+    """上一次发版留下的空小节标题不是"内容"。
+
+    曾经就是这样切出了一个 0.6.0：Unreleased 里只剩 `### Added / ### Fixed / ### Changed`
+    三行标题，脚本把它们当成正文，于是产出一个没有任何条目的版本。
+    """
+    text = (
+        "# 变更记录\n\n## Unreleased\n\n### Added\n\n### Fixed\n\n### Changed\n"
+        "\n## 0.2.0 - 2026-08-21\n\n- 旧内容\n"
+    )
+
+    with pytest.raises(BumpError, match="没有可发布的改动记录"):
+        render_changelog(text, "0.3.0", "2026-09-15")
+
+
 def test_replace_exact_requires_a_single_match():
     assert replace_exact('a = "1"', r'^a = "[^"]+"', 'a = "2"', "x") == 'a = "2"'
 
