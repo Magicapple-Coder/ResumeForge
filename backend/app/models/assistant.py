@@ -17,6 +17,14 @@ class ChatConversation(Base):
     title: Mapped[str] = mapped_column(String(120), default="新对话")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 归档：默认从侧栏列表里收起来，可以切到「已归档」查看或恢复。
+    archived: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+    # 分组（"移动到项目"）：空串表示未分组。
+    group_name: Mapped[str] = mapped_column(
+        String(64), default="", nullable=False, server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 

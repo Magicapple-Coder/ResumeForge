@@ -29,8 +29,11 @@ class LLMDelta:
 
 
 class BaseLLMProvider(ABC):
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig, *, request_overrides: dict | None = None):
         self.config = config
+        # 请求级覆盖参数（如助手页选择的思考强度）：只作用于本次调用，不写回配置。
+        # provider 负责按白名单过滤，避免覆盖 model/messages/stream 这些关键字段。
+        self.request_overrides = dict(request_overrides or {})
 
     @abstractmethod
     async def chat(self, messages: list[dict]) -> str:

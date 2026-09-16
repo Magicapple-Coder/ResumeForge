@@ -25,6 +25,11 @@ class AssistantAttachmentInput(BaseModel):
         return value
 
 
+# 思考强度："" 表示不发送该参数（沿用服务商默认），其余透传给支持推理的模型。
+REASONING_EFFORTS = ("", "none", "low", "medium", "high")
+ReasoningEffort = Literal["", "none", "low", "medium", "high"]
+
+
 class AssistantMessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,6 +38,8 @@ class AssistantMessageCreate(BaseModel):
     resume_id: int | None = Field(default=None, ge=1)
     include_profile: bool = False
     web_search: bool = False
+    # 有思考模式的大模型可以在这里调整推理强度；不支持该参数的服务商会被忽略。
+    reasoning_effort: ReasoningEffort = ""
     attachments: list[AssistantAttachmentInput] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
@@ -47,6 +54,8 @@ class ChatConversationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(default="", max_length=120)
+    # 为真时自动附上一条引导消息（介绍助手功能与用法），用于首次进入创建默认会话。
+    welcome: bool = False
 
 
 class ChatConversationUpdate(BaseModel):
@@ -55,10 +64,16 @@ class ChatConversationUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     pinned: bool | None = None
     favorite: bool | None = None
+    archived: bool | None = None
+    # 分组名（"移动到项目"）；空串表示移出分组。
+    group_name: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def require_update(self):
-        if self.title is None and self.pinned is None and self.favorite is None:
+        if all(
+            value is None
+            for value in (self.title, self.pinned, self.favorite, self.archived, self.group_name)
+        ):
             raise ValueError("至少提供一个要修改的会话字段")
         return self
 
@@ -71,6 +86,22 @@ class ChatConversationUpdate(BaseModel):
         if not value:
             raise ValueError("会话标题不能为空")
         return value
+
+    @field_validator("group_name")
+    @classmethod
+    def group_name_must_be_clean(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return " ".join(value.split())[:64]
+
+
+class ChatConversationForkRequest(BaseModel):
+    """「在新对话中继续」：把原会话最近若干条消息复制成一段新会话。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(default="", max_length=120)
+    message_limit: int = Field(default=10, ge=1, le=40)
 
 
 class ChatAttachmentOut(BaseModel):
@@ -107,6 +138,10 @@ class ChatConversationBrief(BaseModel):
     title: str
     pinned: bool
     favorite: bool
+    archived: bool = False
+    group_name: str = ""
+    # 列表里展示条数与最后活动时间，方便区分同名会话。
+    message_count: int = 0
     created_at: datetime
     updated_at: datetime
 

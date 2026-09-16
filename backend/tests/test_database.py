@@ -4,28 +4,17 @@ from sqlalchemy import create_engine, inspect, text
 
 from app.database import Base, ensure_sqlite_columns
 from app.database_migrations import (
+    application_tables,
     build_alembic_config,
     run_database_migrations,
 )
 from app.main import SQLITE_REQUIRED_COLUMNS
 
-_APPLICATION_TABLES = {
-    "job",
-    "user_profile",
-    "education",
-    "experience",
-    "campus_experience",
-    "project",
-    "skill",
-    "award",
-    "resume_record",
-    "app_setting",
-    "llm_config_record",
-    "chat_conversation",
-    "chat_message",
-    "assistant_skill",
-    "assistant_skill_file",
-}
+# 从模型注册表取，而不是手写清单：手写清单会漏掉新表，让"迁移后的表集合"这条
+# 断言悄悄变成过时的期望值（而真出问题时是用户先发现）。
+_APPLICATION_TABLES = set(application_tables())
+# 当前迁移 head；每次新增 revision 时同步这里。
+_HEAD_REVISION = "0008_materials_and_modules"
 
 
 def _assert_head_schema(bind) -> None:
@@ -59,7 +48,7 @@ def _assert_head_schema(bind) -> None:
     )
     with bind.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0007_assistant_skills"
+        assert revision == _HEAD_REVISION
 
 
 def test_ensure_sqlite_columns_preserves_legacy_rows(tmp_path):
@@ -238,7 +227,7 @@ def test_alembic_migration_preserves_rows_repairs_fk_and_is_idempotent(tmp_path)
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert rows == [(1, "有效简历", 1, 0), (2, "孤立简历", None, 0)]
         assert additional_info == ""
-        assert revision == "0007_assistant_skills"
+        assert revision == _HEAD_REVISION
         assert run_database_migrations(legacy_engine) is None
     finally:
         legacy_engine.dispose()

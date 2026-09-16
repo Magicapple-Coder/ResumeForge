@@ -62,7 +62,7 @@ async def test_extract_job_text_separates_sections_and_uses_ai_result():
 
     result = await extract_job_text(provider, JOB_TEXT, local)
 
-    assert result.recognition_source == "ai"
+    assert result.parse_engine == "ai"
     assert result.title == "全栈开发工程师"
     assert result.company == "百度"
     assert result.location == "北京市"
@@ -133,7 +133,7 @@ async def test_extract_profile_text_keeps_local_entries_and_ignores_unanchored_m
 
     result = await extract_profile_text(FakeProvider(response), text, local)
 
-    assert result.recognition_source == "ai"
+    assert result.parse_engine == "ai"
     assert result.name == "李四"
     assert [item["name"] for item in result.model_dump()["projects"]] == ["简历通"]
     assert result.model_dump()["projects"][0]["description"] == "搭建简历生成平台"

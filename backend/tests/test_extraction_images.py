@@ -98,7 +98,7 @@ async def test_extract_job_text_grounds_fields_in_the_transcription():
 
     result = await extract_job_text(provider, "", empty_local_job(), [PNG_URL])
 
-    assert result.recognition_source == "ai"
+    assert result.parse_engine == "ai"
     assert result.title == "全栈开发工程师"
     assert result.company == "百度"
     assert "前端和服务端" in result.description

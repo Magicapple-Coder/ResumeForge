@@ -98,7 +98,7 @@ def test_images_only_request_reaches_the_model_as_image_parts(client, monkeypatc
 
     assert result.status_code == 200
     body = result.json()
-    assert body["recognition_source"] == "ai"
+    assert body["parse_engine"] == "ai"
     # 用户能看到模型读到了什么，这是图片识别最重要的人工核对手段
     assert body["recognized_text"] == _screenshot_for(path)
     assert any("对照截图核对" in warning for warning in body["warnings"])
@@ -178,7 +178,7 @@ def test_a_text_only_model_degrades_with_an_actionable_warning(client, monkeypat
 
     assert result.status_code == 200  # 保持"永远 200 + 草稿"的既有契约
     body = result.json()
-    assert body["recognition_source"] == "local"
+    assert body["parse_engine"] == "local"
     assert any("多模态" in warning for warning in body["warnings"])
 
 
@@ -193,7 +193,7 @@ def test_images_without_a_model_say_images_cannot_be_read(client, monkeypatch, p
 
     assert result.status_code == 200
     body = result.json()
-    assert body["recognition_source"] == "local"
+    assert body["parse_engine"] == "local"
     assert any("图片识别无法进行" in warning for warning in body["warnings"])
 
 

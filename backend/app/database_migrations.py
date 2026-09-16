@@ -19,23 +19,22 @@ logger = logging.getLogger(__name__)
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 BASELINE_REVISION = "0001_existing_schema"
-_APPLICATION_TABLES = (
-    "job",
-    "user_profile",
-    "education",
-    "experience",
-    "campus_experience",
-    "project",
-    "skill",
-    "award",
-    "resume_record",
-    "app_setting",
-    "llm_config_record",
-    "chat_conversation",
-    "chat_message",
-    "assistant_skill",
-    "assistant_skill_file",
-)
+
+
+def application_tables() -> tuple[str, ...]:
+    """当前代码认识的全部业务表。
+
+    从 ``Base.metadata`` 推导而不是手写清单：手写清单只要漏掉一张新表，
+    **自己导出的备份就会因为"缺少数据表"被拒收**，而这类故障只有用户真去恢复
+    数据时才会暴露。改成由模型注册表生成后，加表这件事自动生效。
+    """
+    from . import models  # noqa: F401 - 导入以注册全部模型
+    from .database import Base
+
+    return tuple(sorted(Base.metadata.tables))
+
+
+_APPLICATION_TABLES = application_tables()
 _USER_DATA_TABLES = _APPLICATION_TABLES
 
 

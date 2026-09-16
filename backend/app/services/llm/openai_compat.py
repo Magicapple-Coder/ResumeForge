@@ -77,6 +77,71 @@ _MAX_CHAT_RESPONSE_BYTES = 2 * 1024 * 1024
 _MIN_STREAM_CHARS = 64_000
 _MAX_STREAM_CHARS = 2_000_000
 
+# 请求级覆盖参数白名单：model / messages / stream 这些关键字段永远不允许被覆盖，
+# 否则一个前端参数就能改写整次调用的语义。
+_OVERRIDABLE_KEYS = frozenset(
+    {
+        "reasoning_effort",
+        "top_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "seed",
+        "temperature",
+        "max_tokens",
+    }
+)
+
+
+def http_error_message(status: int) -> str:
+    """HTTP 状态码对应的中文提示（provider 与模型列表接口共用）。"""
+    return _STATUS_MESSAGES.get(status, "模型调用失败")
+
+
+def is_loopback_host(hostname: str) -> bool:
+    """HTTP 只允许本机地址；这里同时供 Base URL 校验与模型列表接口复用。"""
+    normalized = hostname.rstrip(".").casefold()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def validated_base_url(value: str) -> str:
+    """校验并返回可用的服务根地址。
+
+    远程地址必须 HTTPS，HTTP 只允许本机回环；地址不能包含账号、密码、查询参数或
+    片段。provider 与"获取可用模型"接口共用同一套规则，避免两处判断漂移。
+    """
+    cleaned = (value or "").strip().rstrip("/")
+    if not cleaned:
+        raise LLMError("请先填写有效的 Base URL")
+    try:
+        parsed = urlsplit(cleaned)
+        hostname = parsed.hostname
+    except ValueError as exc:
+        raise LLMError("Base URL 格式无效") from exc
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        raise LLMError("Base URL 只支持 HTTP 或 HTTPS 地址")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise LLMError("Base URL 不能包含账号、密码、查询参数或片段")
+    if parsed.scheme.lower() == "http" and not is_loopback_host(hostname):
+        raise LLMError("远程模型服务必须使用 HTTPS；HTTP 仅允许本机地址")
+    return cleaned
+
+
+def models_endpoint(base_url: str) -> str:
+    """由 Base URL 推导模型列表地址。
+
+    兼容用户填 ``https://api.x.com``、``https://api.x.com/v1`` 或完整
+    ``.../chat/completions`` 三种情况。
+    """
+    base = validated_base_url(base_url)
+    if base.endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")]
+    return f"{base}/models"
+
 
 class OpenAICompatProvider(BaseLLMProvider):
     def __init__(
@@ -215,31 +280,7 @@ class OpenAICompatProvider(BaseLLMProvider):
         return f"{base}/chat/completions"
 
     def _validated_base_url(self) -> str:
-        value = self.config.base_url.strip().rstrip("/")
-        if not value:
-            raise LLMError("请先填写有效的 Base URL")
-        try:
-            parsed = urlsplit(value)
-            hostname = parsed.hostname
-        except ValueError as exc:
-            raise LLMError("Base URL 格式无效") from exc
-        if parsed.scheme.lower() not in {"http", "https"} or not hostname:
-            raise LLMError("Base URL 只支持 HTTP 或 HTTPS 地址")
-        if parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise LLMError("Base URL 不能包含账号、密码、查询参数或片段")
-        if parsed.scheme.lower() == "http" and not self._is_loopback_host(hostname):
-            raise LLMError("远程模型服务必须使用 HTTPS；HTTP 仅允许本机地址")
-        return value
-
-    @staticmethod
-    def _is_loopback_host(hostname: str) -> bool:
-        normalized = hostname.rstrip(".").casefold()
-        if normalized == "localhost" or normalized.endswith(".localhost"):
-            return True
-        try:
-            return ip_address(normalized).is_loopback
-        except ValueError:
-            return False
+        return validated_base_url(self.config.base_url)
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -282,10 +323,25 @@ class OpenAICompatProvider(BaseLLMProvider):
         # 默认值可能小于用户此前手动设置的值。
         if not self.config.uses_unlimited_output:
             payload["max_tokens"] = self.config.max_tokens
+        self._apply_advanced_parameters(payload)
+        self._apply_request_overrides(payload)
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         return payload
+
+    def _apply_advanced_parameters(self, payload: dict) -> None:
+        """发送用户在「高级调整」里显式开启的参数；未开启（None）就不发送。"""
+        for key in ("top_p", "frequency_penalty", "presence_penalty", "seed"):
+            value = getattr(self.config, key, None)
+            if value is not None:
+                payload[key] = value
+
+    def _apply_request_overrides(self, payload: dict) -> None:
+        """合并单次请求的覆盖参数（白名单 + 非空值）。"""
+        for key, value in self.request_overrides.items():
+            if key in _OVERRIDABLE_KEYS and value not in (None, ""):
+                payload[key] = value
 
     @staticmethod
     def _extract_content(data: dict) -> str:
@@ -304,7 +360,6 @@ class OpenAICompatProvider(BaseLLMProvider):
     @staticmethod
     def _http_error(response: httpx.Response) -> LLMError:
         status = response.status_code
-        message = _STATUS_MESSAGES.get(status, "模型调用失败")
         # 上游正文可能回显请求或敏感资料，只记录状态码。
         logger.warning("LLM 调用失败 status=%s", status)
-        return LLMError(f"{message}（HTTP {status}）")
+        return LLMError(f"{http_error_message(status)}（HTTP {status}）")

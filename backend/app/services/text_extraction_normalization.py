@@ -179,7 +179,7 @@ def normalize_job_result(
         {
             **values,
             "warnings": warnings,
-            "recognition_source": "ai",
+            "parse_engine": "ai",
             "recognized_text": _recognized_text(data),
         }
     )
@@ -304,7 +304,7 @@ def normalize_profile_result(
             "photo": "",
             "section_order": list(local.section_order),
             "warnings": warnings,
-            "recognition_source": "ai",
+            "parse_engine": "ai",
             "recognized_text": _recognized_text(data),
         }
     )

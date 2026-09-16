@@ -29,5 +29,10 @@ class LLMConfigRecord(Base):
     temperature: Mapped[float] = mapped_column(Float, default=0.1)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
+    # 高级调整（可选）：为空表示不发送该字段，沿用服务商默认值。
+    top_p: Mapped[float | None] = mapped_column(Float, nullable=True)
+    frequency_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    presence_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

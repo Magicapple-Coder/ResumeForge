@@ -95,7 +95,7 @@ def test_parse_text_uses_configured_ai(
     result = client.post(path, json={"text": text})
 
     assert result.status_code == 200
-    assert result.json()["recognition_source"] == "ai"
+    assert result.json()["parse_engine"] == "ai"
     assert result.json()[field] == expected
 
 
@@ -117,7 +117,7 @@ def test_parse_text_falls_back_when_ai_fails(client, monkeypatch, path, text, fa
 
     assert result.status_code == 200
     body = result.json()
-    assert body["recognition_source"] == "local"
+    assert body["parse_engine"] == "local"
     assert any("本地规则" in warning for warning in body["warnings"])
 
 
@@ -138,5 +138,5 @@ def test_parse_text_uses_local_parser_without_model(client, monkeypatch, path, t
 
     assert result.status_code == 200
     body = result.json()
-    assert body["recognition_source"] == "local"
+    assert body["parse_engine"] == "local"
     assert any("未配置大模型" in warning for warning in body["warnings"])

@@ -12,10 +12,13 @@ import httpx
 logger = logging.getLogger(__name__)
 
 BING_SEARCH_URL = "https://cn.bing.com/search"
+_FALLBACK_SEARCH_URL = "https://www.bing.com/search"
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _MAX_QUERY_CHARS = 300
-_MAX_RESULTS = 5
-_MAX_CANDIDATE_RESULTS = 10
+# 返回上限提到 8：搜索摘要本来就是线索而非结论，给模型更多可挑选的来源比少而精
+# 更有用（筛选规则仍在，明显无关的结果不会进来）。
+_MAX_RESULTS = 8
+_MAX_CANDIDATE_RESULTS = 15
 _TAG_RE = re.compile(r"\s+")
 _QUERY_SEPARATOR_RE = re.compile(r"[，。！？、；：,.!?;:\n\r]+")
 _CAREER_TERMS = (
@@ -44,6 +47,26 @@ _INTERNET_EMPLOYER_MARKERS = frozenset({"互联网", "大厂", "科技企业", "
 _RECRUITMENT_URL_MARKERS = frozenset(
     {"career", "careers", "jobs", "recruit", "recruiting", "talent", "campus"}
 )
+# 第三方平台只能作为线索，排序时排在用人单位官网之后。
+_THIRD_PARTY_HOST_MARKERS = frozenset(
+    {
+        "zhipin.com",
+        "lagou.com",
+        "liepin.com",
+        "51job.com",
+        "nowcoder.com",
+        "zhihu.com",
+        "csdn.net",
+        "jianshu.com",
+        "douban.com",
+        "weibo.com",
+        "baike.baidu.com",
+        "sohu.com",
+        "163.com",
+        "qq.com",
+    }
+)
+_OFFICIAL_HOST_SUFFIXES = (".gov.cn", ".edu.cn", ".org.cn", ".ac.cn")
 
 
 class AssistantSearchError(Exception):
@@ -200,8 +223,7 @@ def parse_bing_rss(xml_bytes: bytes, limit: int = _MAX_RESULTS) -> list[dict[str
     return results
 
 
-async def fetch_bing_rss(query: str) -> bytes:
-    """请求固定 Bing 端点；不跟随重定向，也不记录用户查询。"""
+async def _fetch_rss_once(url: str, query: str) -> bytes:
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
     headers = {
         "Accept": "application/rss+xml, application/xml;q=0.9",
@@ -211,7 +233,7 @@ async def fetch_bing_rss(query: str) -> bytes:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             async with client.stream(
                 "GET",
-                BING_SEARCH_URL,
+                url,
                 params={"q": query, "format": "rss", "mkt": "zh-CN", "setlang": "zh-hans"},
                 headers=headers,
             ) as response:
@@ -230,6 +252,58 @@ async def fetch_bing_rss(query: str) -> bytes:
     return bytes(body)
 
 
+async def fetch_bing_rss(query: str) -> bytes:
+    """请求固定 Bing 端点；不跟随重定向，也不记录用户查询。
+
+    国内网络走 ``cn.bing.com``，它不可用时退回 ``www.bing.com``——两个端点返回同一种
+    RSS，多一次尝试就能覆盖"某个域被拦但另一个可用"的情况。
+    """
+    last_error: AssistantSearchError | None = None
+    for url in (BING_SEARCH_URL, _FALLBACK_SEARCH_URL):
+        try:
+            return await _fetch_rss_once(url, query)
+        except AssistantSearchError as exc:
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
+def _deduplicate(results: list[dict[str, str]]) -> list[dict[str, str]]:
+    """按主机名 + 路径去重，丢掉查询参数造成的同页重复。"""
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, str]] = []
+    for result in results:
+        parsed = urlsplit(result["url"])
+        key = ((parsed.hostname or "").casefold(), parsed.path.rstrip("/"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(result)
+    return unique
+
+
+def official_like_score(result: dict[str, str]) -> int:
+    """用人单位官网/招聘页排序权重；第三方平台降权，但不会被丢掉。"""
+    host = (urlsplit(result["url"]).hostname or "").casefold()
+    score = 0
+    if any(host.endswith(suffix) for suffix in _OFFICIAL_HOST_SUFFIXES):
+        score += 2
+    if _has_recruitment_url_marker(result["url"]):
+        score += 2
+    if any(marker in host for marker in _THIRD_PARTY_HOST_MARKERS):
+        score -= 2
+    if "招聘" in f"{result['title']} {result['snippet']}":
+        score += 1
+    return score
+
+
+def rank_results(results: list[dict[str, str]]) -> list[dict[str, str]]:
+    """官网招聘页在前；同分保持搜索服务给出的原始顺序。"""
+    indexed = list(enumerate(results))
+    indexed.sort(key=lambda pair: (-official_like_score(pair[1]), pair[0]))
+    return [item for _, item in indexed]
+
+
 async def search_web(query: str) -> list[dict[str, str]]:
     normalized = _normalized_query(query)
     if not normalized:
@@ -238,8 +312,12 @@ async def search_web(query: str) -> list[dict[str, str]]:
     candidates = parse_bing_rss(
         await fetch_bing_rss(search_query), limit=_MAX_CANDIDATE_RESULTS
     )
-    results = filter_relevant_results(candidates, normalized)[:_MAX_RESULTS]
+    results = rank_results(
+        _deduplicate(filter_relevant_results(candidates, normalized))
+    )[:_MAX_RESULTS]
     if not results and _matched_career_terms(normalized):
-        raise AssistantSearchError("没有找到与当前求职问题直接相关的公开来源，请调整关键词后重试")
+        raise AssistantSearchError(
+            "没有找到与当前求职问题直接相关的公开来源。可以换成更具体的公司名、岗位名或技术方向再搜一次。"
+        )
     logger.info("Bing RSS 搜索完成 result_count=%s", len(results))
     return results

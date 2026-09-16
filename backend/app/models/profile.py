@@ -6,7 +6,7 @@
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -50,6 +50,29 @@ class UserProfile(Base):
     )
     skills: Mapped[list["Skill"]] = relationship(cascade="all, delete-orphan", order_by="Skill.id")
     awards: Mapped[list["Award"]] = relationship(cascade="all, delete-orphan", order_by="Award.id")
+    photos: Mapped[list["ProfilePhoto"]] = relationship(
+        cascade="all, delete-orphan", order_by="ProfilePhoto.id"
+    )
+
+
+class ProfilePhoto(Base):
+    """可选择的多张个人照片。
+
+    ``UserProfile.photo`` 仍然是"当前使用的那一张"的镜像：简历生成、预览与导出
+    全部读它，因此切换照片时同步写回主表，老链路一行都不用改。
+    """
+
+    __tablename__ = "profile_photo"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("user_profile.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), default="")
+    # 受限的 base64 图片 data URL，校验规则与资料照片完全一致。
+    image: Mapped[str] = mapped_column(Text, default="")
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Education(Base):

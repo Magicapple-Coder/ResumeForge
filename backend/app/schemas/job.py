@@ -13,11 +13,39 @@ from .extraction import (
     ExtractionDocumentInput,
     ExtractionImageInput,
 )
+from .profile import validate_photo_data_url
 
 
 MAX_SQLITE_INTEGER = 2**63 - 1
 MAX_JOB_TEXT_CHARS = 200_000
+# 备注图片随岗位表单一次性提交，受默认 8 MB 请求体上限约束，所以只放 2 张。
+MAX_JOB_NOTE_IMAGES = 2
+
+# 招聘信息的录入方式，用于备注里的溯源标注。
+# 注意顺序：这里既是可选值清单，也是前端下拉的展示顺序。
+RECOGNITION_SOURCES = (
+    "手动填写",
+    "粘贴文本识别",
+    "图片识别",
+    "文档识别",
+    "备选岗位导入",
+    "AI 助手录入",
+)
 JobId = Annotated[int, Field(strict=True, ge=1, le=MAX_SQLITE_INTEGER)]
+
+
+def validate_note_images(values: list[str]) -> list[str]:
+    """备注图片沿用资料照片的校验：JPEG/PNG/WebP、单张不超过 2 MB。"""
+    if len(values) > MAX_JOB_NOTE_IMAGES:
+        raise ValueError(f"备注图片最多 {MAX_JOB_NOTE_IMAGES} 张")
+    return [validate_photo_data_url(value) for value in values]
+
+
+def validate_recognition_source(value: str) -> str:
+    value = (value or "").strip()
+    if value and value not in RECOGNITION_SOURCES:
+        raise ValueError("无效的招聘信息来源")
+    return value
 
 
 def _validate_status(value: str) -> str:
@@ -58,6 +86,8 @@ class JobCreate(BaseModel):
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
     note: str = Field(default="", max_length=2000)
+    note_images: list[str] = Field(default_factory=list, max_length=MAX_JOB_NOTE_IMAGES)
+    recognition_source: str = Field(default="", max_length=32)
     favorite: bool = False
 
     @field_validator("status")
@@ -69,6 +99,16 @@ class JobCreate(BaseModel):
     @classmethod
     def source_url_must_be_http(cls, value: str) -> str:
         return _validate_source_url(value)
+
+    @field_validator("note_images")
+    @classmethod
+    def note_images_must_be_safe(cls, value: list[str]) -> list[str]:
+        return validate_note_images(value)
+
+    @field_validator("recognition_source")
+    @classmethod
+    def recognition_source_must_be_supported(cls, value: str) -> str:
+        return validate_recognition_source(value)
 
 
 class JobUpdate(BaseModel):
@@ -86,6 +126,8 @@ class JobUpdate(BaseModel):
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
     note: str = Field(default="", max_length=2000)
+    note_images: list[str] = Field(default_factory=list, max_length=MAX_JOB_NOTE_IMAGES)
+    recognition_source: str = Field(default="", max_length=32)
     favorite: bool = False
 
     @field_validator("status")
@@ -97,6 +139,16 @@ class JobUpdate(BaseModel):
     @classmethod
     def source_url_must_be_http_when_set(cls, value: str) -> str:
         return _validate_source_url(value)
+
+    @field_validator("note_images")
+    @classmethod
+    def note_images_must_be_safe_when_set(cls, value: list[str]) -> list[str]:
+        return validate_note_images(value)
+
+    @field_validator("recognition_source")
+    @classmethod
+    def recognition_source_must_be_supported_when_set(cls, value: str) -> str:
+        return validate_recognition_source(value)
 
 
 class JobBatchRequest(BaseModel):
@@ -156,7 +208,10 @@ class JobTextParseResult(BaseModel):
     posted_at: str = Field(default="", max_length=32)
     status: str = Field(default="开放中", max_length=16)
     warnings: list[str] = Field(default_factory=list)
-    recognition_source: Literal["ai", "local"] = "local"
+    # 识别引擎（AI 还是本地规则）。**不要**和 `JobCreate.recognition_source` 混用：
+    # 那个是"这条招聘信息是怎么录进来的"，会被写进备注做溯源；草稿里的这个字段只
+    # 说明"这次识别是谁做的"，保存岗位时由前端按输入类型决定来源。
+    parse_engine: Literal["ai", "local"] = "local"
     # 图片识别时模型逐字抄录的原文，供用户对照截图核对；纯文本识别为空。
     recognized_text: str = Field(default="", max_length=MAX_RECOGNIZED_TEXT_CHARS)
 

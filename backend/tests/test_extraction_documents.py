@@ -45,7 +45,7 @@ def test_job_parse_text_reads_a_docx_without_a_model(client):
     assert body["company"] == "字节跳动"
     assert body["description"] == "负责 FastAPI 服务开发与维护。"
     assert body["requirements"] == "熟悉 Python 与 SQL，具备良好的沟通能力。"
-    assert body["recognition_source"] == "local"
+    assert body["parse_engine"] == "local"
     assert any("文档文字已在本机提取" in warning for warning in body["warnings"])
 
 

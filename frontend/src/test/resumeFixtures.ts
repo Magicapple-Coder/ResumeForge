@@ -19,7 +19,7 @@ export const TEMPLATE_CATALOG: ResumeTemplateCatalog = {
     { name: "standard", label: "标准字号", description: "默认档位，兼顾可读性与篇幅" },
     { name: "large", label: "大字号", description: "字更大更醒目，适合内容较少" },
   ],
-  defaults: { template: "classic", font_scale: "standard" },
+  defaults: { template: "classic", font_scale: "standard", page_limit: 1 },
   pdf_direct_available: true,
 };
 

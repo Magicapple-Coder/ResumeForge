@@ -13,11 +13,14 @@ from ..schemas.setting import (
     LLMApiKeyRevealResult,
     LLMConfigRecordCreate,
     LLMConfigRecordOut,
+    LLMModelsRequest,
+    LLMModelsResult,
     LLMTestRequest,
     LLMTestResult,
 )
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
+from ..services.llm.model_catalog import list_available_models
 from ..services.settings_service import (
     delete_llm_config_record,
     get_llm_config,
@@ -93,6 +96,23 @@ def write_llm_config(payload: LLMConfig, db: Session = Depends(get_db)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return mask_llm_config(db, saved)
+
+
+@router.post("/llm/models", response_model=LLMModelsResult)
+async def list_llm_models(payload: LLMModelsRequest, db: Session = Depends(get_db)):
+    """获取服务商当前可用的模型列表；失败时用 message 说明原因，不抛 5xx。"""
+    if not payload.base_url.strip():
+        return LLMModelsResult(message="请先填写 Base URL")
+    try:
+        resolved = resolve_llm_config_api_key(db, payload)
+    except ValueError as exc:
+        return LLMModelsResult(message=str(exc))
+    try:
+        models = await list_available_models(resolved.base_url, resolved.api_key)
+    except LLMError as exc:
+        logger.warning("获取模型列表失败：%s", exc)
+        return LLMModelsResult(message=str(exc))
+    return LLMModelsResult(models=models, message=f"共获取到 {len(models)} 个模型")
 
 
 @router.post("/llm/test", response_model=LLMTestResult)

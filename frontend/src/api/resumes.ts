@@ -113,14 +113,23 @@ export async function renderResume(
 export async function exportResume(
   id: number,
   format: ExportFormat,
-): Promise<{ blob: Blob; filename: string }> {
+): Promise<{ blob: Blob; filename: string; pages: number | null; pageLimit: number | null }> {
   const resp = await fetch(`/api/resumes/${id}/export?format=${format}`);
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
   return {
     blob: await resp.blob(),
     filename:
       getFilenameFromDisposition(resp.headers.get("Content-Disposition")) ?? `resume.${format}`,
+    // 只有服务端 PDF 会带这两个头：它用的是自己那套排版，页数可能多于用户选的上限。
+    pages: readCountHeader(resp.headers.get("X-Resume-Pages")),
+    pageLimit: readCountHeader(resp.headers.get("X-Resume-Page-Limit")),
   };
+}
+
+/** 头读不到（跨源未放行、或该格式不提供）时返回 null，而不是把 NaN 传下去。 */
+function readCountHeader(value: string | null): number | null {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 /** 读取导出 HTML 文本（用于打开打印窗口生成 PDF） */

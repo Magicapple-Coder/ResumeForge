@@ -22,6 +22,7 @@ _BACKEND_ROOT: Final = Path(__file__).resolve().parent.parent
 _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/data/skills.json", "内置技能词典，岗位解析与匹配要用"),
     ("app/prompts/assistant_system.md", "AI 助手系统提示词"),
+    ("app/prompts/assistant_welcome.md", "求职助手的默认引导对话"),
     ("app/prompts/image_extraction_addendum.md", "图片识别补充提示词"),
     ("app/prompts/job_analysis.md", "岗位分析提示词"),
     ("app/prompts/job_text_extract.md", "招聘信息识别提示词"),

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -31,5 +31,13 @@ class ResumeRecord(Base):
     tone: Mapped[str] = mapped_column(String(32), default="standard")
     enhancement_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     enhancement_level: Mapped[str] = mapped_column(String(16), default="balanced")
+    # 生成时选择的版式参数：重新预览/导出时按同一套参数渲染，改参数不必重新生成。
+    template: Mapped[str] = mapped_column(String(32), default="classic", server_default="classic")
+    page_limit: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    font_scale: Mapped[str] = mapped_column(
+        String(16), default="standard", server_default="standard"
+    )
+    # 用户补充的生成要求原文，留痕以便查看和重新生成。
+    custom_instruction: Mapped[str] = mapped_column(Text, default="", server_default="")
     parse_error: Mapped[str] = mapped_column(Text, default="")  # JSON 解析失败时留痕
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

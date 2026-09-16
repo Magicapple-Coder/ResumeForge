@@ -470,3 +470,36 @@ def test_tool_rounds_are_capped(client, monkeypatch):
         1
     ]
     assert "先停在这里" in assistant["content"]
+
+
+def test_web_search_never_exceeds_the_documented_limit(client, monkeypatch):
+    """系统提示、README 与使用指南都写着"一次回答最多 3 次"，这里验证它真的是上限。
+
+    此前那句话只活在提示词里：代码侧真正的约束是 5 轮工具调用，而且每轮可以并行发多个
+    搜索请求，用户按 3 次的预期可能会多花几倍。
+    """
+    from app.api.assistant_stream import MAX_WEB_SEARCHES, MAX_TOOL_ROUNDS
+
+    _configure_llm(client)
+    executed: list[str] = []
+
+    async def fake_search(query: str) -> list[dict[str, str]]:
+        executed.append(query)
+        index = len(executed)
+        return [{"title": f"招聘 {index}", "url": f"https://example.com/{index}", "snippet": "摘要"}]
+
+    monkeypatch.setattr("app.services.assistant_web_search.search_web", fake_search)
+    # 每一轮都要搜索，永不收敛：没有上限就会一直搜到工具轮次用尽。
+    provider = _ScriptedProvider([[_tool_call("web_search", {"query": "后端 招聘"})]])
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    response = client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "帮我搜最新的招聘信息", "web_search": True},
+    )
+
+    assert response.status_code == 200
+    assert len(executed) == MAX_WEB_SEARCHES
+    # 确实是被搜索上限拦下的，而不是因为工具轮次用尽才停。
+    assert MAX_WEB_SEARCHES < MAX_TOOL_ROUNDS

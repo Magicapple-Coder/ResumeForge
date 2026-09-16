@@ -1,5 +1,5 @@
 import { App as AntdApp } from "antd";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -98,9 +98,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function renderPage() {
+function renderPage(entry = "/assistant") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <AntdApp>
         <AssistantPage />
       </AntdApp>
@@ -177,6 +177,91 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
+  // 「引导对话已经给过」是持久化标记，用例之间必须清掉，否则先跑的用例会把后跑的挡住。
+  window.localStorage.clear();
+});
+
+describe("助手引导对话", () => {
+  it("opens an onboarding conversation the first time there is nothing else", async () => {
+    apiMocks.listAssistantConversations.mockResolvedValue([]);
+    renderPage();
+
+    await waitFor(() =>
+      expect(apiMocks.createAssistantConversation).toHaveBeenCalledWith("", { welcome: true }),
+    );
+  });
+
+  it("does not recreate it after the user has deleted every conversation", async () => {
+    // 第一次进来时已经引导过（标记落了盘），之后用户把会话全删了。
+    window.localStorage.setItem("resumeforge.assistant.welcome-shown", "1");
+    apiMocks.listAssistantConversations.mockResolvedValue([]);
+
+    renderPage();
+    await waitFor(() => expect(apiMocks.listAssistantConversations).toHaveBeenCalled());
+
+    // 删掉的东西不该自己长回来：重建等于把用户删过的数据又造一份。
+    await waitFor(() => expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled());
+  });
+
+  it("treats a failed conversation list as unknown, not as empty", async () => {
+    apiMocks.listAssistantConversations.mockRejectedValue(new Error("网络不可用"));
+
+    renderPage();
+    await waitFor(() => expect(apiMocks.listAssistantConversations).toHaveBeenCalled());
+
+    // 取不到列表时用户可能其实有一堆会话；按"空"处理会因为一次抖动就多建一条。
+    await waitFor(() => expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled());
+  });
+});
+
+describe("助手深链", () => {
+  it("opens the shared conversation", async () => {
+    renderPage("/assistant?conversation=2");
+
+    expect(await screen.findByRole("heading", { name: "会话二" })).toBeInTheDocument();
+  });
+
+  it("does not drag the user back after they switch away", async () => {
+    let listCalls = 0;
+    apiMocks.listAssistantConversations.mockImplementation(() => {
+      listCalls += 1;
+      // 第二次返回"刷新过的"新数组：既还原真实后端每次返回新对象的做法，
+      // 也给出一个可以等待的正信号——新列表真的渲染了。
+      return Promise.resolve(
+        listCalls === 1
+          ? [...CONVERSATIONS]
+          : CONVERSATIONS.map((item) => ({ ...item, title: `${item.title}·刷新` })),
+      );
+    });
+    renderPage("/assistant?conversation=2");
+    expect(await screen.findByRole("heading", { name: "会话二" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "会话一" }));
+    expect(await screen.findByRole("heading", { name: "会话一" })).toBeInTheDocument();
+
+    // 触发一次列表刷新（收藏会重新拉列表）。深链若只靠"依赖列表"来判断，
+    // 这里就会把用户拽回会话二。
+    fireEvent.click(screen.getAllByRole("button", { name: "更多对话操作" })[0]);
+    const actionMenu = await waitFor(() => {
+      const menu = document.querySelector(".assistant-conversation-actions-menu");
+      if (!menu) throw new Error("conversation action menu has not opened");
+      return menu;
+    });
+    fireEvent.click(within(actionMenu as HTMLElement).getByText("收藏对话"));
+
+    // 先等新列表渲染出来（侧栏标题变了）……
+    await waitFor(() => expect(screen.getAllByText("会话二·刷新")[0]).toBeInTheDocument());
+    // ……再把后续的异步链（effect -> 选中 -> 取详情）跑干净再断言。
+    // 只断言一次"标题还是会话一"是不够的：抢焦点发生在 effect 里，晚一拍才生效，
+    // 早断言会绿得毫无意义。被抢走的话这里会多出一次会话二的详情请求。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(apiMocks.getAssistantConversation).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("heading", { name: "会话一" })).toBeInTheDocument();
+  });
 });
 
 describe("AssistantPage", () => {

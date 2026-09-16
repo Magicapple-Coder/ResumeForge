@@ -21,9 +21,18 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
     if (downloading) return;
     setDownloading(true);
     try {
-      const { blob, filename } = await exportResume(recordId, "pdf");
+      const { blob, filename, pages, pageLimit } = await exportResume(recordId, "pdf");
       downloadBlob(blob, filename);
-      message.success("PDF 已开始下载");
+      if (pages && pageLimit && pages > pageLimit) {
+        // 内容放不下时服务端宁可多出一页也不裁字，所以页数可能多于用户选的上限。
+        // 之前这种情况只在服务端日志里，用户下载完才发现版式跟预览不一样。
+        message.warning(
+          `PDF 共 ${pages} 页，超过你选择的 ${pageLimit} 页上限：服务端排版不裁内容，` +
+            "放不下就顺延。想要和预览完全一致的版式，请用「浏览器打印 / 另存为 PDF」。",
+        );
+      } else {
+        message.success("PDF 已开始下载");
+      }
     } catch (err) {
       message.error(
         err instanceof Error
@@ -71,14 +80,16 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
   return (
     <Space>
       {pdfDirectAvailable ? (
-        <Button
-          type="primary"
-          icon={<DownloadOutlined />}
-          loading={downloading}
-          onClick={() => void downloadPdf()}
-        >
-          下载 PDF
-        </Button>
+        <Tooltip title="服务端直接生成，不用打开打印窗口。它用自己的一套排版（强调色跟随所选模板），版式与预览不逐像素一致；想要和预览完全一样，请用「浏览器打印 / 另存为 PDF」">
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            loading={downloading}
+            onClick={() => void downloadPdf()}
+          >
+            下载 PDF
+          </Button>
+        </Tooltip>
       ) : (
         <Tooltip title="系统里没有找到中文字体，PDF 由浏览器打印生成">
           <Button type="primary" icon={<PrinterOutlined />} onClick={() => void printPdf()}>

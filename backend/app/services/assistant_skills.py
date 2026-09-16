@@ -62,6 +62,76 @@ def upsert_skill(db: Session, parsed: ParsedSkill) -> AssistantSkill:
     return skill
 
 
+def create_skill(
+    db: Session,
+    *,
+    name: str,
+    description: str = "",
+    prompt: str = "",
+    enabled: bool = True,
+    files: list[tuple[str, str]] | None = None,
+) -> AssistantSkill:
+    """在技能工作台手工创建技能。
+
+    重名时**拒绝**而不是覆盖：导入流程按名称覆盖是有意的升级语义，但在工作台里
+    静默覆盖另一个技能会丢掉用户已经写好的提示词。
+    """
+    if find_skill(db, name) is not None:
+        raise ValueError(f"已存在同名技能「{name}」；请换一个名称，或直接编辑原技能")
+    skill = AssistantSkill(
+        name=name,
+        description=description,
+        prompt=prompt,
+        enabled=enabled,
+        source_name="技能工作台",
+    )
+    skill.files = [
+        AssistantSkillFile(path=path, content=content, size_bytes=len(content))
+        for path, content in (files or [])
+    ]
+    db.add(skill)
+    db.commit()
+    db.refresh(skill)
+    logger.info("已创建技能 name=%s 知识文件=%s", skill.name, len(skill.files))
+    return skill
+
+
+def update_skill(
+    db: Session,
+    skill_id: int,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    prompt: str | None = None,
+    enabled: bool | None = None,
+    files: list[tuple[str, str]] | None = None,
+) -> AssistantSkill | None:
+    """更新技能；``files`` 提交时整体替换知识文件。"""
+    skill = db.get(AssistantSkill, skill_id)
+    if skill is None:
+        return None
+    if name is not None and name != skill.name:
+        existing = find_skill(db, name)
+        if existing is not None and existing.id != skill.id:
+            raise ValueError(f"已存在同名技能「{name}」")
+        skill.name = name
+    if description is not None:
+        skill.description = description
+    if prompt is not None:
+        skill.prompt = prompt
+    if enabled is not None:
+        skill.enabled = enabled
+    if files is not None:
+        skill.files = [
+            AssistantSkillFile(path=path, content=content, size_bytes=len(content))
+            for path, content in files
+        ]
+    db.commit()
+    db.refresh(skill)
+    logger.info("已更新技能 id=%s name=%s", skill.id, skill.name)
+    return skill
+
+
 def set_skill_enabled(db: Session, skill_id: int, enabled: bool) -> AssistantSkill | None:
     skill = db.get(AssistantSkill, skill_id)
     if skill is None:

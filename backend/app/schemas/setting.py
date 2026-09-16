@@ -20,6 +20,12 @@ class LLMConfig(BaseModel):
     temperature: float = Field(default=0.1, ge=0, le=2)
     timeout_seconds: int = Field(default=120, ge=10, le=600)
     max_tokens: int = Field(default=4096, ge=UNLIMITED_MAX_TOKENS, le=65536)
+    # 高级调整（可选）：None 表示请求体里不发送该字段，沿用服务商默认值。
+    # 这些参数各家支持度不一，所以默认全部关闭，由用户在设置页显式开启。
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    seed: int | None = Field(default=None, ge=0, le=2**31 - 1)
 
     @field_validator("max_tokens")
     @classmethod
@@ -73,3 +79,15 @@ class LLMApiKeyRevealResult(BaseModel):
     """仅响应用户显式查看动作；普通配置读取仍返回脱敏引用。"""
 
     api_key: str = Field(default="", max_length=8192)
+
+
+class LLMModelsRequest(LLMConfig):
+    """按表单当前值查询服务商可用的模型列表。
+
+    ``api_key`` 留空时后端回退到已保存的密钥，避免用户为了看模型列表先保存一遍。
+    """
+
+
+class LLMModelsResult(BaseModel):
+    models: list[str] = Field(default_factory=list, max_length=1000)
+    message: str = Field(default="", max_length=1000)

@@ -4,6 +4,8 @@ SQLITE_REQUIRED_COLUMNS = {
     "job": {
         "note": "TEXT NOT NULL DEFAULT ''",
         "favorite": "BOOLEAN NOT NULL DEFAULT 0",
+        "note_images": "TEXT NOT NULL DEFAULT '[]'",
+        "recognition_source": "VARCHAR(32) NOT NULL DEFAULT ''",
     },
     "user_profile": {
         "photo": "TEXT NOT NULL DEFAULT ''",
@@ -30,9 +32,21 @@ SQLITE_REQUIRED_COLUMNS = {
         "source": "VARCHAR(16) NOT NULL DEFAULT 'ai'",
         "enhancement_enabled": "BOOLEAN NOT NULL DEFAULT 0",
         "enhancement_level": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
+        "template": "VARCHAR(32) NOT NULL DEFAULT 'classic'",
+        "page_limit": "INTEGER NOT NULL DEFAULT 1",
+        "font_scale": "VARCHAR(16) NOT NULL DEFAULT 'standard'",
+        "custom_instruction": "TEXT NOT NULL DEFAULT ''",
     },
     "chat_conversation": {
         "pinned": "BOOLEAN NOT NULL DEFAULT 0",
         "favorite": "BOOLEAN NOT NULL DEFAULT 0",
+        "archived": "BOOLEAN NOT NULL DEFAULT 0",
+        "group_name": "VARCHAR(64) NOT NULL DEFAULT ''",
+    },
+    "llm_config_record": {
+        "top_p": "FLOAT",
+        "frequency_penalty": "FLOAT",
+        "presence_penalty": "FLOAT",
+        "seed": "INTEGER",
     },
 }

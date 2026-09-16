@@ -169,7 +169,7 @@ def test_inspect_rejects_a_database_with_unknown_tables(db_session, tmp_path):
 
     tampered = _replace_member(archive, DATABASE_MEMBER, foreign.read_bytes(), tmp_path / "foreign.zip")
 
-    with pytest.raises(BackupError, match="未识别的数据表"):
+    with pytest.raises(BackupError, match="不认识的数据表"):
         inspect_archive(tampered, engine, tmp_path / "staging")
 
 

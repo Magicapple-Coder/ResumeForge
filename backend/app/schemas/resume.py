@@ -13,12 +13,25 @@ MAX_RESUME_TEXT_CHARS = 50_000
 ResumeLine = Annotated[str, Field(max_length=20_000)]
 
 
+# 版式参数：最大篇幅（A4 页数）、字号档位、模板。默认 1 页 + 标准字号。
+MAX_RESUME_PAGES = 3
+ResumeFontScale = Literal["small", "standard", "large"]
+MIN_CUSTOM_INSTRUCTION_CHARS = 0
+MAX_CUSTOM_INSTRUCTION_CHARS = 2000
+
+
 class GenerateOptions(BaseModel):
-    """控制是否允许模型基于已有事实做岗位导向的改写和拓展。"""
+    """控制是否允许模型基于已有事实做岗位导向的改写和拓展，以及输出篇幅。"""
 
     model_config = ConfigDict(extra="forbid")
     enhance: bool = False
     enhancement_level: Literal["light", "balanced", "strong"] = "balanced"
+    # 目标篇幅：默认 1 页 A4。塞不下时用户可在预览页加大页数或缩小字号后重新渲染。
+    page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
+    font_scale: ResumeFontScale = "standard"
+    template: str = Field(default="classic", max_length=32)
+    # 用户自己补充的生成要求；只作为附加上下文，不会覆盖系统提示里的防虚构规则。
+    custom_instruction: str = Field(default="", max_length=MAX_CUSTOM_INSTRUCTION_CHARS)
 
 
 class GenerateRequest(BaseModel):
@@ -127,6 +140,10 @@ class ResumeBrief(BaseModel):
     model: str
     enhancement_enabled: bool
     enhancement_level: Literal["light", "balanced", "strong"]
+    # 生成/最近一次渲染时使用的版式参数，重新打开预览或导出时保持一致。
+    template: str = "classic"
+    page_limit: int = 1
+    font_scale: ResumeFontScale = "standard"
     created_at: datetime
 
 
@@ -177,6 +194,21 @@ class ResumeSuggestionsOut(BaseModel):
 
 
 class ResumeRenderRequest(BaseModel):
-    """生成完成后、未落库前的即时预览渲染。"""
+    """生成完成后、未落库前的即时预览渲染；版式参数可选，缺省用默认单页标准字号。"""
+
+    model_config = ConfigDict(extra="forbid")
 
     content: ResumeContent
+    template: str = Field(default="classic", max_length=32)
+    page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
+    font_scale: ResumeFontScale = "standard"
+
+
+class ResumeLayoutUpdate(BaseModel):
+    """只调整已有记录的版式参数，不重新生成内容。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template: str = Field(default="classic", max_length=32)
+    page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
+    font_scale: ResumeFontScale = "standard"

@@ -16,7 +16,7 @@ from ..services.assistant_service import (
     current_user_message_for_model,
     history_messages_for_model,
 )
-from ..services.assistant_tools import execute_tool, tool_definitions
+from ..services.assistant_tools import execute_tool_async, tool_definitions
 from ..services.assistant_web_search import AssistantSearchError
 from ..services.llm.base import BaseLLMProvider, LLMError
 from .assistant_context import web_context
@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 # 一次回复里最多允许几轮工具调用；防止模型在两个工具之间来回打转。
 MAX_TOOL_ROUNDS = 5
+# 一轮回答里最多搜几次网。系统提示、README 与使用指南都写着"最多 3 次"，这里把它变成
+# 真的：此前只有提示词里那句话，代码侧真正的约束是 5 轮工具调用，而且每轮可以并行发多个
+# 搜索——用户按文档预期 3 次，实际可能多花好几倍。
+MAX_WEB_SEARCHES = 3
 
 
 def _parse_tool_arguments(raw: str) -> dict[str, Any]:
@@ -39,7 +43,11 @@ def _parse_tool_arguments(raw: str) -> dict[str, Any]:
     return value
 
 
-def _run_tool_call(call: dict[str, Any]) -> dict[str, Any]:
+def _is_web_search(call: dict[str, Any]) -> bool:
+    return ((call.get("function") or {}).get("name") or "") == "web_search"
+
+
+async def _run_tool_call(call: dict[str, Any]) -> dict[str, Any]:
     """执行一次工具调用。
 
     任何失败都转成结构化的"工具结果"回给模型，而不是抛出去中断整轮对话——模型
@@ -55,16 +63,21 @@ def _run_tool_call(call: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "error": "",
         "result_text": "",
+        "changed": False,
+        "sources": [],
     }
     try:
         arguments = _parse_tool_arguments(function.get("arguments") or "")
         record["arguments"] = arguments
         # 和本模块其它写回一样自开会话：不把连接跨整个流持有。
         with SessionLocal() as db:
-            result = execute_tool(db, name, arguments)
+            # 搜索类工具要 await（联网请求），所以走异步入口。
+            result = await execute_tool_async(db, name, arguments)
         record["summary"] = result.summary
         record["link"] = result.link
         record["result_text"] = result.text
+        record["changed"] = result.changed
+        record["sources"] = result.sources
     except Exception as exc:  # noqa: BLE001 - 工具失败不能拖垮整轮回复
         record["ok"] = False
         record["error"] = str(exc)
@@ -190,8 +203,13 @@ async def stream_message_events(
         messages.extend(history_messages_for_model(history))
         messages.append(current_user_message_for_model(payload.content, attachments, model_context))
 
-        tools = tool_definitions()
+        # 只有用户打开联网开关时才把搜索工具下发给模型；关掉开关就是不希望联网。
+        tools = tool_definitions(web_search=payload.web_search)
         tool_records: list[dict[str, Any]] = []
+        # 工具里搜到的来源与手动搜索的来源合并展示，按 URL 去重。
+        collected_sources: list[dict[str, Any]] = list(metadata.get("sources") or [])
+        seen_source_urls = {str(item.get("url", "")) for item in collected_sources}
+        web_searches_used = 0
         for _round in range(MAX_TOOL_ROUNDS):
             calls: list[dict[str, Any]] = []
             async for delta in provider.stream_chat_events(messages, tools):
@@ -206,7 +224,23 @@ async def stream_message_events(
             # 把助手的这次调用原样回填进消息，模型才能把结果对上号。
             messages.append({"role": "assistant", "content": None, "tool_calls": calls})
             for call in calls:
-                record = _run_tool_call(call)
+                if _is_web_search(call) and web_searches_used >= MAX_WEB_SEARCHES:
+                    # 超预算时**明确告诉模型**次数用完了，而不是静默丢掉这次调用：
+                    # 静默丢弃会让它以为搜索失败、换个词再来一轮，白烧一轮调用。
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id") or "",
+                            "content": (
+                                f"本轮联网搜索次数已用完（最多 {MAX_WEB_SEARCHES} 次）。"
+                                "请基于已经拿到的结果作答，并说明信息可能不完整。"
+                            ),
+                        }
+                    )
+                    continue
+                if _is_web_search(call):
+                    web_searches_used += 1
+                record = await _run_tool_call(call)
                 tool_records.append(record)
                 messages.append(
                     {
@@ -226,6 +260,21 @@ async def stream_message_events(
                         "error": record["error"],
                     }
                 )
+                new_sources = [
+                    item
+                    for item in record.get("sources") or []
+                    if str(item.get("url", "")) not in seen_source_urls
+                ]
+                if new_sources:
+                    for item in new_sources:
+                        seen_source_urls.add(str(item.get("url", "")))
+                    collected_sources.extend(new_sources)
+                    metadata["sources"] = collected_sources
+                    # 来源属于用户那条消息：它说明"这次回答参考了哪些公开来源"。
+                    update_message_context(user_message_id, metadata)
+                    yield format_sse(
+                        {"type": "sources", "sources": collected_sources, "error": ""}
+                    )
             # 工具记录属于**助手这条消息**：它描述的是助手做了什么，历史回看时挂在
             # 助手回复下最自然（来源则属于用户那条消息，见上面的联网分支）。
             update_message_context(assistant_message_id, {"tool_calls": tool_records})

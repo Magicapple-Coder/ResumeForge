@@ -20,17 +20,34 @@ from ..schemas.resume import (
     ResumeBrief,
     ResumeContent,
     ResumeFavoriteUpdate,
+    ResumeLayoutUpdate,
     ResumeOut,
     ResumeRenderRequest,
     ResumeSuggestionsOut,
     ResumeTitleUpdate,
 )
-from ..services.exporter import build_filename, export_json, export_markdown, render_html
+from ..services.exporter import (
+    build_filename,
+    export_json,
+    export_markdown,
+    normalize_page_limit,
+    render_html,
+)
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
+from ..services.pdf_exporter import ResumePDFError, build_resume_pdf, font_available
 from ..services.profile_service import get_profile_detail, to_profile_out
 from ..services.resume_generator import ResumeGenerator
 from ..services.resume_suggestions import generate_suggestions
+from ..services.resume_templates import (
+    DEFAULT_FONT_SCALE,
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_TEMPLATE,
+    font_scale_options,
+    font_scale_spec,
+    template_options,
+    template_spec,
+)
 from ..services.settings_service import get_llm_config
 
 logger = logging.getLogger(__name__)
@@ -38,7 +55,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
 # 支持的导出格式
-_EXPORT_FORMATS = {"json": "application/json", "md": "text/markdown; charset=utf-8", "html": "text/html; charset=utf-8"}
+_EXPORT_FORMATS = {
+    "json": "application/json; charset=utf-8",
+    "md": "text/markdown; charset=utf-8",
+    "html": "text/html; charset=utf-8",
+    "pdf": "application/pdf",
+}
+
+# 服务端 PDF 的实际页数与用户选定的上限。前端靠它们提示"下载下来的页数和你选的不一样"，
+# 因此这两个响应头必须出现在 CORS 的 expose_headers 里（见 application.py）。
+PDF_PAGES_HEADER = "X-Resume-Pages"
+PDF_PAGE_LIMIT_HEADER = "X-Resume-Page-Limit"
+
+
+@router.get("/templates")
+def read_resume_templates():
+    """可选的简历模板与字号档位（生成与预览页共用这一份清单）。
+
+    必须定义在 ``/{resume_id}`` 之前：否则 ``templates`` 会被当成记录 id 匹配，
+    请求会以 422 结束。
+    """
+    return {
+        "templates": template_options(),
+        "font_scales": font_scale_options(),
+        "defaults": {
+            "template": DEFAULT_TEMPLATE,
+            "font_scale": DEFAULT_FONT_SCALE,
+            "page_limit": DEFAULT_PAGE_LIMIT,
+        },
+        "pdf_direct_available": font_available(),
+    }
 
 
 def _format_sse(payload: dict) -> str:
@@ -104,6 +150,10 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
                         payload.options.enhance,
                         payload.options.enhancement_level,
                         requested_title=payload.title,
+                        template=payload.options.template,
+                        page_limit=payload.options.page_limit,
+                        font_scale=payload.options.font_scale,
+                        custom_instruction=payload.options.custom_instruction,
                     )
                 # 只有持久化成功后才宣布完成；断流不会留下“成功但无历史记录”的状态。
                 yield _format_sse({"type": "saved", "record_id": record.id})
@@ -133,6 +183,10 @@ def _save_record(
     enhancement_level: str,
     source: str = "ai",
     requested_title: str = "",
+    template: str = DEFAULT_TEMPLATE,
+    page_limit: int = 1,
+    font_scale: str = DEFAULT_FONT_SCALE,
+    custom_instruction: str = "",
 ) -> ResumeRecord:
     """生成结果落库（在流结束后的同一请求内调用）。
 
@@ -161,6 +215,10 @@ def _save_record(
         model=model,
         enhancement_enabled=enhancement_enabled,
         enhancement_level=enhancement_level,
+        template=template_spec(template)["name"],
+        page_limit=normalize_page_limit(page_limit),
+        font_scale=font_scale_spec(font_scale)["name"],
+        custom_instruction=custom_instruction.strip()[:2000],
     )
     db.add(record)
     db.commit()
@@ -227,6 +285,9 @@ def _to_resume_out(record: ResumeRecord) -> ResumeOut:
         model=record.model,
         enhancement_enabled=record.enhancement_enabled,
         enhancement_level=record.enhancement_level,
+        template=record.template or DEFAULT_TEMPLATE,
+        page_limit=record.page_limit or 1,
+        font_scale=record.font_scale or DEFAULT_FONT_SCALE,
         created_at=record.created_at,
         content=ResumeContent.model_validate(record.content),
         warnings=record.warnings or [],
@@ -375,27 +436,79 @@ def delete_resume(resume_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
+@router.patch("/{resume_id}/layout", response_model=ResumeOut)
+def update_resume_layout(
+    resume_id: int, payload: ResumeLayoutUpdate, db: Session = Depends(get_db)
+):
+    """只调整版式参数（模板/页数/字号），不重新生成内容。
+
+    生成后内容偏多时，用户可以先增大页数或缩小字号再渲染，不必重跑模型。
+    """
+    record = db.get(ResumeRecord, resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    record.template = template_spec(payload.template)["name"]
+    record.page_limit = normalize_page_limit(payload.page_limit)
+    record.font_scale = font_scale_spec(payload.font_scale)["name"]
+    db.commit()
+    db.refresh(record)
+    return _to_resume_out(record)
+
+
 @router.post("/render")
 def render_resume(payload: ResumeRenderRequest):
     """渲染为 HTML（生成完成后、未落库前的即时预览也走这里）。"""
-    return Response(render_html(payload.content), media_type="text/html; charset=utf-8")
+    return Response(
+        render_html(
+            payload.content,
+            template=payload.template,
+            page_limit=payload.page_limit,
+            font_scale=payload.font_scale,
+        ),
+        media_type="text/html; charset=utf-8",
+    )
 
 
 @router.get("/{resume_id}/export")
-def export_resume(resume_id: int, format: str = Query(..., pattern="^(json|md|html)$"), db: Session = Depends(get_db)):
+def export_resume(
+    resume_id: int,
+    format: str = Query(..., pattern="^(json|md|html|pdf)$"),
+    db: Session = Depends(get_db),
+):
     record = db.get(ResumeRecord, resume_id)
     if record is None:
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     resume = ResumeContent.model_validate(record.content)
+    headers: dict[str, str] = {}
     if format == "json":
-        content, media_type = export_json(resume), "application/json; charset=utf-8"
+        content, media_type = export_json(resume), _EXPORT_FORMATS["json"]
     elif format == "md":
-        content, media_type = export_markdown(resume), "text/markdown; charset=utf-8"
+        content, media_type = export_markdown(resume), _EXPORT_FORMATS["md"]
+    elif format == "html":
+        content, media_type = (
+            render_html(
+                resume,
+                template=record.template,
+                page_limit=record.page_limit,
+                font_scale=record.font_scale,
+            ),
+            _EXPORT_FORMATS["html"],
+        )
     else:
-        content, media_type = render_html(resume), "text/html; charset=utf-8"
+        try:
+            pdf = build_resume_pdf(
+                resume,
+                template=record.template,
+                page_limit=record.page_limit,
+                font_scale=record.font_scale,
+            )
+        except ResumePDFError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        content, media_type = pdf.content, _EXPORT_FORMATS["pdf"]
+        # 服务端 PDF 用的是自己那套排版，页数未必等于用户选的上限（内容多时会多出一页）。
+        # 把实际页数带回去，让界面能提示，而不是让用户下载完才发现。
+        headers[PDF_PAGES_HEADER] = str(pdf.pages)
+        headers[PDF_PAGE_LIMIT_HEADER] = str(record.page_limit)
     filename = build_filename(resume, format)
-    return Response(
-        content,
-        media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}"},
-    )
+    headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename, safe='')}"
+    return Response(content, media_type=media_type, headers=headers)

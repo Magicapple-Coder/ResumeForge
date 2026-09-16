@@ -234,7 +234,8 @@ class ProfileTextParseRequest(BaseModel):
 
 class ProfileTextParseResult(ProfileUpdate):
     warnings: list[str] = Field(default_factory=list)
-    recognition_source: Literal["ai", "local"] = "local"
+    # 识别引擎（AI 还是本地规则）；与岗位草稿的同名字段保持一致的语义。
+    parse_engine: Literal["ai", "local"] = "local"
     # 图片识别时模型逐字抄录的原文，供用户对照截图核对；纯文本识别为空。
     recognized_text: str = Field(default="", max_length=MAX_RECOGNIZED_TEXT_CHARS)
 

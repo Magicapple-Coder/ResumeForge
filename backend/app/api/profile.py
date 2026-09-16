@@ -5,7 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..schemas.photo import ProfilePhotoCreate, ProfilePhotoOut, ProfilePhotoUpdate
 from ..schemas.profile import ProfileOut, ProfileTextParseRequest, ProfileTextParseResult, ProfileUpdate
+from ..services.profile_photos import (
+    add_photo,
+    delete_photo,
+    list_photos,
+    rename_photo,
+    set_primary_photo,
+)
 from ..services.profile_text_parser import parse_profile_text
 from ..services.profile_service import get_profile_detail, to_profile_out, update_profile
 from ..services.llm import create_provider
@@ -39,6 +47,47 @@ def get_profile(db: Session = Depends(get_db)):
 @router.put("", response_model=ProfileOut)
 def save_profile(payload: ProfileUpdate, db: Session = Depends(get_db)):
     return to_profile_out(update_profile(db, payload))
+
+
+@router.get("/photos", response_model=list[ProfilePhotoOut])
+def read_photos(db: Session = Depends(get_db)):
+    """列出已保存的个人照片；当前使用的那张带 ``is_primary``。"""
+    return list_photos(db)
+
+
+@router.post("/photos", response_model=ProfilePhotoOut, status_code=201)
+def create_photo(payload: ProfilePhotoCreate, db: Session = Depends(get_db)):
+    try:
+        return add_photo(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/photos/{photo_id}", response_model=ProfilePhotoOut)
+def update_photo(photo_id: int, payload: ProfilePhotoUpdate, db: Session = Depends(get_db)):
+    """重命名照片，或把它设为当前使用的照片。
+
+    没有"取消主照片"的语义：照片面板总要有且只有一张在用的照片，切换只能靠
+    ``is_primary=true`` 指到另一张。
+    """
+    if payload.name is None and payload.is_primary is not True:
+        raise HTTPException(status_code=422, detail="请提供要修改的照片字段")
+    photo = None
+    if payload.name is not None:
+        photo = rename_photo(db, photo_id, payload.name)
+        if photo is None:
+            raise HTTPException(status_code=404, detail="照片不存在或已被删除")
+    if payload.is_primary:
+        photo = set_primary_photo(db, photo_id)
+        if photo is None:
+            raise HTTPException(status_code=404, detail="照片不存在或已被删除")
+    return photo
+
+
+@router.delete("/photos/{photo_id}", status_code=204)
+def remove_photo(photo_id: int, db: Session = Depends(get_db)):
+    if not delete_photo(db, photo_id):
+        raise HTTPException(status_code=404, detail="照片不存在或已被删除")
 
 
 @router.post("/parse-text", response_model=ProfileTextParseResult)

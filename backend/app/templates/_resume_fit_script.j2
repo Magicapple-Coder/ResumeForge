@@ -1,0 +1,31 @@
+{# 版式自适应脚本：把内容缩进所选页数，并把缩放比例与溢出状态写到 body.dataset，
+   供前端预览读取后提示"增加页数 / 缩小字号"。 #}
+<script nonce="{{ csp_nonce }}">
+  (() => {
+    const pageCount = {{ page_limit }};
+    const referenceWidth = 793.7;              // 210mm ≈ 793.7px
+    const referenceHeight = 1122.5 * pageCount; // 297mm * 页数
+    const fit = () => {
+      const page = document.body;
+      if (!page) return;
+      page.style.transform = "none";
+      page.style.transformOrigin = "top left";
+      page.style.width = "210mm";
+      page.style.height = `${297 * pageCount}mm`;
+      const naturalWidth = Math.max(page.scrollWidth, referenceWidth);
+      const naturalHeight = Math.max(page.scrollHeight, referenceHeight);
+      const scale = Math.min(1, referenceWidth / naturalWidth, referenceHeight / naturalHeight);
+      page.dataset.pages = String(pageCount);
+      page.dataset.scale = scale.toFixed(3);
+      // 内容比所选页数更多：已经整体缩小，但字会偏小，前端应提示换选项。
+      page.dataset.overflow = page.scrollHeight > referenceHeight + 1 ? "1" : "0";
+      if (scale < 1) {
+        page.style.width = `${210 / scale}mm`;
+        page.style.height = `${(297 * pageCount) / scale}mm`;
+        page.style.transform = `scale(${scale})`;
+      }
+    };
+    window.addEventListener("load", fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  })();
+</script>

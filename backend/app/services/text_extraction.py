@@ -83,7 +83,7 @@ def build_job_extraction_messages(
 ) -> list[dict[str, Any]]:
     """构造岗位抽取 Prompt，供测试和诊断使用。"""
     draft = local_draft.model_dump(
-        exclude={"warnings", "recognition_source", "recognized_text"}
+        exclude={"warnings", "parse_engine", "recognized_text"}
     )
     return _messages(
         "job_text_extract.md", source_text, draft, MAX_JOB_EXTRACTION_INPUT_CHARS, image_data_urls
@@ -97,7 +97,7 @@ def build_profile_extraction_messages(
     draft = local_draft.model_dump(
         exclude={
             "warnings",
-            "recognition_source",
+            "parse_engine",
             "recognized_text",
             "photo",
             "section_order",
@@ -182,7 +182,7 @@ def llm_is_configured(config: LLMConfig) -> bool:
 
 def mark_local_fallback(result: Any, reason: str) -> Any:
     warnings = list(dict.fromkeys([*getattr(result, "warnings", []), reason]))
-    return result.model_copy(update={"warnings": warnings, "recognition_source": "local"})
+    return result.model_copy(update={"warnings": warnings, "parse_engine": "local"})
 
 
 # 下面的文案按"用户给了什么"分流：图片识别本地规则完全帮不上忙，文档则相反——文字

@@ -8,6 +8,7 @@ import AssistantSkillsHint from "../features/assistant/components/AssistantSkill
 import ConversationSidebar from "../features/assistant/components/ConversationSidebar";
 import type { StarterPrompt } from "../features/assistant/assistantTypes";
 import { positiveId } from "../features/assistant/assistantUtils";
+import { markAssistantWelcomeShown } from "../features/assistant/welcomeGate";
 import { useAssistantAttachments } from "../features/assistant/hooks/useAssistantAttachments";
 import { useAssistantConversations } from "../features/assistant/hooks/useAssistantConversations";
 import { useAssistantSkills } from "../features/assistant/hooks/useAssistantSkills";
@@ -48,6 +49,8 @@ export default function AssistantPage() {
   const [groupValue, setGroupValue] = useState("");
   const mountedRef = useRef(true);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  /** 深链已经定位过的会话 id：只认一次，之后列表怎么刷新都不再抢焦点。 */
+  const deepLinkAppliedRef = useRef<number | null>(null);
   const requestedConversationId = positiveId(searchParams.get("conversation"));
   const conversationsState = useAssistantConversations({ message });
   const {
@@ -57,6 +60,7 @@ export default function AssistantPage() {
     detailLoading,
     conversations,
     conversationsLoading,
+    conversationsError,
     contextOptions,
     reloadConversations,
     loadDetail,
@@ -125,17 +129,40 @@ export default function AssistantPage() {
   }, [reasoningEffort]);
 
   // 深链：从「复制分享链接」打开时直接定位到那一段对话。
+  //
+  // **只认一次**：会话列表每次刷新都是一个新数组，而这个 effect 依赖它。不加这道判断的话，
+  // 用户点开深链后再切到别的会话，只要发生任何刷新（发消息、重命名、归档、删除……）就会被
+  // 拽回深链那一条，正在流式的回复也跟着消失。换一个 conversation 参数时仍然会重新定位。
   useEffect(() => {
     if (requestedConversationId === undefined || conversationsLoading) return;
+    if (deepLinkAppliedRef.current === requestedConversationId) return;
     const exists = (conversations ?? []).some((item) => item.id === requestedConversationId);
-    if (exists) selectConversation(requestedConversationId);
+    deepLinkAppliedRef.current = requestedConversationId;
+    if (!exists) return;
+    selectConversation(requestedConversationId);
   }, [conversations, conversationsLoading, requestedConversationId, selectConversation]);
 
   // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
   useEffect(() => {
-    if (conversationsLoading || requestedConversationId !== undefined) return;
-    if ((conversations?.length ?? 0) === 0) void ensureWelcomeConversation();
-  }, [conversations, conversationsLoading, ensureWelcomeConversation, requestedConversationId]);
+    if (conversationsLoading || conversationsError || requestedConversationId !== undefined) {
+      return;
+    }
+    // 列表还没回来时 `conversations` 是 undefined，"空"和"没加载"必须分开——
+    // 请求失败也走这条分支的话，会因为一次网络抖动就多建一条引导对话。
+    if (conversations === undefined) return;
+    if (conversations.length > 0) {
+      // 已经有会话，说明引导这一步早就过去了；记下来，免得用户以后删光会话时又冒出来。
+      markAssistantWelcomeShown();
+      return;
+    }
+    void ensureWelcomeConversation();
+  }, [
+    conversations,
+    conversationsError,
+    conversationsLoading,
+    ensureWelcomeConversation,
+    requestedConversationId,
+  ]);
 
   const historyMessages = detail?.messages ?? [];
   const isActiveStream = activeId !== null && activeId === sendingConversationId;

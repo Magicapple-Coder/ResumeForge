@@ -2,7 +2,17 @@
 
 from .assistant import AssistantSkill, AssistantSkillFile, ChatConversation, ChatMessage
 from .job import Job
-from .profile import Award, CampusExperience, Education, Experience, Project, Skill, UserProfile
+from .material import MATERIAL_CATEGORIES, CandidateJob, Material
+from .profile import (
+    Award,
+    CampusExperience,
+    Education,
+    Experience,
+    ProfilePhoto,
+    Project,
+    Skill,
+    UserProfile,
+)
 from .resume import ResumeRecord
 from .setting import AppSetting, LLMConfigRecord
 
@@ -13,6 +23,7 @@ __all__ = [
     "AssistantSkill",
     "AssistantSkillFile",
     "UserProfile",
+    "ProfilePhoto",
     "Education",
     "Experience",
     "CampusExperience",
@@ -22,4 +33,7 @@ __all__ = [
     "ResumeRecord",
     "AppSetting",
     "LLMConfigRecord",
+    "Material",
+    "MATERIAL_CATEGORIES",
+    "CandidateJob",
 ]

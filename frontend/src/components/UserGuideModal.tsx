@@ -72,12 +72,16 @@ export default function UserGuideModal({ open, onClose, onNavigate }: UserGuideM
         </div>
       }
     >
+      {/* labelPlacement="vertical"：标题放到图标下面，每项独占一列的整宽。
+          这不只是换个样式——antd 只在**非**垂直标签时才给步骤项写 `white-space: nowrap`，
+          横排时中文标题因此永远不换行，窄一点就整块被裁掉（"完善资料…"）。用这个官方属性
+          把 nowrap 从源头上拿掉，比在自己的 CSS 里跟它抢优先级可靠。 */}
       <Steps
         className="user-guide-steps"
         current={current}
         items={GUIDE_STEPS.map(({ title }) => ({ title }))}
         onChange={setCurrent}
-        responsive
+        labelPlacement="vertical"
       />
       <Divider />
       <section className="user-guide-step-content" aria-live="polite">

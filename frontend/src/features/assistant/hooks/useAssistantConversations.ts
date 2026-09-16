@@ -14,6 +14,7 @@ import {
 import { listJobs } from "../../../api/jobs";
 import { listResumes } from "../../../api/resumes";
 import { useApi } from "../../../hooks/useApi";
+import { hasShownAssistantWelcome, markAssistantWelcomeShown } from "../welcomeGate";
 import type { AssistantConversationDetail, AssistantConversationBrief } from "../../../types";
 
 interface Options {
@@ -106,16 +107,19 @@ export function useAssistantConversations({ message }: Options) {
   }, [message, reloadConversations, selectConversation]);
 
   /**
-   * 内置引导对话：首次进入助手页且一条会话都没有时，自动建一条带欢迎消息的会话。
+   * 内置引导对话：**第一次**用助手且一条会话都没有时，自动建一条带欢迎消息的会话。
    *
-   * 只尝试一次（`welcomeRequestedRef`）：创建失败时不循环重试，否则一个持续报错的
-   * 后端会让页面不停发请求。
+   * 两道闸：`welcomeRequestedRef` 挡住同一次挂载里的重复调用（创建失败也不循环重试，
+   * 否则一个持续报错的后端会让页面不停发请求），`hasShownAssistantWelcome()` 挡住
+   * 跨挂载的重复——不然用户删光会话后每次回到这一页都会被再塞一条。
    */
   const ensureWelcomeConversation = useCallback(async () => {
     if (welcomeRequestedRef.current) return;
     welcomeRequestedRef.current = true;
+    if (hasShownAssistantWelcome()) return;
     try {
       const created = await createAssistantConversation("", { welcome: true });
+      markAssistantWelcomeShown();
       selectConversation(created.id);
       await loadDetail(created.id);
       await reloadConversations();
@@ -213,6 +217,7 @@ export function useAssistantConversations({ message }: Options) {
     detailLoading,
     conversations,
     conversationsLoading,
+    conversationsError,
     contextOptions,
     reloadConversations,
     loadDetail,

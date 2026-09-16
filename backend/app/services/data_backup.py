@@ -229,8 +229,17 @@ def _read_manifest(archive: zipfile.ZipFile) -> dict[str, Any]:
         manifest = json.loads(archive.read(MANIFEST_MEMBER))
     except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise BackupError("备份包的元信息已损坏，无法读取") from exc
-    if not isinstance(manifest, dict) or manifest.get("format") != BACKUP_FORMAT_VERSION:
+    if not isinstance(manifest, dict):
+        raise BackupError("备份包的元信息已损坏，无法读取")
+    format_version = manifest.get("format")
+    # 只拒收"比当前代码更新"的格式。这里曾是 `!=`，等于把每一次导出格式升级都变成
+    # 用户历史备份的全部失效——用户升级一次应用后就再也导不回旧包了。
+    if not isinstance(format_version, int) or isinstance(format_version, bool) or format_version < 1:
         raise BackupError("备份包格式不受支持，可能来自其它版本的 ResumeForge")
+    if format_version > BACKUP_FORMAT_VERSION:
+        raise BackupError(
+            "备份来自更新版本的 ResumeForge，当前版本无法恢复；请先升级应用再导入"
+        )
     # fail-closed：只有清单明确声明不含密钥才继续，避免将来格式变更后静默放行。
     if manifest.get("api_key_included") is not False:
         raise BackupError("备份包可能包含明文 API Key，为安全起见已拒绝恢复")
@@ -307,9 +316,13 @@ def _database_info(database: Path, bind: Engine) -> dict[str, Any]:
             raise BackupError(
                 f"备份包中的数据库缺少数据表（{missing[0]} 等），可能不是 ResumeForge 的备份"
             )
-        unexpected = sorted(tables - set(_APPLICATION_TABLES) - {"alembic_version"})
+        # sqlite_sequence 由 SQLite 的 AUTOINCREMENT 隐式维护，不是业务表。
+        unexpected = sorted(tables - set(_APPLICATION_TABLES) - {"alembic_version", "sqlite_sequence"})
         if unexpected:
-            raise BackupError(f"备份包中含有未识别的数据表（{unexpected[0]}），已拒绝恢复")
+            raise BackupError(
+                f"备份包中含有当前版本不认识的数据表（{unexpected[0]}），"
+                "可能来自更新版本的 ResumeForge；请先升级应用再导入"
+            )
 
         revision = None
         if "alembic_version" in tables:

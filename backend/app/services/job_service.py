@@ -23,8 +23,29 @@ def _keywords_for(job: Job) -> list[dict]:
     ]
 
 
+MAX_JOB_NOTE_CHARS = 2000
+
+
+def note_with_source(note: str, recognition_source: str) -> str:
+    """在备注末尾补一行来源标注，方便用户回溯这条招聘信息是怎么来的。
+
+    已经标过就不再重复追加：用户来回编辑同一条岗位时不该积累出一串"来源："。
+    """
+    source = (recognition_source or "").strip()
+    note = (note or "").strip()
+    if not source:
+        return note[:MAX_JOB_NOTE_CHARS]
+    marker = f"来源：{source}"
+    if marker in note:
+        return note[:MAX_JOB_NOTE_CHARS]
+    merged = f"{note}\n{marker}" if note else marker
+    return merged[:MAX_JOB_NOTE_CHARS]
+
+
 def create_job_record(db: Session, payload: JobCreate) -> Job:
-    job = Job(**payload.model_dump())
+    data = payload.model_dump()
+    data["note"] = note_with_source(data.get("note", ""), data.get("recognition_source", ""))
+    job = Job(**data)
     job.keywords = _keywords_for(job)
     db.add(job)
     db.commit()
@@ -34,6 +55,12 @@ def create_job_record(db: Session, payload: JobCreate) -> Job:
 
 def update_job_record(db: Session, job: Job, payload: JobUpdate) -> Job:
     data = payload.model_dump(exclude_unset=True)
+    if "recognition_source" in data or ("note" in data and job.recognition_source):
+        # 修改备注时保持来源标注仍在（用户在表单里改掉整段备注也不丢溯源信息）。
+        data["note"] = note_with_source(
+            data.get("note", job.note),
+            data.get("recognition_source", job.recognition_source),
+        )
     for field, value in data.items():
         setattr(job, field, value)
     # 只有 JD 内容变了才值得重算标签。

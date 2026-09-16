@@ -91,7 +91,8 @@ export interface ResumeFontScaleOption {
 export interface ResumeTemplateCatalog {
   templates: ResumeTemplateOption[];
   font_scales: ResumeFontScaleOption[];
-  defaults: { template: string; font_scale: ResumeFontScale };
+  /** 三个版式参数的默认值由后端下发，前端不写死——改默认值只改一处。 */
+  defaults: { template: string; font_scale: ResumeFontScale; page_limit: number };
   /** 系统里是否找到中文字体：决定「直接下载 PDF」是否可用。 */
   pdf_direct_available: boolean;
 }

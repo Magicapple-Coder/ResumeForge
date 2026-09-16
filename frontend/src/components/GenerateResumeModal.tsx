@@ -116,10 +116,13 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     void fetchResumeTemplates()
       .then((catalog) => {
         setPdfDirectAvailable(catalog.pdf_direct_available);
+        // 三个参数都要重置。此前漏了 page_limit（只覆盖 template / font_scale），
+        // 于是上一次选过 3 页的话，下次打开默认就是 3 页，与"默认一页 A4"相矛盾。
         setLayout((current) => ({
           ...current,
           template: catalog.defaults.template,
           font_scale: catalog.defaults.font_scale,
+          page_limit: catalog.defaults.page_limit,
         }));
       })
       .catch(() => {

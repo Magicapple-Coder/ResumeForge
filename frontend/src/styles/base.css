@@ -159,8 +159,9 @@ body {
   margin-inline: 4px;
 }
 
-/* 步骤条标题在 720px 弹窗里会被挤成"完善资料…"，看起来像内容被截断。
-   这里让标题允许换行、每一项各自收缩，并给相邻标题留出间距。 */
+/* 步骤条：标题竖排在图标下方（见 UserGuideModal 的 labelPlacement），
+   每项平分宽度、间距留给相邻标题。标题的换行行为由 antd 的 vertical 布局保证，
+   这里只补间距与字号。 */
 .user-guide-steps .ant-steps-item {
   flex: 1 1 auto;
   min-width: 0;
@@ -175,7 +176,6 @@ body {
   font-size: 14px;
   line-height: 1.5;
   white-space: normal;
-  word-break: keep-all;
 }
 
 .user-guide-step-content {

@@ -35,6 +35,11 @@ class Job(Base):
     posted_at: Mapped[str] = mapped_column(String(32), default="")  # 发布时间的原始文本
     status: Mapped[str] = mapped_column(String(16), default=JOB_STATUS_OPEN, index=True)
     note: Mapped[str] = mapped_column(Text, default="")
+    # 备注里的图片（受限的 base64 data URL 列表）：招聘截图、内推码截图等。
+    note_images: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 招聘信息的录入方式，用于方便用户溯源：手动填写 / 粘贴文本识别 / 图片识别 /
+    # 文档识别 / 备选岗位导入。旧数据为空字符串，界面按"未记录"处理。
+    recognition_source: Mapped[str] = mapped_column(String(32), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

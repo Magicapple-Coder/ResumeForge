@@ -1,8 +1,11 @@
-"""助手技能接口：列出、导入、启用/停用与删除。
+"""助手技能接口：列出、查看详情、导入、创建、更新、启用/停用与删除。
 
 导入走**裸二进制请求体**而不是 multipart（项目未装 `python-multipart`，且全仓上传
 一律是「前端自行提交 + `Upload.LIST_IGNORE`」）。`Content-Type` 同时接受 zip 与 markdown，
 两者不在 CORS 简单请求允许的类型里，跨站页面必须先发预检，预检只放行本机前端。
+
+工作台的手工创建/编辑走普通 JSON：结构化的提示词与知识文件用 JSON 表达更自然，
+也不必再绕一层文件上传。
 """
 import logging
 from urllib.parse import unquote
@@ -12,11 +15,20 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas.skill import AssistantSkillOut, AssistantSkillUpdate
+from ..models.assistant import AssistantSkill
+from ..schemas.skill import (
+    MAX_SKILL_DETAIL_FILE_CHARS,
+    AssistantSkillCreate,
+    AssistantSkillDetail,
+    AssistantSkillOut,
+    AssistantSkillUpdate,
+)
 from ..services.assistant_skills import (
+    create_skill as create_skill_record,
     delete_skill,
     list_skills,
     set_skill_enabled,
+    update_skill as update_skill_record,
     upsert_skill,
 )
 from ..services.data_backup import restore_directory
@@ -64,6 +76,35 @@ def _to_out(skill) -> AssistantSkillOut:
     )
 
 
+def _to_detail(skill: AssistantSkill) -> AssistantSkillDetail:
+    """详情视图：带上知识文件正文，但按总量上限截断并标记 ``files_truncated``。"""
+    budget = MAX_SKILL_DETAIL_FILE_CHARS
+    truncated = False
+    file_details = []
+    for item in skill.files:
+        content = item.content or ""
+        if len(content) > budget:
+            content = content[: max(budget, 0)]
+            truncated = True
+        budget -= len(content)
+        file_details.append(
+            {"path": item.path, "size_bytes": item.size_bytes, "content": content}
+        )
+    return AssistantSkillDetail(
+        **_to_out(skill).model_dump(),
+        prompt=skill.prompt,
+        file_details=file_details,
+        files_truncated=truncated,
+    )
+
+
+def _skill_or_404(db: Session, skill_id: int) -> AssistantSkill:
+    skill = db.get(AssistantSkill, skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail="技能不存在或已被删除")
+    return skill
+
+
 @router.get("", response_model=list[AssistantSkillOut])
 def read_skills(db: Session = Depends(get_db)):
     return [_to_out(skill) for skill in list_skills(db)]
@@ -102,8 +143,64 @@ async def import_skill(request: Request, db: Session = Depends(get_db)):
     return _to_out(skill)
 
 
-@router.patch("/{skill_id}", response_model=AssistantSkillOut)
+@router.post("", response_model=AssistantSkillDetail, status_code=201)
+def create_skill(payload: AssistantSkillCreate, db: Session = Depends(get_db)):
+    """在工作台手动创建技能。"""
+    try:
+        payload.require_prompt()
+        skill = create_skill_record(
+            db,
+            name=payload.name,
+            description=payload.description,
+            prompt=payload.prompt,
+            enabled=payload.enabled,
+            files=[(item.path, item.content) for item in payload.files],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _to_detail(skill)
+
+
+@router.get("/{skill_id}", response_model=AssistantSkillDetail)
+def read_skill(skill_id: int, db: Session = Depends(get_db)):
+    """查看技能详情：提示词正文与知识文件清单。"""
+    return _to_detail(_skill_or_404(db, skill_id))
+
+
+@router.put("/{skill_id}", response_model=AssistantSkillDetail)
 def update_skill(skill_id: int, payload: AssistantSkillUpdate, db: Session = Depends(get_db)):
+    """更新技能（只提交要改的字段）；``files`` 提交时整体替换知识文件。"""
+    if all(
+        value is None
+        for value in (payload.name, payload.description, payload.prompt, payload.enabled, payload.files)
+    ):
+        raise HTTPException(status_code=422, detail="至少提供一个要修改的技能字段")
+    try:
+        skill = update_skill_record(
+            db,
+            skill_id,
+            name=payload.name,
+            description=payload.description,
+            prompt=payload.prompt,
+            enabled=payload.enabled,
+            files=(
+                [(item.path, item.content) for item in payload.files]
+                if payload.files is not None
+                else None
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if skill is None:
+        raise HTTPException(status_code=404, detail="技能不存在或已被删除")
+    return _to_detail(skill)
+
+
+@router.patch("/{skill_id}", response_model=AssistantSkillOut)
+def toggle_skill(skill_id: int, payload: AssistantSkillUpdate, db: Session = Depends(get_db)):
+    """快速开关技能（助手页与设置页的 Switch 走这里）。"""
+    if payload.enabled is None:
+        raise HTTPException(status_code=422, detail="请提供要切换的启用状态")
     skill = set_skill_enabled(db, skill_id, payload.enabled)
     if skill is None:
         raise HTTPException(status_code=404, detail="技能不存在或已被删除")

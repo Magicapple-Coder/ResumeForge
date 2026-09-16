@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 function renderModal(props: Partial<React.ComponentProps<typeof GenerateResumeModal>> = {}) {
-  render(
+  return render(
     <MemoryRouter>
       <AntdApp>
         <GenerateResumeModal job={null} open onClose={vi.fn()} {...props} />
@@ -89,5 +89,47 @@ describe("GenerateResumeModal 通用简历", () => {
     await waitFor(() => expect(apiMocks.generateResume).toHaveBeenCalledOnce());
     // 留空交给后端按「姓名-通用简历-时间」命名
     expect(apiMocks.generateResume.mock.calls[0][0].title).toBe("");
+  });
+});
+
+/** 当前被选中的分段控件标签（antd 把选中态放在 .ant-segmented-item-selected 上）。 */
+function selectedSegments(): string[] {
+  return Array.from(
+    document.querySelectorAll(".ant-segmented-item-selected .ant-segmented-item-label"),
+  ).map((node) => node.textContent ?? "");
+}
+
+describe("GenerateResumeModal 版式默认值", () => {
+  it("resets the page limit on every open, not just the first", async () => {
+    // 必须复用**同一个实例**：弹窗是常驻组件、靠 open 开关，父组件不会把它卸载重建。
+    // 换成卸载后重新 render，新实例的 useState 初值本来就是 1，测出来的永远是绿的。
+    const view = renderModal({ open: true });
+    await waitFor(() => expect(apiMocks.fetchResumeTemplates).toHaveBeenCalled());
+
+    // 版式控件在拿到模型配置之前是禁用的，先等它可用再点。
+    await waitFor(() => expect(screen.getByRole("radio", { name: "3 页" })).toBeEnabled());
+    // 点可见的标签而不是那个隐藏的 input：antd 把点击处理挂在标签上，
+    // 直接点 input 不会触发 onChange（值不变，断言就会看到"未选中"）。
+    fireEvent.click(screen.getByText("3 页"));
+    expect(selectedSegments()).toContain("3 页");
+
+    view.rerender(
+      <MemoryRouter>
+        <AntdApp>
+          <GenerateResumeModal job={null} open={false} onClose={vi.fn()} />
+        </AntdApp>
+      </MemoryRouter>,
+    );
+    view.rerender(
+      <MemoryRouter>
+        <AntdApp>
+          <GenerateResumeModal job={null} open onClose={vi.fn()} />
+        </AntdApp>
+      </MemoryRouter>,
+    );
+
+    // 此前只重置了模板和字号，页数会沿用上一次的选择，与"默认一页 A4"相矛盾。
+    await waitFor(() => expect(selectedSegments()).toContain("1 页"));
+    expect(selectedSegments()).not.toContain("3 页");
   });
 });

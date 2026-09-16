@@ -1,8 +1,8 @@
 """简历导出：JSON / Markdown / HTML。
 
-PDF 的实现方式：由前端打开导出 HTML 并调用浏览器打印（另存为 PDF）。
-选择该方案的原因：服务端 PDF 库（weasyprint 等）在中文环境下依赖
-系统字体，跨平台部署极易踩坑；浏览器打印零依赖且中文排版最稳定。
+PDF 有两条路：浏览器打印（前端打开导出 HTML 后调用 print，零字体依赖、版式与预览
+完全一致），以及服务端直接生成（``pdf_exporter``，可以直接下载，但需要系统中文字体）。
+HTML 渲染在这里，同时负责把模板、页数与字号档位写进版式。
 """
 import json
 import re
@@ -12,7 +12,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..schemas.resume import ResumeContent
+from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
+from .resume_templates import DEFAULT_FONT_SCALE, DEFAULT_TEMPLATE, font_scale_spec, template_spec
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -121,7 +122,29 @@ def export_markdown(resume: ResumeContent) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-def render_html(resume: ResumeContent) -> str:
+def normalize_page_limit(value: int) -> int:
+    return max(1, min(int(value or 1), MAX_RESUME_PAGES))
+
+
+def render_html(
+    resume: ResumeContent,
+    *,
+    template: str = DEFAULT_TEMPLATE,
+    page_limit: int = 1,
+    font_scale: str = DEFAULT_FONT_SCALE,
+) -> str:
+    """渲染简历 HTML。
+
+    ``page_limit`` 决定 body 高度（N × A4），超过时由模板内脚本整体缩小；
+    ``font_scale`` 只改变一个基准像素变量，所有尺寸都由它推算。
+    """
     # A per-document nonce authorizes only the fixed A4 fitting script.
     csp_nonce = secrets.token_hex(16)
-    return _env.get_template("resume.html.j2").render(resume=resume, csp_nonce=csp_nonce)
+    spec = template_spec(template)
+    scale = font_scale_spec(font_scale)
+    return _env.get_template(spec["file"]).render(
+        resume=resume,
+        csp_nonce=csp_nonce,
+        page_limit=normalize_page_limit(page_limit),
+        base_px=scale["base_px"],
+    )

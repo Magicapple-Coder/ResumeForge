@@ -10,14 +10,17 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401 - 确保全部模型注册到 Base.metadata
 from .api import (
     assistant,
+    candidate_jobs,
     datasets,
     jobs,
+    materials,
     profile,
     resumes,
     search,
     settings as settings_api,
     skills,
     stats,
+    update as update_api,
 )
 from . import database
 from .config import get_settings
@@ -90,16 +93,26 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origin_list,
         allow_methods=["*"],
         allow_headers=["*"],
+        # 默认只有简单响应头能被前端读到：导出 PDF 的页数/上限、以及附件文件名都靠
+        # 自定义头回传，不在这里放行的话跨源部署下前端永远读到 null。
+        expose_headers=[
+            resumes.PDF_PAGES_HEADER,
+            resumes.PDF_PAGE_LIMIT_HEADER,
+            "Content-Disposition",
+        ],
     )
     for router in (
         jobs.router,
         resumes.router,
         profile.router,
+        materials.router,
+        candidate_jobs.router,
         settings_api.router,
         datasets.router,
         skills.router,
         search.router,
         stats.router,
+        update_api.router,
         assistant.router,
     ):
         app.include_router(router)

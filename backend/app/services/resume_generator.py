@@ -49,6 +49,7 @@ from .resume_quality import (
     _quality_reference_points,
     _quality_shortfalls,
 )
+from .resume_templates import font_scale_spec
 from .resume_wording import cliche_shortfalls, find_cliches
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -82,6 +83,33 @@ _ENHANCEMENT_DISABLED_GUIDE = (
     "美化拓展已关闭：只能选择、排序并精确回填候选资料中的原文要点；"
     "不得合并、改写或扩充 description、highlights 和 summary。"
 )
+
+# 单页 A4 在不同字号下的汉字预算（含标题、联系方式等全部版面文字）。
+# 数字是经验值，只用来给模型一个明确的篇幅目标，不参与任何校验。
+_PAGE_CHAR_BUDGET = {
+    "small": (850, 1100),
+    "standard": (650, 880),
+    "large": (550, 720),
+}
+
+
+def build_layout_guide(page_limit: int, font_scale: str) -> str:
+    """把「页数 + 字号」翻译成模型可执行的篇幅要求。"""
+    spec = font_scale_spec(font_scale)
+    low, high = _PAGE_CHAR_BUDGET.get(spec["name"], _PAGE_CHAR_BUDGET["standard"])
+    if page_limit <= 1:
+        return (
+            f"目标篇幅：1 页 A4、{spec['label']}。整份简历（含联系方式与全部文字）"
+            f"控制在 {low}-{high} 个汉字以内：每段经历保留 2-3 条最相关的要点，"
+            "每条要点 25-35 字，个人总结不超过 100 字。宁可少写，也不要为了完整而超出篇幅。"
+        )
+    total_low = low * page_limit
+    total_high = high * page_limit
+    return (
+        f"目标篇幅：最多 {page_limit} 页 A4、{spec['label']}。整份简历控制在 "
+        f"{total_low}-{total_high} 个汉字以内：优先写满第一页，确有必要再用第二页；"
+        "不要为了填满页数而堆砌次要内容，也不要留下大半页空白。"
+    )
 
 
 class ResumeGenerator:
@@ -176,6 +204,8 @@ class ResumeGenerator:
             focus_skills="、".join(selection.focus.skills) or "未识别到明确技能，请以 JD 原文为准",
             focus_domains="、".join(selection.focus.domains) or "通用岗位",
             omitted_count=sum(selection.omitted_counts.values()),
+            layout_guide=build_layout_guide(options.page_limit, options.font_scale),
+            custom_instruction=options.custom_instruction.strip(),
         )
         messages = [
             {"role": "system", "content": system_prompt},
