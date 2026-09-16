@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { createJob, parseJobText, updateJob } from "../api/jobs";
 import { useImageStaging } from "../hooks/useImageStaging";
 import ImageStagingField from "./ImageStagingField";
-import RecognizedTextField from "./RecognizedTextField";
-import type { Job, JobPayload } from "../types";
+import RecognitionOutcome from "./RecognitionOutcome";
+import type { Job, JobPayload, RecognitionSource } from "../types";
 
 interface Props {
   open: boolean;
@@ -40,6 +40,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
   const [submitting, setSubmitting] = useState(false);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [recognizedText, setRecognizedText] = useState("");
+  const [recognitionSource, setRecognitionSource] = useState<RecognitionSource | null>(null);
   const { images, reading, addFiles, removeImage, clear, onPaste } = useImageStaging();
   const parseRequestId = useRef(0);
   const submittingRef = useRef(false);
@@ -59,6 +60,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       setRawText("");
       setParseWarnings([]);
       setRecognizedText("");
+      setRecognitionSource(null);
       clear();
     }
   }, [open, initial, form, clear]);
@@ -95,6 +97,8 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       }
       setParseWarnings(warnings);
       setRecognizedText(recognized ?? "");
+      // 提示条几秒后就没了，但"是 AI 还是本地规则"要一直留在表单上。
+      setRecognitionSource(recognitionSource);
       message.success(
         `${recognitionSource === "ai" ? "已使用 AI" : "已使用本地规则"}识别并填入表单，请核对后再保存`,
       );
@@ -102,6 +106,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
       if (requestId !== parseRequestId.current) return;
       setParseWarnings([]);
       setRecognizedText("");
+      setRecognitionSource(null);
       message.error(err instanceof Error ? err.message : "识别招聘信息失败");
     } finally {
       if (requestId === parseRequestId.current) setParsing(false);
@@ -178,9 +183,11 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                 disabled={parsing}
                 onPaste={onPaste}
                 onChange={(event) => {
+                  // 内容改了，上一次识别的来源与抄录都不再对应当前内容。
                   setRawText(event.target.value);
                   setParseWarnings([]);
                   setRecognizedText("");
+                  setRecognitionSource(null);
                 }}
                 placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图"
                 style={{ height: 220, resize: "none" }}
@@ -210,7 +217,7 @@ export default function JobFormModal({ open, initial, onClose, onSaved }: Props)
                 识别并填充
               </Button>
             </div>
-            <RecognizedTextField text={recognizedText} />
+            <RecognitionOutcome source={recognitionSource} text={recognizedText} />
             {parseWarnings.length > 0 && (
               <Alert
                 type="warning"

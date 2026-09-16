@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { getProfile, parseProfileText, saveProfile } from "../../api/profile";
 import { normalizeSectionOrder } from "../../components/profile/ProfileSectionConfig";
 import { useImageStaging } from "../../hooks/useImageStaging";
-import type { Profile } from "../../types";
+import type { Profile, RecognitionSource } from "../../types";
 import { mergeParsedProfileValues } from "../../utils/profileText";
 import { useProfileSectionReorder } from "./useProfileSectionReorder";
 
@@ -60,6 +60,7 @@ export function useProfilePage() {
   const [profileTextWarnings, setProfileTextWarnings] = useState<string[]>([]);
   const [profileTextParsing, setProfileTextParsing] = useState(false);
   const [profileTextRecognized, setProfileTextRecognized] = useState("");
+  const [profileTextSource, setProfileTextSource] = useState<RecognitionSource | null>(null);
   const {
     images,
     reading: imagesReading,
@@ -206,6 +207,8 @@ export function useProfilePage() {
       form.setFieldsValue({ ...merged, section_order: sectionOrder });
       setProfileTextWarnings(warnings);
       setProfileTextRecognized(parsed.recognized_text ?? "");
+      // 提示条会消失，但"是 AI 还是本地规则"要一直留在弹窗里。
+      setProfileTextSource(recognitionSource);
       message.success(
         `${recognitionSource === "ai" ? "已使用 AI" : "已使用本地规则"}识别并填入资料，请核对后保存`,
       );
@@ -213,6 +216,7 @@ export function useProfilePage() {
       if (requestId !== profileTextRequestId.current) return;
       setProfileTextWarnings([]);
       setProfileTextRecognized("");
+      setProfileTextSource(null);
       message.error(err instanceof Error ? err.message : "识别个人资料失败");
     } finally {
       if (requestId === profileTextRequestId.current) setProfileTextParsing(false);
@@ -223,14 +227,17 @@ export function useProfilePage() {
     setProfileText("");
     setProfileTextWarnings([]);
     setProfileTextRecognized("");
+    setProfileTextSource(null);
     clearImages();
     setProfileTextOpen(true);
   };
 
   const handleProfileTextChange = (value: string) => {
+    // 内容改了，上一次识别的来源与抄录都不再对应当前内容。
     setProfileText(value);
     setProfileTextWarnings([]);
     setProfileTextRecognized("");
+    setProfileTextSource(null);
   };
 
   return {
@@ -248,6 +255,7 @@ export function useProfilePage() {
     profileTextWarnings,
     profileTextParsing,
     profileTextRecognized,
+    profileTextSource,
     images,
     imagesReading,
     addImages,

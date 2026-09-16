@@ -30,6 +30,26 @@
   object-fit: contain;
 }
 
+/* 识别来源标记与"识别到的原文"合为一块：来源要一直看得见，原文默认收起。 */
+.recognition-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 8px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.recognition-outcome .recognized-text {
+  flex: 1 1 100%;
+  margin-bottom: 0;
+}
+
+.recognition-source-tag {
+  flex: none;
+  margin-inline-end: 0;
+}
+
 .recognized-text {
   margin-bottom: 8px;
 }

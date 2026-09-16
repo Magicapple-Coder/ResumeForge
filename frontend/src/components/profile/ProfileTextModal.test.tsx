@@ -20,6 +20,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof ProfileTextM
     warnings: [] as string[],
     parsing: false,
     recognizedText: "",
+    recognitionSource: null,
     images: [] as (typeof IMAGE)[],
     imagesReading: false,
     onTextChange: vi.fn(),
@@ -89,5 +90,17 @@ describe("ProfileTextModal", () => {
     renderModal();
 
     expect(screen.queryByText("查看模型识别到的原文（请对照截图核对）")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI 识别")).not.toBeInTheDocument();
+    expect(screen.queryByText("本地规则")).not.toBeInTheDocument();
+  });
+
+  it("keeps saying whether AI or local rules produced the fields", async () => {
+    renderModal({ recognitionSource: "local", recognizedText: "" });
+
+    // 本地规则的结果只有来源标记、没有抄录原文，这时标记更不能省。
+    const badge = screen.getByText("本地规则");
+    fireEvent.mouseEnter(badge);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("请重点核对");
   });
 });

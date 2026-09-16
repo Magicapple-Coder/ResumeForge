@@ -4,7 +4,8 @@ import { FileSearchOutlined } from "@ant-design/icons";
 import { Alert, Button, Input, Modal, Typography } from "antd";
 import type { StagedImage } from "../../hooks/useImageStaging";
 import ImageStagingField from "../ImageStagingField";
-import RecognizedTextField from "../RecognizedTextField";
+import RecognitionOutcome from "../RecognitionOutcome";
+import type { RecognitionSource } from "../../types";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,8 @@ interface Props {
   warnings: string[];
   parsing: boolean;
   recognizedText: string;
+  /** 这次识别是 AI 还是本地规则；还没识别过时为 null。 */
+  recognitionSource: RecognitionSource | null;
   images: StagedImage[];
   imagesReading: boolean;
   onTextChange: (value: string) => void;
@@ -28,6 +31,7 @@ export default function ProfileTextModal({
   warnings,
   parsing,
   recognizedText,
+  recognitionSource,
   images,
   imagesReading,
   onTextChange,
@@ -86,7 +90,7 @@ export default function ProfileTextModal({
         onAddFiles={onAddImages}
         onRemove={onRemoveImage}
       />
-      <RecognizedTextField text={recognizedText} />
+      <RecognitionOutcome source={recognitionSource} text={recognizedText} />
       {warnings.length > 0 && (
         <Alert type="warning" showIcon style={{ marginTop: 12 }} message={warnings.join("；")} />
       )}

@@ -180,6 +180,55 @@ describe("JobFormModal 图片识别", () => {
     expect(JSON.stringify(apiMocks.createJob.mock.calls[0][0])).not.toContain("门店店长 示例超市");
   });
 
+  it("keeps saying where the fields came from after the toast is gone", async () => {
+    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    renderModal();
+
+    pasteScreenshot(screen.getByLabelText("完整招聘信息"));
+    await waitFor(() => expect(screen.getByAltText("shot.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    // 提示条会自己消失，而"AI 识别的还是本地规则认的"决定这些字段要核对到什么程度，
+    // 所以必须留在表单上。
+    const badge = await screen.findByText("AI 识别");
+    expect(badge).toBeInTheDocument();
+
+    fireEvent.mouseEnter(badge);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("校验过能在你给的内容里找到出处");
+  });
+
+  it("marks local-rule results as less trustworthy", async () => {
+    apiMocks.parseJobText.mockResolvedValue({
+      ...DRAFT,
+      recognition_source: "local" as const,
+      recognized_text: "",
+      warnings: [],
+    });
+    renderModal();
+
+    fireEvent.change(screen.getByLabelText("完整招聘信息"), { target: { value: "门店店长" } });
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+
+    const badge = await screen.findByText("本地规则");
+    fireEvent.mouseEnter(badge);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("准确度低于 AI 识别");
+  });
+
+  it("drops the source badge once the pasted text changes", async () => {
+    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    renderModal();
+    const textarea = screen.getByLabelText("完整招聘信息");
+    fireEvent.change(textarea, { target: { value: "门店店长" } });
+    fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
+    expect(await screen.findByText("AI 识别")).toBeInTheDocument();
+
+    // 换了内容，上一次识别的来源不再描述现在表单里的东西。
+    fireEvent.change(textarea, { target: { value: "另一家公司" } });
+
+    expect(screen.queryByText("AI 识别")).not.toBeInTheDocument();
+  });
+
   it("keeps typed values when recognition comes back empty", async () => {
     apiMocks.parseJobText.mockResolvedValue({
       ...DRAFT,

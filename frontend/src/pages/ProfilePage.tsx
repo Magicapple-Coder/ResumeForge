@@ -35,6 +35,7 @@ export default function ProfilePage() {
     profileTextWarnings,
     profileTextParsing,
     profileTextRecognized,
+    profileTextSource,
     images,
     imagesReading,
     addImages,
@@ -170,6 +171,7 @@ export default function ProfilePage() {
         warnings={profileTextWarnings}
         parsing={profileTextParsing}
         recognizedText={profileTextRecognized}
+        recognitionSource={profileTextSource}
         images={images}
         imagesReading={imagesReading}
         onTextChange={handleProfileTextChange}

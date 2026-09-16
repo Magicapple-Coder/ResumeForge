@@ -1,6 +1,6 @@
 /** 岗位、岗位解析和岗位分析类型。 */
 
-import type { SkillTag } from "./common";
+import type { RecognitionSource, SkillTag } from "./common";
 
 export interface Job {
   id: number;
@@ -41,7 +41,7 @@ export interface JobPayload {
 
 export interface ParsedJobDraft extends Required<Omit<JobPayload, "note" | "favorite">> {
   warnings: string[];
-  recognition_source: "ai" | "local";
+  recognition_source: RecognitionSource;
   /** 图片识别时模型逐字抄录的原文；纯文本识别为空。 */
   recognized_text: string;
 }

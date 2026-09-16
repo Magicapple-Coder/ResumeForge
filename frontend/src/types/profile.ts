@@ -1,5 +1,7 @@
 /** 个人资料及其粘贴识别结果。 */
 
+import type { RecognitionSource } from "./common";
+
 export interface Education {
   id?: number;
   school: string;
@@ -88,7 +90,7 @@ export interface Profile {
 
 export type ProfileTextParseResult = Omit<Profile, "id" | "updated_at"> & {
   warnings: string[];
-  recognition_source: "ai" | "local";
+  recognition_source: RecognitionSource;
   /** 图片识别时模型逐字抄录的原文；纯文本识别为空。 */
   recognized_text: string;
 };
