@@ -101,6 +101,23 @@ describe("SettingsPage parameter help", () => {
 
     expect(await screen.findByRole("tooltip")).toHaveTextContent(helpText);
   });
+
+  it("explains the unlimited-token checkbox itself, not just the number field", async () => {
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    // 这段解释原本只挂在上面那个数字输入框的 tooltip 上：勾选框自己不说，
+    // 而"不限制"的行为恰恰与直觉相反。
+    const checkbox = screen.getByRole("checkbox", { name: /不限制（由服务商决定上限）/ });
+    fireEvent.mouseEnter(checkbox);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("由服务商决定上限");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("不是真的无限");
+  });
 });
 
 describe("SettingsPage model presets", () => {
@@ -717,5 +734,14 @@ describe("SettingsPage skills", () => {
     await waitFor(() => expect(skillMocks.deleteSkill).toHaveBeenCalledWith(1));
     // 删除后就地移除，不需要再拉一次列表。
     await waitFor(() => expect(screen.queryByText("面试模拟官")).not.toBeInTheDocument());
+  });
+
+  it("warns what deleting a skill takes with it, before the click", async () => {
+    await renderPage();
+
+    // 只有图标，说明只能靠悬停给；删除范围（含知识文件）此前要点开确认框才知道。
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "删除技能 面试模拟官" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("提示词与知识文件一起删除");
   });
 });

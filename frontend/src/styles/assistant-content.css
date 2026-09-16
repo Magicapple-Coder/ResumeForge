@@ -135,6 +135,16 @@
   margin-top: 10px;
 }
 
+/* 附件名来自用户，长度没有上限；antd 的 Tag 不换行，不设限就会把气泡顶变形。
+   全名在悬停提示里，所以这里截断是安全的。 */
+.assistant-attachment-tag.ant-tag {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .assistant-sources.ant-collapse {
   display: block;
   margin-top: 10px;

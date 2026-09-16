@@ -11,6 +11,7 @@ import {
   Spin,
   Switch,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -307,8 +308,14 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
               block
               disabled={!enhance}
               value={enhancementLevel}
+              // 下面的说明只讲当前选中的那一档，得先点一下才知道别的档是什么；
+              // 每一档自己带上悬停说明，生成前可以先把三档比一遍。
               options={RESUME_ENHANCEMENT_LEVELS.map((item) => ({
-                label: item.label,
+                label: (
+                  <Tooltip title={enhancementLevelDescription(item.value, !job)}>
+                    {item.label}
+                  </Tooltip>
+                ),
                 value: item.value,
               }))}
               onChange={(value) => setEnhancementLevel(value as EnhancementLevel)}

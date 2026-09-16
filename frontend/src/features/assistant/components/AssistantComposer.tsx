@@ -95,13 +95,16 @@ export default function AssistantComposer({
                 </Button>
               </div>
             ) : (
-              <Tag
-                key={attachment.id}
-                closable={!sending}
-                onClose={() => onRemoveAttachment(attachment.id)}
-              >
-                {attachment.name}
-              </Tag>
+              // 文件名没有长度上限，标签又不换行；截断但把全名放进悬停提示。
+              <Tooltip key={attachment.id} title={attachment.name}>
+                <Tag
+                  className="assistant-attachment-tag"
+                  closable={!sending}
+                  onClose={() => onRemoveAttachment(attachment.id)}
+                >
+                  {attachment.name}
+                </Tag>
+              </Tooltip>
             ),
           )}
         </div>

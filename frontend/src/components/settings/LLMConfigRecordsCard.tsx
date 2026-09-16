@@ -135,7 +135,12 @@ export default function LLMConfigRecordsCard({
                 title={
                   <Space size={8} wrap>
                     <Typography.Text strong>{record.name}</Typography.Text>
-                    {activeRecordId === record.id && <Tag color="green">当前</Tag>}
+                    {activeRecordId === record.id && (
+                      // “当前”容易和"表单里现在填着的"混淆，说清是哪一份在生效。
+                      <Tooltip title="当前生效的配置：简历生成与求职助手正在用它">
+                        <Tag color="green">当前</Tag>
+                      </Tooltip>
+                    )}
                   </Space>
                 }
                 description={

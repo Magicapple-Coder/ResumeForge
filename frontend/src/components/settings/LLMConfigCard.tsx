@@ -13,6 +13,7 @@ import {
   Row,
   Select,
   Slider,
+  Tooltip,
 } from "antd";
 import type { FormInstance } from "antd/es/form";
 import { useRef } from "react";
@@ -163,12 +164,16 @@ export default function LLMConfigCard({
               />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
-              <Checkbox
-                checked={unlimitedTokens}
-                onChange={(event) => setUnlimitedTokens(event.target.checked)}
-              >
-                不限制（由服务商决定上限）
-              </Checkbox>
+              {/* 这一条的行为与直觉相反（"不限制"其实取决于服务商默认值，可能比手填的还小），
+                  而那段解释原本只挂在上面那个数字输入框的 tooltip 里，勾选框自己不说。 */}
+              <Tooltip title="勾选后不再发送 max_tokens，由服务商决定上限。可缓解推理模型把思考过程算进输出预算、正文被挤空的问题；但它不是真的无限——部分服务商的默认值可能比手动设置的值更小。">
+                <Checkbox
+                  checked={unlimitedTokens}
+                  onChange={(event) => setUnlimitedTokens(event.target.checked)}
+                >
+                  不限制（由服务商决定上限）
+                </Checkbox>
+              </Tooltip>
             </Form.Item>
           </Col>
         </Row>

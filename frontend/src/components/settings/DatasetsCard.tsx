@@ -178,9 +178,12 @@ export default function DatasetsCard({
                   <>
                     {dataset.name}
                     {dataset.is_active && (
-                      <Tag color="blue" style={{ marginLeft: 8 }}>
-                        当前
-                      </Tag>
+                      // “当前”单独看指代不明；顺带说明它为什么不能删、不能切。
+                      <Tooltip title="当前正在使用的数据集">
+                        <Tag color="blue" style={{ marginLeft: 8 }}>
+                          当前
+                        </Tag>
+                      </Tooltip>
                     )}
                   </>
                 }

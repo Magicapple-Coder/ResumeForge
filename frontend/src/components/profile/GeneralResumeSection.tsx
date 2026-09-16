@@ -6,7 +6,19 @@
  */
 
 import { DeleteOutlined, EditOutlined, FileSearchOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Card, Empty, Input, List, Popconfirm, Space, Tag, Typography } from "antd";
+import {
+  App,
+  Button,
+  Card,
+  Empty,
+  Input,
+  List,
+  Popconfirm,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { deleteResume, listResumes, renameResume } from "../../api/resumes";
 import type { ResumeBrief } from "../../types";
@@ -124,17 +136,18 @@ export default function GeneralResumeSection({ onGenerate, onWrite }: Props) {
           renderItem={(record) => (
             <List.Item
               actions={[
-                <Button
-                  key="rename"
-                  type="text"
-                  aria-label={`重命名通用简历 ${record.title}`}
-                  icon={<EditOutlined />}
-                  disabled={renamingId !== null || deletingId !== null}
-                  onClick={() => {
-                    setRenameValue(record.title);
-                    setRenamingId(record.id);
-                  }}
-                />,
+                <Tooltip key="rename" title="重命名">
+                  <Button
+                    type="text"
+                    aria-label={`重命名通用简历 ${record.title}`}
+                    icon={<EditOutlined />}
+                    disabled={renamingId !== null || deletingId !== null}
+                    onClick={() => {
+                      setRenameValue(record.title);
+                      setRenamingId(record.id);
+                    }}
+                  />
+                </Tooltip>,
                 <Popconfirm
                   key="delete"
                   title={`确定删除「${record.title}」？`}
@@ -144,14 +157,16 @@ export default function GeneralResumeSection({ onGenerate, onWrite }: Props) {
                   okButtonProps={{ danger: true }}
                   onConfirm={() => void remove(record)}
                 >
-                  <Button
-                    type="text"
-                    danger
-                    aria-label={`删除通用简历 ${record.title}`}
-                    icon={<DeleteOutlined />}
-                    loading={deletingId === record.id}
-                    disabled={renamingId !== null || deletingId !== null}
-                  />
+                  <Tooltip title="删除">
+                    <Button
+                      type="text"
+                      danger
+                      aria-label={`删除通用简历 ${record.title}`}
+                      icon={<DeleteOutlined />}
+                      loading={deletingId === record.id}
+                      disabled={renamingId !== null || deletingId !== null}
+                    />
+                  </Tooltip>
                 </Popconfirm>,
               ]}
             >

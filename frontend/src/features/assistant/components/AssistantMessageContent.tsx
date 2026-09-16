@@ -184,9 +184,12 @@ export function MessageAttachments({
             className="assistant-message-image"
           />
         ) : (
-          <Tag key={`${attachment.name}-${index}`} icon={<FileTextOutlined />}>
-            {attachment.name}
-          </Tag>
+          // 文件名是用户给的，长度没有上限；标签本身不换行，不截断就会顶出气泡。
+          <Tooltip key={`${attachment.name}-${index}`} title={attachment.name}>
+            <Tag className="assistant-attachment-tag" icon={<FileTextOutlined />}>
+              {attachment.name}
+            </Tag>
+          </Tooltip>
         );
       })}
     </div>

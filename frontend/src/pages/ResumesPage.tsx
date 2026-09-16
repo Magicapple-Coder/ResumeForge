@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { deleteResume, listResumes, updateResumeFavorite } from "../api/resumes";
 import ResumeDetailModal from "../components/ResumeDetailModal";
-import { RESUME_ENHANCEMENT_LEVELS } from "../config";
+import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
 import { useApi } from "../hooks/useApi";
 import type { ResumeBrief } from "../types";
 import { formatDateTime } from "../utils/format";
@@ -109,7 +109,9 @@ export default function ResumesPage() {
             // 无岗位记录的 job_title 存的是求职意向，不能当岗位名显示，
             // 否则通用简历看起来就是一份岗位简历。
             <>
-              <Tag color="purple">通用简历</Tag>
+              <Tooltip title="不关联岗位、可投递多个方向的简历">
+                <Tag color="purple">通用简历</Tag>
+              </Tooltip>
               {record.job_title && <Tag>求职意向：{record.job_title}</Tag>}
             </>
           )}
@@ -135,10 +137,22 @@ export default function ResumesPage() {
       render: (_, record) => {
         if (!record.enhancement_enabled)
           return <Typography.Text type="secondary">未开启</Typography.Text>;
-        const label = RESUME_ENHANCEMENT_LEVELS.find(
+        const level = RESUME_ENHANCEMENT_LEVELS.find(
           (item) => item.value === record.enhancement_level,
-        )?.label;
-        return <Tag color="green">{label ?? "已开启"}</Tag>;
+        );
+        // "均衡"这种词单看说明不了什么；悬停给出这一档到底做了什么——和生成弹窗里
+        // 用的是同一份文案，通用简历的"深度"档说法也由它区分。
+        return (
+          <Tooltip
+            title={
+              record.enhancement_level
+                ? enhancementLevelDescription(record.enhancement_level, !record.job_id)
+                : "已开启经历美化拓展"
+            }
+          >
+            <Tag color="green">{level?.label ?? "已开启"}</Tag>
+          </Tooltip>
+        );
       },
     },
     {

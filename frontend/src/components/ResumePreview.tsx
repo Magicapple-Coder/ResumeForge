@@ -286,9 +286,19 @@ export default function ResumePreview({
               aria-label="简历预览交互模式"
               value={interactionMode}
               onChange={(value) => setInteractionMode(value as InteractionMode)}
+              // 两个名字单独看都说不清自己是干嘛的："抓手"是设计软件的行话，"编辑"听起来
+              // 像要跳到别的页面；各自配一句悬停说明。
               options={[
-                { value: "pan", label: "抓手", icon: <DragOutlined /> },
-                { value: "edit", label: "编辑", icon: <EditOutlined /> },
+                {
+                  value: "pan",
+                  label: <Tooltip title="按住拖动浏览简历">抓手</Tooltip>,
+                  icon: <DragOutlined />,
+                },
+                {
+                  value: "edit",
+                  label: <Tooltip title="点击简历中的字段直接修改">编辑</Tooltip>,
+                  icon: <EditOutlined />,
+                },
               ]}
             />
           )}

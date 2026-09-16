@@ -8,6 +8,7 @@ import type {
   AssistantSkill,
   AssistantStreamEvent,
 } from "../types";
+import { MessageAttachments } from "../features/assistant/components/AssistantMessageContent";
 import AssistantPage, {
   AssistantMessageContent,
   MessageSources,
@@ -357,6 +358,19 @@ describe("AssistantPage", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "阶段" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "网申" })).toBeInTheDocument();
+  });
+
+  it("truncates a long attachment name but keeps the whole one on hover", async () => {
+    const longName = "一份名字特别长的参考资料，长到足以把聊天气泡顶变形的那种.txt";
+    render(<MessageAttachments attachments={[{ name: longName, kind: "text", data: "正文" }]} />);
+
+    // 截断靠 CSS（标签本身不换行），所以全名必须另有一处能看到。
+    const chip = screen.getByText(longName).closest(".assistant-attachment-tag");
+    expect(chip).not.toBeNull();
+
+    fireEvent.mouseEnter(chip as HTMLElement);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(longName);
   });
 
   it("shows an accessible generating status", () => {

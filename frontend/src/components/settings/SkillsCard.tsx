@@ -108,14 +108,16 @@ export default function SkillsCard({
                 disabled={busy}
                 onConfirm={() => onDelete(skill)}
               >
-                <Button
-                  type="text"
-                  danger
-                  aria-label={`删除技能 ${skill.name}`}
-                  icon={<DeleteOutlined />}
-                  loading={deletingId === skill.id}
-                  disabled={busy}
-                />
+                <Tooltip title="删除（提示词与知识文件一起删除）">
+                  <Button
+                    type="text"
+                    danger
+                    aria-label={`删除技能 ${skill.name}`}
+                    icon={<DeleteOutlined />}
+                    loading={deletingId === skill.id}
+                    disabled={busy}
+                  />
+                </Tooltip>
               </Popconfirm>,
             ]}
           >

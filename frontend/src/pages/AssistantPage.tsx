@@ -155,7 +155,9 @@ export default function AssistantPage() {
       <section className="assistant-workspace">
         <header className="assistant-header">
           <div className="assistant-header-titles">
-            <Typography.Title level={3}>{detail?.title || "AI 求职助手"}</Typography.Title>
+            <Typography.Title level={3} ellipsis={{ tooltip: true }}>
+              {detail?.title || "AI 求职助手"}
+            </Typography.Title>
             <Typography.Text type="secondary">当前回复由「设置」中的模型配置提供。</Typography.Text>
           </div>
           <AssistantSkillsHint skills={enabledSkills} onManage={openSkillSettings} />

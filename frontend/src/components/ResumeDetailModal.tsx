@@ -1,6 +1,6 @@
 /** 简历记录预览弹窗（历史记录用）：加载详情与渲染 HTML 后展示。 */
 import { BulbOutlined, EditOutlined, FolderOpenOutlined, MessageOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Modal, Skeleton, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Modal, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getResume, fetchResumeHtml, renderResume, updateResume } from "../api/resumes";
@@ -108,7 +108,9 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
             ) : (
               // 通用简历没有岗位；job_title 里存的是求职意向。
               <>
-                <Tag color="purple">通用简历</Tag>
+                <Tooltip title="不关联岗位、可投递多个方向的简历">
+                  <Tag color="purple">通用简历</Tag>
+                </Tooltip>
                 <Tag>求职意向：{detail.job_title || "未填写"}</Tag>
               </>
             )}

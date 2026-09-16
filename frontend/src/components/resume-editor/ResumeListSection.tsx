@@ -1,7 +1,7 @@
 /** 简历编辑器的可重复分区容器。 */
 
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Form } from "antd";
+import { Button, Form, Tooltip } from "antd";
 import type { FormListFieldData } from "antd/es/form/FormList";
 import type { ReactNode } from "react";
 
@@ -32,15 +32,17 @@ export default function ResumeListSection({ title, name, emptyValue, children }:
               <div style={{ marginBottom: 10, fontWeight: 600 }}>
                 {title} {index + 1}
               </div>
-              <Button
-                aria-label={`删除${title}`}
-                type="text"
-                danger
-                size="small"
-                icon={<DeleteOutlined />}
-                style={{ position: "absolute", top: 10, right: 8 }}
-                onClick={() => remove(field.name)}
-              />
+              <Tooltip title={`删除这一条${title}`}>
+                <Button
+                  aria-label={`删除${title}`}
+                  type="text"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  style={{ position: "absolute", top: 10, right: 8 }}
+                  onClick={() => remove(field.name)}
+                />
+              </Tooltip>
               {children(field)}
             </div>
           ))}

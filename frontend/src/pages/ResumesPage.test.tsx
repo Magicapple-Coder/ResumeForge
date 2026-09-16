@@ -56,6 +56,35 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("ResumesPage column hints", () => {
+  it("explains what a beauty-enhancement level actually did on hover", async () => {
+    apiMocks.listResumes.mockResolvedValue({
+      items: [{ ...RESUME, enhancement_enabled: true, enhancement_level: "balanced" }],
+      total: 1,
+    });
+    renderPage();
+    await screen.findByText(RESUME.title);
+
+    // “均衡”两个字本身说明不了什么，悬停要给出这一档做了什么。
+    fireEvent.mouseEnter(screen.getByText("均衡"));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("补足方法、技术细节与成果表达");
+  });
+
+  it("explains what a general resume is on hover", async () => {
+    apiMocks.listResumes.mockResolvedValue({
+      items: [{ ...RESUME, job_id: null, job_title: "软件开发" }],
+      total: 1,
+    });
+    renderPage();
+    await screen.findByText(RESUME.title);
+
+    fireEvent.mouseEnter(screen.getByText("通用简历"));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("不关联岗位、可投递多个方向");
+  });
+});
+
 describe("ResumesPage favorites", () => {
   it("favorites a resume and blocks duplicate submissions while the update is pending", async () => {
     let resolveUpdate!: () => void;

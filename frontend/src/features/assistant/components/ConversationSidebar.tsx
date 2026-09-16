@@ -156,13 +156,15 @@ export default function ConversationSidebar({
                 autoFocus
                 maxLength={128}
                 suffix={
-                  <Button
-                    type="text"
-                    size="small"
-                    aria-label="保存对话标题"
-                    icon={<SaveOutlined />}
-                    onClick={() => saveTitle(conversation.id)}
-                  />
+                  <Tooltip title="保存标题（回车也可以）">
+                    <Button
+                      type="text"
+                      size="small"
+                      aria-label="保存对话标题"
+                      icon={<SaveOutlined />}
+                      onClick={() => saveTitle(conversation.id)}
+                    />
+                  </Tooltip>
                 }
                 onChange={(event) => setEditingTitle(event.target.value)}
                 onPressEnter={() => saveTitle(conversation.id)}
