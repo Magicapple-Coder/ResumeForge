@@ -228,6 +228,8 @@ def test_system_prompt_pins_writing_rules_for_both_modes():
         assert "不得升格职责范围" in prompt
         assert "30 字以内" in prompt
         assert "不超过 6 条" in prompt
+        # 真跑一次生成发现的问题：候选条目本身没有可写事实时，模型会输出只有名字的空壳
+        assert "不要输出空壳条目" in prompt
 
     # 关键词融入只属于岗位模式：通用简历没有 JD，写进去只会让模型硬塞关键词。
     assert "JD 的高频关键词" in job_prompt
