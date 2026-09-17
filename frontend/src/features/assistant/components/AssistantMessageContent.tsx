@@ -235,6 +235,7 @@ const TOOL_LABELS: Record<string, string> = {
   create_job: "新增岗位",
   update_job: "修改岗位",
   update_profile: "更新个人资料",
+  add_profile_entry: "往资料里加一条经历",
   // 资料箱
   list_materials: "查询资料箱",
   get_material: "查看资料详情",
@@ -246,6 +247,9 @@ const TOOL_LABELS: Record<string, string> = {
   create_candidate_job: "新增备选岗位",
   update_candidate_job: "修改备选岗位",
   import_candidate_job: "把备选岗位导入岗位广场",
+  // 模拟面试
+  list_interview_sessions: "查询模拟面试",
+  get_interview_report: "查看面试记录与报告",
   // 技能
   list_skills: "查询助手技能",
   get_skill: "查看技能详情",

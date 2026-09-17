@@ -155,33 +155,39 @@ body {
   border-radius: 6px;
 }
 
+/* 使用指南：左侧步骤导航 + 右侧内容。 */
+.user-guide-body {
+  display: grid;
+  grid-template-columns: 172px minmax(0, 1fr);
+  gap: 4px;
+  align-items: start;
+}
+
 .user-guide-steps {
-  margin-inline: 4px;
+  padding-top: 4px;
 }
 
-/* 步骤条：标题竖排在图标下方（见 UserGuideModal 的 labelPlacement），
-   每项平分宽度、间距留给相邻标题。标题的换行行为由 antd 的 vertical 布局保证，
-   这里只补间距与字号。 */
-.user-guide-steps .ant-steps-item {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.user-guide-steps .ant-steps-item-container {
-  align-items: flex-start;
-}
-
+/* 标题允许换行：中文标题在窄列里必须能折行，否则会被裁掉。 */
 .user-guide-steps .ant-steps-item-title {
-  padding-inline-end: 10px;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.6;
   white-space: normal;
+  word-break: keep-all;
+}
+
+.user-guide-steps .ant-steps-item {
+  padding-bottom: 2px;
+}
+
+.user-guide-divider {
+  height: auto;
+  align-self: stretch;
 }
 
 .user-guide-step-content {
   display: flex;
   gap: 20px;
-  min-height: 190px;
+  min-height: 220px;
   padding: 8px 8px 18px;
 }
 

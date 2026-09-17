@@ -5,6 +5,7 @@ import type {
   ResumeBrief,
   ResumeContent,
   ResumeDetail,
+  ResumeFontScale,
   ResumeLayout,
   ResumeSuggestions,
   ResumeTemplateCatalog,
@@ -84,6 +85,31 @@ export function generateResume(
 /** 可选的简历模板与字号档位；顺带告诉前端服务端能否直接生成 PDF。 */
 export function fetchResumeTemplates(): Promise<ResumeTemplateCatalog> {
   return request("/resumes/templates");
+}
+
+/**
+ * 渲染模板预览为 HTML。
+ *
+ * 传 `html` 时渲染这段（工作台里未保存的编辑内容）；传模板名/格式名时用已保存的
+ * 模板；都不传就用内置示例简历内容——新用户没有任何简历记录也能看到效果。
+ */
+export async function previewResumeTemplate(payload: {
+  template_id?: number;
+  template_name?: string;
+  html?: string;
+  format_name?: string;
+  format_config?: Record<string, string | number>;
+  page_limit?: number;
+  font_scale?: ResumeFontScale;
+  resume_id?: number;
+}): Promise<string> {
+  const resp = await fetch("/api/resume-templates/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
+  return resp.text();
 }
 
 /** 只调整版式参数（模板/页数/字号），不重新生成内容。 */

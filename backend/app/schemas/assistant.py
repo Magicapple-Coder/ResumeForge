@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .material import MAX_MATERIAL_TITLE_CHARS
+
 MAX_ASSISTANT_MESSAGE_CHARS = 20_000
 MAX_ATTACHMENT_DATA_CHARS = 7_100_000
 
@@ -40,6 +42,8 @@ class AssistantMessageCreate(BaseModel):
     web_search: bool = False
     # 有思考模式的大模型可以在这里调整推理强度；不支持该参数的服务商会被忽略。
     reasoning_effort: ReasoningEffort = ""
+    # 「引用某条消息追问」：指向同一会话里的某条消息，模型会在引用上下文中作答。
+    quoted_message_id: int | None = Field(default=None, ge=1)
     attachments: list[AssistantAttachmentInput] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
@@ -104,6 +108,33 @@ class ChatConversationForkRequest(BaseModel):
     message_limit: int = Field(default=10, ge=1, le=40)
 
 
+class ChatMessageDeleteRequest(BaseModel):
+    """批量删除消息（一次最多 200 条）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message_ids: list[int] = Field(min_length=1, max_length=200)
+
+    @field_validator("message_ids")
+    @classmethod
+    def ids_must_be_unique(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
+
+
+class ChatMessageDeleteResult(BaseModel):
+    deleted: int
+
+
+class ConversationToMaterialRequest(BaseModel):
+    """把一段对话存进资料箱（内容用导出的 Markdown，助手之后能直接读它）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(default="", max_length=MAX_MATERIAL_TITLE_CHARS)
+    category: str = Field(default="", max_length=64)
+    note: str = Field(default="", max_length=1000)
+
+
 class ChatAttachmentOut(BaseModel):
     name: str
     mime_type: str
@@ -123,6 +154,8 @@ class ChatMessageOut(BaseModel):
     conversation_id: int
     role: Literal["user", "assistant"]
     content: str
+    # 引用的消息 id（被引用消息删除后为 None，但 context.quoted 里仍有快照）。
+    quoted_message_id: int | None = None
     attachments: list[ChatAttachmentOut] = Field(default_factory=list)
     context: dict[str, Any] = Field(default_factory=dict)
     status: Literal["pending", "complete", "error", "cancelled"]

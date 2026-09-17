@@ -29,7 +29,9 @@ class GenerateOptions(BaseModel):
     # 目标篇幅：默认 1 页 A4。塞不下时用户可在预览页加大页数或缩小字号后重新渲染。
     page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
     font_scale: ResumeFontScale = "standard"
-    template: str = Field(default="classic", max_length=32)
+    template: str = Field(default="classic", max_length=64)
+    # 格式模板（版式覆盖）的名字：内置预设或用户自制格式模板；空串表示用样式模板自带的版式。
+    format_name: str = Field(default="", max_length=64)
     # 用户自己补充的生成要求；只作为附加上下文，不会覆盖系统提示里的防虚构规则。
     custom_instruction: str = Field(default="", max_length=MAX_CUSTOM_INSTRUCTION_CHARS)
 
@@ -142,6 +144,7 @@ class ResumeBrief(BaseModel):
     enhancement_level: Literal["light", "balanced", "strong"]
     # 生成/最近一次渲染时使用的版式参数，重新打开预览或导出时保持一致。
     template: str = "classic"
+    format_name: str = ""
     page_limit: int = 1
     font_scale: ResumeFontScale = "standard"
     created_at: datetime
@@ -199,7 +202,8 @@ class ResumeRenderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: ResumeContent
-    template: str = Field(default="classic", max_length=32)
+    template: str = Field(default="classic", max_length=64)
+    format_name: str = Field(default="", max_length=64)
     page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
     font_scale: ResumeFontScale = "standard"
 
@@ -209,6 +213,7 @@ class ResumeLayoutUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    template: str = Field(default="classic", max_length=32)
+    template: str = Field(default="classic", max_length=64)
+    format_name: str = Field(default="", max_length=64)
     page_limit: int = Field(default=1, ge=1, le=MAX_RESUME_PAGES)
     font_scale: ResumeFontScale = "standard"

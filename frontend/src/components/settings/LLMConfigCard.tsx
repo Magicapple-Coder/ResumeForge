@@ -124,6 +124,18 @@ export default function LLMConfigCard({
             optionFilterProp="label"
           />
         </Form.Item>
+        <Form.Item
+          name="api_style"
+          label="接口协议"
+          tooltip="多数服务商（含 Claude 的 OpenAI 兼容层）走 Chat Completions，选「OpenAI 兼容」。只有要用 Claude 原生 Messages 协议（支持扩展思考、独立 system 字段）时才选 Anthropic 原生——此时 Base URL 填 https://api.anthropic.com。"
+        >
+          <Select
+            options={[
+              { value: "openai", label: "OpenAI 兼容（Chat Completions）" },
+              { value: "anthropic", label: "Anthropic 原生（Messages）" },
+            ]}
+          />
+        </Form.Item>
         <Row gutter={[16, 0]}>
           <Col xs={24} lg={16}>
             <Form.Item
@@ -230,7 +242,9 @@ export default function LLMConfigCard({
           className="llm-advanced-toggle"
           onClick={() => setAdvancedOpen((current) => !current)}
         >
-          {advancedOpen ? "收起高级调整" : "高级调整（Top P、惩罚项、随机种子）"}
+          {advancedOpen
+            ? "收起高级调整"
+            : "高级调整（Top P / Top K、惩罚项、随机种子、停止词、思考预算）"}
         </Button>
         {advancedOpen && (
           <>
@@ -300,7 +314,72 @@ export default function LLMConfigCard({
                   />
                 </Form.Item>
               </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="top_k"
+                  label="Top K"
+                  tooltip="只在概率最高的 K 个候选里取词。Anthropic 与部分开源模型支持；OpenAI 官方接口会忽略它。"
+                >
+                  <InputNumber
+                    min={0}
+                    max={1000}
+                    step={1}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="repetition_penalty"
+                  label="重复惩罚"
+                  tooltip="大于 1 时抑制重复用词。与「频率惩罚」作用类似但计算方式不同，通常只用其中一个。"
+                >
+                  <InputNumber
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="thinking_budget"
+                  label="思考预算"
+                  tooltip="Claude 原生协议下的扩展思考 token 预算。填 0 = 明确关闭思考；留空 = 不发送该字段。仅在协议选「Anthropic 原生」时有效。"
+                >
+                  <InputNumber
+                    min={0}
+                    max={100000}
+                    step={1024}
+                    style={{ width: "100%" }}
+                    placeholder="留空 = 不发送"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="stop"
+                  label="停止词"
+                  tooltip="模型生成到这些词就停下（最多 4 条）。回车确认一条；留空 = 不发送。"
+                >
+                  <Select
+                    mode="tags"
+                    open={false}
+                    suffixIcon={null}
+                    placeholder="输入后回车添加，最多 4 条"
+                  />
+                </Form.Item>
+              </Col>
             </Row>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 4 }}
+              message="协议换成「Anthropic 原生」后，思考预算、Top K 等参数才有意义；换成 OpenAI 兼容时它们会被忽略。"
+            />
           </>
         )}
       </Form>

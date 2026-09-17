@@ -8,6 +8,7 @@ import type {
   JobAnalysisResult,
   JobPayload,
   Page,
+  JobMultiParseResult,
   ParsedJobDraft,
 } from "../types";
 import { buildQuery, request } from "./client";
@@ -43,6 +44,20 @@ export function parseJobText(payload: {
   documents?: ExtractionDocumentInput[];
 }): Promise<ParsedJobDraft> {
   return request("/jobs/parse-text", { method: "POST", body: JSON.stringify(payload) });
+}
+
+/**
+ * 一次粘贴多份招聘信息：返回一份或多份草稿。
+ *
+ * 与 `parseJobText` 的差别只在"要不要拆"——单份识别遇到多份材料会合成一份残缺草稿，
+ * 所以导入入口统一走这个接口，`items.length === 1` 时退回单份流程即可。
+ */
+export function parseJobsMultiple(payload: {
+  text: string;
+  images?: ExtractionImageInput[];
+  documents?: ExtractionDocumentInput[];
+}): Promise<JobMultiParseResult> {
+  return request("/jobs/parse-multiple", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export function deleteJob(id: number): Promise<void> {

@@ -5,11 +5,16 @@ import JobFormModal from "./JobFormModal";
 
 const apiMocks = vi.hoisted(() => ({
   createJob: vi.fn(),
-  parseJobText: vi.fn(),
+  parseJobsMultiple: vi.fn(),
   updateJob: vi.fn(),
 }));
 
-vi.mock("../api/jobs", () => apiMocks);
+// 展开真实模块再覆盖：显式列出导出时，生产代码新增一个导出就会让调用方直接抛
+// "export is not defined"，表现成组件崩了。
+vi.mock("../api/jobs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/jobs")>()),
+  ...apiMocks,
+}));
 
 /** createJob 的返回值会被读 `id`（备选岗位导入要靠它标记"已导入"），所以用真形状。 */
 function deferredJob() {
@@ -22,7 +27,7 @@ function deferredJob() {
 
 beforeEach(() => {
   apiMocks.createJob.mockReset();
-  apiMocks.parseJobText.mockReset();
+  apiMocks.parseJobsMultiple.mockReset();
   apiMocks.updateJob.mockReset();
 });
 
@@ -30,19 +35,23 @@ afterEach(() => cleanup());
 
 describe("JobFormModal", () => {
   it("fills additional recruitment information returned by text parsing", async () => {
-    apiMocks.parseJobText.mockResolvedValue({
-      title: "门店店长",
-      company: "示例超市",
-      location: "成都市武侯区",
-      salary: "",
-      job_type: "社招",
-      description: "负责门店经营",
-      requirements: "三年零售经验",
-      additional_info: "提供员工宿舍，面试包含门店案例分析",
-      source_url: "",
-      posted_at: "2026-08-20",
-      status: "开放中",
-      warnings: [],
+    apiMocks.parseJobsMultiple.mockResolvedValue({
+      items: [
+        {
+          title: "门店店长",
+          company: "示例超市",
+          location: "成都市武侯区",
+          salary: "",
+          job_type: "社招",
+          description: "负责门店经营",
+          requirements: "三年零售经验",
+          additional_info: "提供员工宿舍，面试包含门店案例分析",
+          source_url: "",
+          posted_at: "2026-08-20",
+          status: "开放中",
+          warnings: [],
+        },
+      ],
     });
     render(
       <AntdApp>
@@ -55,7 +64,7 @@ describe("JobFormModal", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
 
-    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiMocks.parseJobsMultiple).toHaveBeenCalledOnce());
     expect(screen.getByLabelText("其他招聘信息（选填）")).toHaveValue(
       "提供员工宿舍，面试包含门店案例分析",
     );
@@ -124,7 +133,7 @@ function pasteScreenshot(textarea: HTMLElement, name = "shot.png") {
 
 describe("JobFormModal 图片识别", () => {
   it("sends pasted screenshots even when the textarea is empty", async () => {
-    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.parseJobsMultiple.mockResolvedValue({ items: [DRAFT] });
     renderModal();
     const textarea = screen.getByLabelText("完整招聘信息");
 
@@ -132,8 +141,8 @@ describe("JobFormModal 图片识别", () => {
     await waitFor(() => expect(screen.getByAltText("shot.png")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
 
-    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
-    const payload = apiMocks.parseJobText.mock.calls[0][0];
+    await waitFor(() => expect(apiMocks.parseJobsMultiple).toHaveBeenCalledOnce());
+    const payload = apiMocks.parseJobsMultiple.mock.calls[0][0];
     expect(payload.text).toBe("");
     expect(payload.images).toHaveLength(1);
     expect(payload.images[0].name).toBe("shot.png");
@@ -144,7 +153,7 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("sends an uploaded document in its own field", async () => {
-    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.parseJobsMultiple.mockResolvedValue({ items: [DRAFT] });
     renderModal();
     const input = document.querySelector(
       'input[type="file"][aria-label="添加截图或文档"]',
@@ -157,8 +166,8 @@ describe("JobFormModal 图片识别", () => {
     await waitFor(() => expect(screen.getByText("jd.docx")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
 
-    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
-    const payload = apiMocks.parseJobText.mock.calls[0][0];
+    await waitFor(() => expect(apiMocks.parseJobsMultiple).toHaveBeenCalledOnce());
+    const payload = apiMocks.parseJobsMultiple.mock.calls[0][0];
     // 图片与文档是两个请求字段：后端对它们的处理方式完全不同
     expect(payload.images).toEqual([]);
     expect(payload.documents).toHaveLength(1);
@@ -181,7 +190,7 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("shows the text the model read and never submits it as a job field", async () => {
-    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.parseJobsMultiple.mockResolvedValue({ items: [DRAFT] });
     apiMocks.createJob.mockResolvedValue({});
     renderModal();
     const textarea = screen.getByLabelText("完整招聘信息");
@@ -204,7 +213,7 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("keeps saying where the fields came from after the toast is gone", async () => {
-    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.parseJobsMultiple.mockResolvedValue({ items: [DRAFT] });
     renderModal();
 
     pasteScreenshot(screen.getByLabelText("完整招聘信息"));
@@ -221,11 +230,15 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("marks local-rule results as less trustworthy", async () => {
-    apiMocks.parseJobText.mockResolvedValue({
-      ...DRAFT,
-      parse_engine: "local" as const,
-      recognized_text: "",
-      warnings: [],
+    apiMocks.parseJobsMultiple.mockResolvedValue({
+      items: [
+        {
+          ...DRAFT,
+          parse_engine: "local" as const,
+          recognized_text: "",
+          warnings: [],
+        },
+      ],
     });
     renderModal();
 
@@ -239,7 +252,7 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("drops the source badge once the pasted text changes", async () => {
-    apiMocks.parseJobText.mockResolvedValue(DRAFT);
+    apiMocks.parseJobsMultiple.mockResolvedValue({ items: [DRAFT] });
     renderModal();
     const textarea = screen.getByLabelText("完整招聘信息");
     fireEvent.change(textarea, { target: { value: "门店店长" } });
@@ -253,15 +266,19 @@ describe("JobFormModal 图片识别", () => {
   });
 
   it("keeps typed values when recognition comes back empty", async () => {
-    apiMocks.parseJobText.mockResolvedValue({
-      ...DRAFT,
-      title: "",
-      company: "",
-      location: "",
-      description: "",
-      requirements: "",
-      recognized_text: "",
-      parse_engine: "local" as const,
+    apiMocks.parseJobsMultiple.mockResolvedValue({
+      items: [
+        {
+          ...DRAFT,
+          title: "",
+          company: "",
+          location: "",
+          description: "",
+          requirements: "",
+          recognized_text: "",
+          parse_engine: "local" as const,
+        },
+      ],
     });
     renderModal();
     fireEvent.change(screen.getByLabelText("职位名称"), { target: { value: "我手填的岗位" } });
@@ -271,7 +288,7 @@ describe("JobFormModal 图片识别", () => {
     fireEvent.click(screen.getByRole("button", { name: /识别并填充/ }));
 
     // 什么都没识别出来时不能把用户已经填好的内容抹掉
-    await waitFor(() => expect(apiMocks.parseJobText).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiMocks.parseJobsMultiple).toHaveBeenCalledOnce());
     expect(screen.getByLabelText("职位名称")).toHaveValue("我手填的岗位");
   });
 });

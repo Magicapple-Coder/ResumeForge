@@ -11,15 +11,30 @@ from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
-from .resume_templates import DEFAULT_FONT_SCALE, DEFAULT_TEMPLATE, font_scale_spec, template_spec
+from .resume_templates import (
+    DEFAULT_FONT_SCALE,
+    DEFAULT_TEMPLATE,
+    font_scale_spec,
+    format_css,
+    template_spec,
+    validated_format_config,
+)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 # 简历内容来自大模型输出，HTML 模板必须开启自动转义防止 XSS。
 # 注意模板文件名是 resume.html.j2，后缀匹配需同时覆盖 .html 与 .j2
 _env = Environment(
+    loader=FileSystemLoader(TEMPLATES_DIR),
+    autoescape=select_autoescape(["html", "j2"]),
+)
+
+# 用户自制模板专用：沙箱环境（禁止访问以 _ 开头的属性与任意 Python 对象），
+# 但仍保留同一个文件加载器，好让自制模板能 include 共用正文片段。
+_sandbox_env = SandboxedEnvironment(
     loader=FileSystemLoader(TEMPLATES_DIR),
     autoescape=select_autoescape(["html", "j2"]),
 )
@@ -126,25 +141,57 @@ def normalize_page_limit(value: int) -> int:
     return max(1, min(int(value or 1), MAX_RESUME_PAGES))
 
 
+def _inject_before(html: str, block: str, marker: str) -> str:
+    """把一段内容插到标记之前；标记缺失时追加到末尾（宁可少一层样式，也不要报错）。"""
+    if marker in html:
+        return html.replace(marker, f"{block}\n{marker}", 1)
+    return f"{html}\n{block}"
+
+
 def render_html(
     resume: ResumeContent,
     *,
     template: str = DEFAULT_TEMPLATE,
     page_limit: int = 1,
     font_scale: str = DEFAULT_FONT_SCALE,
+    format_config: dict | None = None,
+    template_html: str = "",
 ) -> str:
     """渲染简历 HTML。
 
     ``page_limit`` 决定 body 高度（N × A4），超过时由模板内脚本整体缩小；
-    ``font_scale`` 只改变一个基准像素变量，所有尺寸都由它推算。
+    ``font_scale`` 只改变一个基准像素变量，所有尺寸都由它推算；
+    ``format_config`` 是一组受校验的 CSS 覆盖（格式模板）；
+    ``template_html`` 非空时用它渲染——那是用户自制的样式模板，走沙箱环境。
     """
     # A per-document nonce authorizes only the fixed A4 fitting script.
     csp_nonce = secrets.token_hex(16)
     spec = template_spec(template)
     scale = font_scale_spec(font_scale)
-    return _env.get_template(spec["file"]).render(
-        resume=resume,
-        csp_nonce=csp_nonce,
-        page_limit=normalize_page_limit(page_limit),
-        base_px=scale["base_px"],
-    )
+    overrides = validated_format_config(format_config)
+    base_px = float(scale["base_px"])
+    adjust = overrides.get("font_scale_adjust")
+    if isinstance(adjust, (int, float)):
+        base_px = round(base_px * float(adjust), 2)
+
+    context = {
+        "resume": resume,
+        "csp_nonce": csp_nonce,
+        "page_limit": normalize_page_limit(page_limit),
+        "base_px": base_px,
+    }
+
+    if template_html:
+        # 用户模板走沙箱环境；它的 `{% include "_resume_sections.j2" %}` 仍能命中内置
+        # 目录（沙箱环境带同一个文件加载器），所以自制模板复用全部正文片段。
+        html = _sandbox_env.from_string(template_html).render(**context)
+        # 导入时已剥离 <script>，这里补回页数自适应脚本：自制模板同样需要它。
+        fit_script = _env.get_template("_resume_fit_script.j2").render(**context)
+        html = _inject_before(html, fit_script, "</body>")
+    else:
+        html = _env.get_template(spec["file"]).render(**context)
+
+    css = format_css(overrides)
+    if css:
+        html = _inject_before(html, f"<style>\n{css}\n</style>", "</head>")
+    return html

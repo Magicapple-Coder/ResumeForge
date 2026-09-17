@@ -16,7 +16,7 @@ DEFAULT_DATABASE_URL = f"sqlite:///{(BACKEND_DIR / 'data' / 'resume_forge.db').a
 
 class Settings(BaseSettings):
     app_name: str = "ResumeForge"
-    app_version: str = "0.7.0"
+    app_version: str = "0.8.0"
 
     # SQLite 文件路径（相对 backend 目录），目录不存在时自动创建
     database_url: str = DEFAULT_DATABASE_URL

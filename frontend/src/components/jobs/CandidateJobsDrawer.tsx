@@ -31,6 +31,7 @@ import {
 } from "../../api/candidateJob";
 import { readAsDataUrl } from "../../utils/attachments";
 import { formatDateTime } from "../../utils/format";
+import FileDropZone from "../common/FileDropZone";
 import { RowActions } from "../common/RowActions";
 import type { CandidateJob, CandidateJobPayload } from "../../types";
 
@@ -324,16 +325,29 @@ export default function CandidateJobsDrawer({
           </Form.Item>
           <Form.Item label={`招聘截图（最多 ${MAX_CANDIDATE_IMAGES} 张，单张不超过 2 MB）`}>
             <Space direction="vertical" style={{ width: "100%" }}>
-              <Upload
+              <FileDropZone
                 accept="image/jpeg,image/png,image/webp"
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  void addImages(file as File);
-                  return Upload.LIST_IGNORE;
-                }}
+                disabled={formState.images.length >= MAX_CANDIDATE_IMAGES}
+                hint="松开即可添加招聘截图"
+                onFiles={(dropped) => dropped.forEach((file) => void addImages(file))}
+                onRejected={() => message.error("招聘截图只支持 JPG、PNG 或 WebP")}
               >
-                <Button icon={<PlusOutlined />}>添加截图</Button>
-              </Upload>
+                <Space wrap>
+                  <Upload
+                    accept="image/jpeg,image/png,image/webp"
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      void addImages(file as File);
+                      return Upload.LIST_IGNORE;
+                    }}
+                  >
+                    <Button icon={<PlusOutlined />}>添加截图</Button>
+                  </Upload>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    也可以直接拖进来
+                  </Typography.Text>
+                </Space>
+              </FileDropZone>
               {formState.images.length > 0 && (
                 <Space wrap>
                   {formState.images.map((source, index) => (

@@ -55,7 +55,23 @@ _TEMPLATE_COLORS: dict[str, tuple[int, int, int]] = {
     "classic": (22, 54, 92),
     "modern": (15, 118, 110),
     "compact": (48, 54, 63),
+    "elegant": (31, 59, 77),
+    "technical": (11, 95, 165),
+    "minimal": (23, 24, 26),
 }
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int] | None:
+    """把格式模板里的十六进制颜色转成 RGB；不合法时返回 None。"""
+    text = (value or "").strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    if len(text) != 6:
+        return None
+    try:
+        return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+    except ValueError:
+        return None
 
 # 1 px = 0.75 pt = 0.2646 mm；正文行高按字号的 1.55 倍留白。
 _PX_TO_PT = 0.75
@@ -202,9 +218,15 @@ def build_resume_pdf(
     template: str = "classic",
     page_limit: int = 1,
     font_scale: str = "standard",
+    format_config: dict | None = None,
 ) -> ResumePDF:
-    """把结构化简历渲染成 PDF。"""
-    from .resume_templates import FONT_SCALES, template_spec
+    """把结构化简历渲染成 PDF。
+
+    格式模板在 PDF 路径下只取"强调色"与"字号系数"两项：fpdf2 的排版由本模块用毫米
+    直接计算，行高与页边距来自内置版式，无法逐条映射任意 CSS。需要与自定义版式完全
+    一致的观感时，用「打印 / 另存为 PDF」（它渲染的是同一份 HTML）。
+    """
+    from .resume_templates import FONT_SCALES, template_spec, validated_format_config
 
     fonts = _resolve_font_paths()
     if fonts is None:
@@ -217,7 +239,15 @@ def build_resume_pdf(
     scale = FONT_SCALES.get(font_scale) or FONT_SCALES["standard"]
     base = float(scale["base_px"])
 
-    pdf = _ResumePDF(_TEMPLATE_COLORS.get(spec["name"], _TEMPLATE_COLORS["classic"]))
+    overrides = validated_format_config(format_config)
+    accent_adjust = overrides.get("font_scale_adjust")
+    if isinstance(accent_adjust, (int, float)):
+        base = round(base * float(accent_adjust), 2)
+    accent = _hex_to_rgb(str(overrides.get("accent") or "")) or _TEMPLATE_COLORS.get(
+        spec["name"], _TEMPLATE_COLORS["classic"]
+    )
+
+    pdf = _ResumePDF(accent)
     try:
         pdf.add_font(FONT_FAMILY, "", regular)
         pdf.add_font(FONT_FAMILY, "B", bold)

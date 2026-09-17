@@ -263,6 +263,57 @@ def test_generate_still_404s_for_an_unknown_job(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_generate_persists_style_and_format_template(client, monkeypatch):
+    """真实环境跑出来的问题：生成时选的版式没有存进记录，重开预览/导出就悄悄退回默认。
+
+    样式与格式是两个独立选择，都要跟着记录走——漏掉任何一个，用户都会觉得"我选的没生效"。
+    """
+    _seed_profile(client)
+    _configure(client)
+    _fake_general_provider(monkeypatch)
+    assert (
+        client.post(
+            "/api/resume-templates",
+            json={"name": "紧凑版式", "kind": "format", "config": {"line_height": 1.45}},
+        ).status_code
+        == 201
+    )
+
+    response = client.post(
+        "/api/resumes/generate",
+        json={
+            "options": {
+                "enhance": False,
+                "enhancement_level": "balanced",
+                "page_limit": 2,
+                "font_scale": "small",
+                "template": "elegant",
+                "format_name": "紧凑版式",
+                "custom_instruction": "",
+            }
+        },
+    )
+
+    record_id = next(event for event in _events(response) if event["type"] == "saved")["record_id"]
+    record = client.get(f"/api/resumes/{record_id}").json()
+    assert record["template"] == "elegant"
+    assert record["format_name"] == "紧凑版式"
+    assert record["page_limit"] == 2
+    assert record["font_scale"] == "small"
+
+
+def test_generate_drops_an_unknown_format_template(client, monkeypatch):
+    """格式模板名解析不出来时存空串：存一个查不到的引用会让导出拿不到配置。"""
+    _seed_profile(client)
+    _configure(client)
+    _fake_general_provider(monkeypatch)
+
+    response = client.post("/api/resumes/generate", json={"options": {"format_name": "并不存在"}})
+
+    record_id = next(event for event in _events(response) if event["type"] == "saved")["record_id"]
+    assert client.get(f"/api/resumes/{record_id}").json()["format_name"] == ""
+
+
 def test_list_can_filter_general_resumes_only(client, monkeypatch):
     _seed_profile(client)
     _configure(client)

@@ -167,6 +167,7 @@ async def stream_message_events(
     generated_title: str,
     system_prompt: str,
     search_web_fn: Callable[[str], Awaitable[list[dict[str, str]]]],
+    quoted: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     parts: list[str] = []
     metadata = dict(context_metadata)
@@ -201,7 +202,9 @@ async def stream_message_events(
 
         messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.extend(history_messages_for_model(history))
-        messages.append(current_user_message_for_model(payload.content, attachments, model_context))
+        messages.append(
+            current_user_message_for_model(payload.content, attachments, model_context, quoted)
+        )
 
         # 只有用户打开联网开关时才把搜索工具下发给模型；关掉开关就是不希望联网。
         tools = tool_definitions(web_search=payload.web_search)

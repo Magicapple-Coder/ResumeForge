@@ -1,4 +1,4 @@
-/** 资料箱：集中管理证书、作品、链接、笔记等零散资料。 */
+/** 资料箱：集中管理找工作和面试相关的材料（证书、作品、面经、复盘、链接、笔记）。 */
 import {
   DeleteOutlined,
   EditOutlined,
@@ -119,7 +119,8 @@ export default function MaterialsPage() {
             资料箱
           </Typography.Title>
           <Typography.Text type="secondary">
-            放这里的是还没整理进简历的零散材料：证书、作品、链接、笔记。求职助手可以读取它们。
+            这里放与找工作、面试相关的材料：证书、作品、面经、公司信息、面试复盘、实习材料、链接与笔记。
+            助手可以读它们、帮你归类整理、总结某一条，或把某条内容整理进个人资料。
           </Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>

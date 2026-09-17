@@ -80,6 +80,9 @@ export interface ResumeTemplateOption {
   name: string;
   label: string;
   description: string;
+  /** 用户自制的样式模板；内置模板为 false。 */
+  custom?: boolean;
+  id?: number | null;
 }
 
 export interface ResumeFontScaleOption {
@@ -88,18 +91,52 @@ export interface ResumeFontScaleOption {
   description: string;
 }
 
+/** 格式模板的一项可调参数（后端 FORMAT_FIELDS）。 */
+export interface ResumeFormatField {
+  key: string;
+  label: string;
+  type: "color" | "number";
+  min?: number;
+  max?: number;
+  step?: number;
+  description?: string;
+}
+
+export interface ResumeFormatPreset {
+  name: string;
+  label: string;
+  description: string;
+  config: Record<string, string | number>;
+  custom?: boolean;
+  id?: number | null;
+}
+
 export interface ResumeTemplateCatalog {
   templates: ResumeTemplateOption[];
   font_scales: ResumeFontScaleOption[];
+  /** 格式模板的可调参数清单与内置预设。 */
+  format_fields: ResumeFormatField[];
+  format_presets: ResumeFormatPreset[];
   /** 三个版式参数的默认值由后端下发，前端不写死——改默认值只改一处。 */
-  defaults: { template: string; font_scale: ResumeFontScale; page_limit: number };
+  defaults: {
+    template: string;
+    font_scale: ResumeFontScale;
+    page_limit: number;
+    format_name?: string;
+  };
   /** 系统里是否找到中文字体：决定「直接下载 PDF」是否可用。 */
   pdf_direct_available: boolean;
 }
 
-/** 版式参数：模板 + 页数 + 字号，三处（生成、预览、导出）共用。 */
+/**
+ * 版式参数：样式模板 + 格式模板 + 页数 + 字号。
+ *
+ * 拆成"样式"和"格式"两件事：样式决定长什么样（HTML/CSS），格式决定排得多密
+ * （行高、页边距、强调色）。用户常常只想换其中一个。
+ */
 export interface ResumeLayout {
   template: string;
+  format_name: string;
   page_limit: ResumePageLimit | number;
   font_scale: ResumeFontScale;
 }
@@ -116,6 +153,8 @@ export interface ResumeBrief {
   enhancement_enabled: boolean;
   enhancement_level: EnhancementLevel;
   template: string;
+  /** 格式模板（版式覆盖）名；空串表示用样式模板自带的版式。 */
+  format_name: string;
   page_limit: number;
   font_scale: ResumeFontScale;
   created_at: string;
@@ -150,6 +189,7 @@ export interface GenerateOptions {
   page_limit: number;
   font_scale: ResumeFontScale;
   template: string;
+  format_name: string;
   /** 用户自己补充的生成要求（≤2000 字），作为附加上下文交给模型。 */
   custom_instruction: string;
 }

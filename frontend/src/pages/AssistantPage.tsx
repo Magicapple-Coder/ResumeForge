@@ -2,9 +2,9 @@
 import { App, Input, Modal, Typography } from "antd";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { deleteAssistantMessage } from "../api/assistant";
 import AssistantComposer from "../features/assistant/components/AssistantComposer";
 import AssistantMessageList from "../features/assistant/components/AssistantMessageList";
-import AssistantSkillsHint from "../features/assistant/components/AssistantSkillsHint";
 import ConversationSidebar from "../features/assistant/components/ConversationSidebar";
 import type { StarterPrompt } from "../features/assistant/assistantTypes";
 import { positiveId } from "../features/assistant/assistantUtils";
@@ -13,7 +13,12 @@ import { useAssistantAttachments } from "../features/assistant/hooks/useAssistan
 import { useAssistantConversations } from "../features/assistant/hooks/useAssistantConversations";
 import { useAssistantSkills } from "../features/assistant/hooks/useAssistantSkills";
 import { useAssistantStream } from "../features/assistant/hooks/useAssistantStream";
-import type { AssistantConversationBrief, ReasoningEffort } from "../types";
+import type {
+  AssistantConversationBrief,
+  AssistantMessage,
+  AssistantQuotedMessage,
+  ReasoningEffort,
+} from "../types";
 
 export {
   AssistantMessageContent,
@@ -86,6 +91,37 @@ export default function AssistantPage() {
     removeAttachment,
     addAttachment,
   } = attachmentsState;
+  // 引用追问：右键消息「引用这条继续问」后出现，只对下一次提问有效。
+  const [quoted, setQuoted] = useState<AssistantQuotedMessage | null>(null);
+  const clearQuote = useCallback(() => setQuoted(null), []);
+
+  const quoteMessage = useCallback(
+    (target: AssistantMessage) => {
+      setQuoted({
+        id: target.id,
+        role: target.role,
+        // 与后端快照保持同样的截断长度，避免引用块里显示的长度前后不一致。
+        excerpt: target.content.trim().slice(0, 500) || "[附件消息]",
+      });
+      message.info("已引用这条消息，输入你的追问即可");
+    },
+    [message],
+  );
+
+  const removeMessage = useCallback(
+    async (target: AssistantMessage) => {
+      if (!activeId) return;
+      try {
+        await deleteAssistantMessage(activeId, target.id);
+        await loadDetail(activeId);
+        message.success("消息已删除");
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : "删除消息失败");
+      }
+    },
+    [activeId, loadDetail, message],
+  );
+
   const stream = useAssistantStream({
     activeIdRef,
     reloadConversations,
@@ -95,6 +131,8 @@ export default function AssistantPage() {
     attachmentReadsRef,
     attachmentsRef,
     mountedRef,
+    quotedMessageId: quoted?.id ?? null,
+    clearQuote,
     jobId,
     resumeId,
     includeProfile,
@@ -263,7 +301,6 @@ export default function AssistantPage() {
             </Typography.Title>
             <Typography.Text type="secondary">当前回复由「设置」中的模型配置提供。</Typography.Text>
           </div>
-          <AssistantSkillsHint skills={enabledSkills} onManage={openSkillWorkbench} />
         </header>
         <AssistantMessageList
           detail={detail}
@@ -283,6 +320,8 @@ export default function AssistantPage() {
           skillsLoaded={skillsLoaded}
           onChoosePrompt={chooseStarterPrompt}
           onManageSkills={openSkillWorkbench}
+          onQuote={quoteMessage}
+          onDeleteMessage={(target) => void removeMessage(target)}
         />
         <AssistantComposer
           content={content}
@@ -309,6 +348,8 @@ export default function AssistantPage() {
           onManageSkills={openSkillWorkbench}
           onAddAttachment={(file) => void addAttachment(file)}
           onRemoveAttachment={removeAttachment}
+          quoted={quoted}
+          onClearQuote={clearQuote}
           onSend={() => void send(content, () => setContent(""))}
           onStop={stop}
         />

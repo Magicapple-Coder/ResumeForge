@@ -89,8 +89,11 @@ export default function FavoritesPage() {
     </Tooltip>
   );
 
-  /** 收藏行的操作：星标按钮 + 「更多」菜单，右键也能唤起同一份菜单。 */
-  const actionsFor = (item: Job | ResumeBrief): RowActionItem[] =>
+  /**
+   * 「更多」菜单里**不放**「取消收藏」：行上那颗金色星标就是它，菜单里再来一项
+   * 只会让人怀疑两者是不是不同的操作。
+   */
+  const secondaryActions = (item: Job | ResumeBrief): RowActionItem[] =>
     kind === "jobs"
       ? [
           {
@@ -98,20 +101,21 @@ export default function FavoritesPage() {
             label: "打开岗位详情",
             onClick: () => navigate(`/jobs?job_id=${item.id}`),
           },
-          {
-            key: "unfavorite",
-            label: "取消收藏",
-            onClick: () => void removeJobFavorite(item as Job),
-          },
         ]
-      : [
-          { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(item.id) },
-          {
-            key: "unfavorite",
-            label: "取消收藏",
-            onClick: () => void removeResumeFavorite(item as ResumeBrief),
-          },
-        ];
+      : [{ key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(item.id) }];
+
+  /** 整行右键：鼠标不在星标上，补上取消收藏，一次右键就能做完。 */
+  const contextActions = (item: Job | ResumeBrief): RowActionItem[] => [
+    ...secondaryActions(item),
+    {
+      key: "unfavorite",
+      label: "取消收藏",
+      onClick: () =>
+        kind === "jobs"
+          ? void removeJobFavorite(item as Job)
+          : void removeResumeFavorite(item as ResumeBrief),
+    },
+  ];
 
   const jobColumns: ColumnsType<Job> = [
     {
@@ -137,7 +141,7 @@ export default function FavoritesPage() {
       render: (_, job) => (
         <Space size={4}>
           {favoriteButton(`job-${job.id}`, () => void removeJobFavorite(job))}
-          <RowActions more={actionsFor(job)} />
+          <RowActions more={secondaryActions(job)} />
         </Space>
       ),
     },
@@ -182,7 +186,7 @@ export default function FavoritesPage() {
       render: (_, resume) => (
         <Space size={4}>
           {favoriteButton(`resume-${resume.id}`, () => void removeResumeFavorite(resume))}
-          <RowActions more={actionsFor(resume)} />
+          <RowActions more={secondaryActions(resume)} />
         </Space>
       ),
     },
@@ -242,7 +246,7 @@ export default function FavoritesPage() {
               const item = items.find((entry) => String(entry.id) === rowKey);
               if (!item) return <tr {...props} />;
               return (
-                <RowContextMenu items={actionsFor(item)}>
+                <RowContextMenu items={contextActions(item)}>
                   <tr {...props} />
                 </RowContextMenu>
               );

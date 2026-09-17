@@ -45,6 +45,10 @@ class ChatMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text, default="")
+    # 「引用追问」指向被引用的那条消息。**刻意不加外键**：SQLite 不支持给已存在的表
+    # ADD COLUMN 带外键约束（Alembic 会走 ALTER 约束路径直接报错），而删消息时置空
+    # 由服务层负责——被引用的消息删掉后，引用它的那条要留下来，正文里的引用快照仍可读。
+    quoted_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attachments: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(16), default="complete")

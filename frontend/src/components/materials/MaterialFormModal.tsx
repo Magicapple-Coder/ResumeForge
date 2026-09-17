@@ -17,6 +17,7 @@ import {
 import { useEffect, useState } from "react";
 import type { Material, MaterialFile, MaterialPayload } from "../../types";
 import { MATERIAL_CATEGORIES } from "../../types";
+import FileDropZone from "../common/FileDropZone";
 import {
   IMAGE_MIME_BY_EXTENSION,
   MAX_ATTACHMENT_BYTES,
@@ -25,8 +26,8 @@ import {
 } from "../../utils/attachments";
 
 /** 与后端 MAX_MATERIAL_* 保持一致（服务端仍是权威校验）。 */
-const MAX_FILES = 4;
-const MAX_IMAGE_FILES = 2;
+const MAX_FILES = 10;
+const MAX_IMAGE_FILES = 4;
 const MAX_TEXT_FILE_CHARS = 100_000;
 
 const IMAGE_ACCEPT = Object.keys(IMAGE_MIME_BY_EXTENSION)
@@ -212,31 +213,48 @@ export default function MaterialFormModal({
           />
         </Form.Item>
         <Form.Item label={`附件（最多 ${MAX_FILES} 个，其中图片最多 ${MAX_IMAGE_FILES} 张）`}>
-          <Space wrap>
-            <Upload
-              accept={IMAGE_ACCEPT}
-              showUploadList={false}
-              beforeUpload={(file) => {
-                void addImage(file as File);
-                return Upload.LIST_IGNORE;
-              }}
-            >
-              <Button icon={<PictureOutlined />}>添加图片</Button>
-            </Upload>
-            <Upload
-              accept={TEXT_FILE_ACCEPT}
-              showUploadList={false}
-              beforeUpload={(file) => {
-                void addTextFile(file as File);
-                return Upload.LIST_IGNORE;
-              }}
-            >
-              <Button icon={<FileTextOutlined />}>添加文本文件</Button>
-            </Upload>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              PDF / Word 请把文字粘贴到正文，程序不保存原始文件
-            </Typography.Text>
-          </Space>
+          {/* 拖进来的文件按类型分流：图片走图片校验，其余按文本文件读取。 */}
+          <FileDropZone
+            accept={`${IMAGE_ACCEPT},${TEXT_FILE_ACCEPT}`}
+            disabled={files.length >= MAX_FILES}
+            hint="松开即可添加附件"
+            onFiles={(dropped) =>
+              dropped.forEach((file) => {
+                if (IMAGE_MIME_BY_EXTENSION[`${file.name.split(".").pop()?.toLowerCase()}`]) {
+                  void addImage(file);
+                } else {
+                  void addTextFile(file);
+                }
+              })
+            }
+            onRejected={() => message.error("只支持图片与文本文件（.txt/.md/.csv 等）")}
+          >
+            <Space wrap>
+              <Upload
+                accept={IMAGE_ACCEPT}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void addImage(file as File);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<PictureOutlined />}>添加图片</Button>
+              </Upload>
+              <Upload
+                accept={TEXT_FILE_ACCEPT}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void addTextFile(file as File);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<FileTextOutlined />}>添加文本文件</Button>
+              </Upload>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                也可以直接拖进来；PDF / Word 请把文字粘贴到正文，程序不保存原始文件
+              </Typography.Text>
+            </Space>
+          </FileDropZone>
           {files.length > 0 && (
             <div className="material-file-list">
               {files.map((item, index) => (

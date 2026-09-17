@@ -25,6 +25,9 @@ interface Options {
   includeProfile: boolean;
   webSearch: boolean;
   reasoningEffort: ReasoningEffort;
+  /** 当前引用的消息 id；发送时随请求带上，之后清空。 */
+  quotedMessageId: number | null;
+  clearQuote: () => void;
 }
 
 export function useAssistantStream({
@@ -41,6 +44,8 @@ export function useAssistantStream({
   includeProfile,
   webSearch,
   reasoningEffort,
+  quotedMessageId,
+  clearQuote,
 }: Options) {
   const [sending, setSending] = useState(false);
   const [sendingConversationId, setSendingConversationId] = useState<number | null>(null);
@@ -83,6 +88,8 @@ export function useAssistantStream({
       }));
       const optimisticAttachments = [...attachmentsRef.current];
       clearContent();
+      // 引用只对这一次提问有效：发出去就清掉，避免用户以为下一条也带着引用。
+      clearQuote();
       setPendingUserText(trimmedText || "[附件]");
       setPendingSentAt(new Date().toISOString());
       setPendingUserAttachments(optimisticAttachments);
@@ -105,6 +112,7 @@ export function useAssistantStream({
             include_profile: includeProfile,
             web_search: webSearch,
             reasoning_effort: reasoningEffort,
+            quoted_message_id: quotedMessageId,
             attachments: attachmentPayload,
           },
           (event: AssistantStreamEvent) => {
@@ -158,11 +166,13 @@ export function useAssistantStream({
       attachmentReadsRef,
       attachmentsRef,
       clearAttachments,
+      clearQuote,
       createConversation,
       includeProfile,
       jobId,
       loadDetail,
       mountedRef,
+      quotedMessageId,
       reasoningEffort,
       reloadConversations,
       resumeId,

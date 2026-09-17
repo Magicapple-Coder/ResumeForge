@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'nonce-{{ csp_nonce }}'; base-uri 'none'; form-action 'none'" />
+<title>{{ resume.name }} - {{ resume.job_intent }} - 简历</title>
+<style>
+  /* 极简模板：只有黑灰两色、没有色块与描边，靠字号层级区分结构。 */
+  :root {
+    --text: #17181a;
+    --muted: #767a80;
+    --line: #e6e6e6;
+    --accent: #17181a;
+    --accent-soft: #f4f4f4;
+    --bg: #ffffff;
+    --fs: {{ base_px }}px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: var(--fs);
+    line-height: 1.8;
+    width: 210mm;
+    height: {{ page_limit * 297 }}mm;
+    padding: 18mm;
+  }
+  .header { display: flex; align-items: flex-start; gap: calc(var(--fs) * 1.5); margin-bottom: calc(var(--fs) * 1.7); }
+  .header-main { flex: 1; min-width: 0; }
+  .header .name { font-size: calc(var(--fs) * 1.75); font-weight: 700; letter-spacing: 2px; }
+  .name-extra { font-size: calc(var(--fs) * 0.93); font-weight: 400; color: var(--muted); }
+  .header .intent { font-size: calc(var(--fs) * 1.0); color: var(--muted); margin-top: calc(var(--fs) * 0.28); }
+  .header .contact { font-size: calc(var(--fs) * 0.9); color: var(--muted); margin-top: calc(var(--fs) * 0.44); }
+  .header .contact span { margin-right: calc(var(--fs) * 1.14); }
+  .profile-photo { width: calc(var(--fs) * 5.4); height: calc(var(--fs) * 7); flex: 0 0 auto; object-fit: cover; filter: grayscale(100%); }
+  .section { margin-bottom: calc(var(--fs) * 1.45); }
+  .section-title { font-size: calc(var(--fs) * 1.0); font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); margin-bottom: calc(var(--fs) * 0.71); }
+  .entry { margin-bottom: calc(var(--fs) * 0.93); }
+  .entry-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--fs); }
+  .entry-head .title { font-size: calc(var(--fs) * 1.04); font-weight: 600; }
+  .entry-head .meta { font-size: calc(var(--fs) * 0.9); color: var(--muted); white-space: nowrap; }
+  .entry .sub { font-size: calc(var(--fs) * 0.9); color: var(--muted); margin: calc(var(--fs) * 0.14) 0 calc(var(--fs) * 0.28); }
+  ul { padding-left: calc(var(--fs) * 1.35); }
+  li { margin-bottom: calc(var(--fs) * 0.21); }
+  li::marker { color: var(--muted); }
+  .summary-text { font-size: calc(var(--fs) * 0.97); }
+  .skill-list { padding-left: 0; }
+  .skill-list li { list-style: none; display: inline-block; font-size: calc(var(--fs) * 0.93); color: var(--text); margin: 0 calc(var(--fs) * 1.0) calc(var(--fs) * 0.36) 0; }
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { width: 210mm; height: {{ page_limit * 297 }}mm; padding: 18mm; }
+    .section, .entry { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+{% include "_resume_sections.j2" %}
+{% include "_resume_fit_script.j2" %}
+</body>
+</html>

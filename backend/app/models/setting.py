@@ -1,7 +1,7 @@
 """运行时配置模型：当前配置与可切换的大模型配置记录。"""
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -29,10 +29,19 @@ class LLMConfigRecord(Base):
     temperature: Mapped[float] = mapped_column(Float, default=0.1)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
+    # 接口协议：openai = Chat Completions 兼容；anthropic = Claude Messages 原生。
+    api_style: Mapped[str] = mapped_column(String(16), default="openai", server_default="openai")
     # 高级调整（可选）：为空表示不发送该字段，沿用服务商默认值。
     top_p: Mapped[float | None] = mapped_column(Float, nullable=True)
     frequency_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
     presence_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repetition_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 停止词（最多 4 条）与 Anthropic 扩展思考预算。
+    stop: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    thinking_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 额外的请求体字段（原样合并，白名单过滤后生效），给长尾参数留出口。
+    extra_body: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

@@ -7,8 +7,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .extraction import MAX_EXTRACTION_IMAGE_COUNT
 from .profile import validate_photo_data_url
 
-MAX_MATERIAL_FILES = 4
-MAX_MATERIAL_IMAGE_FILES = 2
+# 一条资料能挂多少个附件。资料箱现在主要放找工作/面试相关的材料（JD 原文、面经、
+# 证书、投递记录），十条附件是够用的量级；真正的约束是下面的图片总量与请求体上限。
+MAX_MATERIAL_FILES = 10
+# 图片单独设上限：整份资料在一次请求里提交，图片体积远大于文字。4 张够放下证书正反面
+# 加两张截图；再多的图片应该拆成两条资料。
+MAX_MATERIAL_IMAGE_FILES = 4
+# 图片的 base64 总长度上限：默认请求体上限是 8 MB，图片占大头，这里先卡住总额度，
+# 免得用户一次性提交未压缩的大图后收到一个"请求体过大"的 413。张数放宽到 4 之后，
+# 这条才是真正的约束——4 张未压缩的大图会在这里被挡住，而不是让请求撞上体积上限。
+MAX_MATERIAL_IMAGE_CHARS = 6_000_000
 # 单份文本附件的上限（字符数）：与经历参考文件同量级，中文约占 300 KB。
 MAX_MATERIAL_FILE_TEXT_CHARS = 100_000
 MAX_MATERIAL_TITLE_CHARS = 256
@@ -61,9 +69,17 @@ class MaterialCreate(BaseModel):
         if not self.title and not self.content.strip() and not self.files and not self.url.strip():
             raise ValueError("请至少填写标题、内容、链接或添加附件")
         # 图片单独设上限：整份资料在一次请求里提交，图片体积远大于文字。
-        image_count = sum(1 for item in self.files if item.data_url)
-        if image_count > MAX_MATERIAL_IMAGE_FILES:
+        images = [item for item in self.files if item.data_url]
+        if len(images) > MAX_MATERIAL_IMAGE_FILES:
             raise ValueError(f"一份资料最多附加 {MAX_MATERIAL_IMAGE_FILES} 张图片")
+        total_image_chars = sum(len(item.data_url) for item in images)
+        if total_image_chars > MAX_MATERIAL_IMAGE_CHARS:
+            # 说清是"总量"超了而不是"张数"超了：张数上限是 4，用户加到第 4 张才被拒会
+            # 以为是张数问题，实际是这 4 张加起来太大。
+            raise ValueError(
+                f"图片总量过大（{len(images)} 张合计约 "
+                f"{total_image_chars // 1_000_000} MB），请减少张数或压缩后再上传"
+            )
         return self
 
 

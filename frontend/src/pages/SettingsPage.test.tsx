@@ -770,3 +770,46 @@ describe("SettingsPage skills", () => {
     expect(dialog).toHaveTextContent("提示词和它附带的知识文件都会被删除");
   });
 });
+
+describe("SettingsPage 高级参数往返", () => {
+  /** 后端 LLMConfig 的字段前端必须全部声明：接口是整份替换语义，缺一个就会在保存时被清掉。 */
+  const configured = {
+    ...llmConfig,
+    api_style: "anthropic" as const,
+    top_k: 40,
+    repetition_penalty: 1.05,
+    stop: ["###"],
+    thinking_budget: 4096,
+    extra_body: { chat_template_kwargs: { thinking: true } },
+  };
+
+  it("keeps the protocol and advanced parameters when saving", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue(configured);
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    // 此前这几个字段没进前端类型，保存时被 Pydantic 默认值填回：api_style 变回 openai，
+    // 配好的原生 Claude 被静默打回兼容模式，其余几个参数被清空。
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          api_style: "anthropic",
+          top_k: 40,
+          repetition_penalty: 1.05,
+          stop: ["###"],
+          thinking_budget: 4096,
+          extra_body: { chat_template_kwargs: { thinking: true } },
+        }),
+      ),
+    );
+  });
+});

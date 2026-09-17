@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'nonce-{{ csp_nonce }}'; base-uri 'none'; form-action 'none'" />
+<title>{{ resume.name }} - {{ resume.job_intent }} - 简历</title>
+<style>
+  /* 优雅模板：标题居中、细线分隔、衬线标题字，适合文商科与管理岗位。 */
+  :root {
+    --text: #22252b;
+    --muted: #7a7f88;
+    --line: #e0ddd6;
+    --accent: #1f3b4d;
+    --accent-soft: #f3f1ec;
+    --bg: #ffffff;
+    --fs: {{ base_px }}px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: var(--fs);
+    line-height: 1.76;
+    width: 210mm;
+    height: {{ page_limit * 297 }}mm;
+    padding: 16mm 18mm;
+  }
+  .header { display: flex; flex-direction: row-reverse; align-items: center; gap: calc(var(--fs) * 1.6); text-align: center; border-bottom: 1px solid var(--accent); padding-bottom: calc(var(--fs) * 0.9); margin-bottom: calc(var(--fs) * 1.5); }
+  .header-main { flex: 1; min-width: 0; }
+  .header .name { font-family: "Songti SC", "SimSun", Georgia, serif; font-size: calc(var(--fs) * 1.9); font-weight: 600; color: var(--accent); letter-spacing: 4px; }
+  .name-extra { font-size: calc(var(--fs) * 0.93); font-weight: 400; color: var(--muted); letter-spacing: 1px; }
+  .header .intent { font-size: var(--fs); color: var(--muted); margin-top: calc(var(--fs) * 0.36); letter-spacing: 2px; }
+  .header .contact { font-size: calc(var(--fs) * 0.9); color: var(--muted); margin-top: calc(var(--fs) * 0.5); }
+  .header .contact span { margin: 0 calc(var(--fs) * 0.57); }
+  .profile-photo { width: calc(var(--fs) * 5.6); height: calc(var(--fs) * 7.2); flex: 0 0 auto; object-fit: cover; border: 1px solid var(--line); }
+  .section { margin-bottom: calc(var(--fs) * 1.35); }
+  .section-title { font-family: "Songti SC", "SimSun", Georgia, serif; font-size: calc(var(--fs) * 1.11); font-weight: 600; color: var(--accent); letter-spacing: 3px; text-align: center; border-bottom: 1px solid var(--line); padding-bottom: calc(var(--fs) * 0.28); margin-bottom: calc(var(--fs) * 0.8); }
+  .entry { margin-bottom: calc(var(--fs) * 0.9); }
+  .entry-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--fs); }
+  .entry-head .title { font-size: calc(var(--fs) * 1.05); font-weight: 600; }
+  .entry-head .meta { font-size: calc(var(--fs) * 0.9); color: var(--muted); white-space: nowrap; }
+  .entry .sub { font-size: calc(var(--fs) * 0.9); color: var(--muted); margin: calc(var(--fs) * 0.14) 0 calc(var(--fs) * 0.28); }
+  ul { padding-left: calc(var(--fs) * 1.35); }
+  li { margin-bottom: calc(var(--fs) * 0.2); }
+  li::marker { color: var(--accent); }
+  .summary-text { font-size: var(--fs); }
+  .skill-list { padding-left: 0; text-align: center; }
+  .skill-list li { list-style: none; display: inline-block; color: var(--accent); background: var(--accent-soft); padding: 0 calc(var(--fs) * 0.71); margin: 0 calc(var(--fs) * 0.36) calc(var(--fs) * 0.43) 0; font-size: calc(var(--fs) * 0.93); }
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { width: 210mm; height: {{ page_limit * 297 }}mm; padding: 16mm 18mm; }
+    .section, .entry { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+{% include "_resume_sections.j2" %}
+{% include "_resume_fit_script.j2" %}
+</body>
+</html>

@@ -14,7 +14,9 @@ def test_web_search_results_are_cited_context_and_search_does_not_create_jobs(cl
     captured: dict = {}
     _successful_provider(monkeypatch, captured, "可参考来源。")
 
-    async def fake_search(query: str):
+    # 助手现在走多来源聚合（Bing + DuckDuckGo + 可选 SearXNG），所以替换的是聚合入口：
+    # 它的签名多一个搜索设置参数。
+    async def fake_search(query: str, _config):
         assert query == "寻找数据分析师校招"
         return [
             {
@@ -24,7 +26,7 @@ def test_web_search_results_are_cited_context_and_search_does_not_create_jobs(cl
             }
         ]
 
-    monkeypatch.setattr("app.api.assistant.search_web", fake_search)
+    monkeypatch.setattr("app.api.assistant.aggregate_search", fake_search)
     conversation = _create_conversation(client)
     response = client.post(
         f"/api/assistant/conversations/{conversation['id']}/messages",
@@ -50,10 +52,10 @@ def test_web_search_failure_degrades_without_claiming_sources(client, monkeypatc
     captured: dict = {}
     _successful_provider(monkeypatch, captured)
 
-    async def unavailable(_query: str):
+    async def unavailable(_query: str, _config):
         raise AssistantSearchError("联网搜索响应超时，请稍后重试")
 
-    monkeypatch.setattr("app.api.assistant.search_web", unavailable)
+    monkeypatch.setattr("app.api.assistant.aggregate_search", unavailable)
     conversation = _create_conversation(client)
     response = client.post(
         f"/api/assistant/conversations/{conversation['id']}/messages",

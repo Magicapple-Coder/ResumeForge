@@ -2,6 +2,7 @@
 
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   FolderOutlined,
   InboxOutlined,
@@ -29,7 +30,9 @@ import {
 } from "antd";
 import { useState } from "react";
 import type { AssistantConversationBrief, ConversationFilter } from "../../../types";
+import { conversationToMaterial, exportConversation } from "../../../api/assistant";
 import { copyText } from "../../../utils/clipboard";
+import { downloadBlob } from "../../../utils/download";
 import { formatDateTime } from "../../../utils/format";
 import { RowContextMenu, type RowActionItem } from "../../../components/common/RowActions";
 import { ConversationTitle } from "./AssistantMessageContent";
@@ -103,6 +106,29 @@ export default function ConversationSidebar({
     if (ok) message.success(`已复制会话 ID：${conversation.id}`);
   };
 
+  /** 导出为 Markdown 文件：内容含时间、附件名、助手做过的操作与参考来源。 */
+  const exportToFile = async (conversation: AssistantConversationBrief) => {
+    setActionMenuId(null);
+    try {
+      const { blob, filename } = await exportConversation(conversation.id, "md");
+      downloadBlob(blob, filename);
+      message.success("已导出为 Markdown 文件");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "导出失败");
+    }
+  };
+
+  /** 存进资料箱：之后可以让助手读它、总结成面试复盘或整理进个人资料。 */
+  const saveToMaterials = async (conversation: AssistantConversationBrief) => {
+    setActionMenuId(null);
+    try {
+      await conversationToMaterial(conversation.id, { title: conversation.title });
+      message.success("已存进资料箱");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "存进资料箱失败");
+    }
+  };
+
   /** 会话的完整操作清单：三点菜单与整行右键共用同一份。 */
   const actionsFor = (conversation: AssistantConversationBrief): RowActionItem[] => [
     {
@@ -143,6 +169,18 @@ export default function ConversationSidebar({
         setActionMenuId(null);
         onFork(conversation);
       },
+    },
+    {
+      key: "export",
+      label: "导出为 Markdown",
+      icon: <DownloadOutlined />,
+      onClick: () => void exportToFile(conversation),
+    },
+    {
+      key: "material",
+      label: "存进资料箱",
+      icon: <InboxOutlined />,
+      onClick: () => void saveToMaterials(conversation),
     },
     {
       key: "group",

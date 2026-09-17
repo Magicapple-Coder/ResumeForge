@@ -54,6 +54,32 @@ def _clear_datasets() -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_real_search_network(monkeypatch):
+    """测试默认**不许真的联网**。
+
+    联网搜索改成"多来源聚合 + 可选正文抓取"之后，只要有一条测试忘了替换网络层，整轮
+    测试就会去请求 Bing / DuckDuckGo / 结果页，表现为长时间卡住而不是失败——这是最难
+    排查的一类测试问题。这里把网络层统一换成"没有结果"，需要真实行为的测试自己再
+    patch 回来（那些 patch 在 fixture 之后生效，优先级更高）。
+    """
+
+    async def empty_results(*_args, **_kwargs):
+        return []
+
+    async def empty_page(*_args, **_kwargs):
+        return ""
+
+    async def empty_rss(_query: str) -> bytes:
+        return b"<rss><channel></channel></rss>"
+
+    monkeypatch.setattr("app.services.search.aggregate.bing_search", empty_results)
+    monkeypatch.setattr("app.services.search.aggregate.search_duckduckgo", empty_results)
+    monkeypatch.setattr("app.services.search.aggregate.search_searxng", empty_results)
+    monkeypatch.setattr("app.services.search.aggregate.fetch_page_text", empty_page)
+    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", empty_rss)
+
+
+@pytest.fixture(autouse=True)
 def clean_db():
     """每个用例前重建表结构，保证用例之间完全隔离。"""
     _reset_to_test_database()

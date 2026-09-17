@@ -336,10 +336,33 @@ class OpenAICompatProvider(BaseLLMProvider):
 
     def _apply_advanced_parameters(self, payload: dict) -> None:
         """发送用户在「高级调整」里显式开启的参数；未开启（None）就不发送。"""
-        for key in ("top_p", "frequency_penalty", "presence_penalty", "seed"):
+        for key in (
+            "top_p",
+            "frequency_penalty",
+            "presence_penalty",
+            "seed",
+            "top_k",
+            "repetition_penalty",
+        ):
             value = getattr(self.config, key, None)
             if value is not None:
                 payload[key] = value
+        stop = getattr(self.config, "stop", None)
+        if stop:
+            payload["stop"] = list(stop)
+        # Claude 系（含兼容网关）的扩展思考：0 明确关闭，正数给预算。
+        thinking_budget = getattr(self.config, "thinking_budget", None)
+        if thinking_budget is not None:
+            payload["thinking"] = (
+                {"type": "enabled", "budget_tokens": thinking_budget}
+                if thinking_budget > 0
+                else {"type": "disabled"}
+            )
+        # 额外请求体：长尾参数的出口。保留键已在校验层拦掉，这里原样合并。
+        extra = getattr(self.config, "extra_body", None)
+        if isinstance(extra, dict):
+            for key, value in extra.items():
+                payload.setdefault(key, value)
 
     def _apply_request_overrides(self, payload: dict) -> None:
         """合并单次请求的覆盖参数（白名单 + 非空值）。"""

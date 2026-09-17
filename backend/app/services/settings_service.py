@@ -11,11 +11,12 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..models.setting import AppSetting, LLMConfigRecord
-from ..schemas.setting import LLMConfig, LLMConfigRecordCreate, LLMConfigRecordOut
+from ..schemas.setting import LLMConfig, LLMConfigRecordCreate, LLMConfigRecordOut, SearchConfig
 
 logger = logging.getLogger(__name__)
 
 _LLM_CONFIG_KEY = "llm_config"
+_SEARCH_CONFIG_KEY = "search_config"
 API_KEY_MASK = "********"
 _RECORD_API_KEY_PREFIX = f"{API_KEY_MASK}:record:"
 
@@ -162,3 +163,29 @@ def delete_llm_config_record(db: Session, record_id: int) -> None:
     if row is not None:
         db.delete(row)
         db.commit()
+
+
+# ===== 联网搜索设置 =====
+
+
+def get_search_config(db: Session) -> SearchConfig:
+    """读取搜索设置；脏数据或缺失时退回默认（Bing + DuckDuckGo）。"""
+    row = db.get(AppSetting, _SEARCH_CONFIG_KEY)
+    if row is None:
+        return SearchConfig()
+    try:
+        return SearchConfig.model_validate(json.loads(row.value))
+    except (json.JSONDecodeError, ValidationError):
+        logger.warning("联网搜索设置数据损坏，已重置为默认值")
+        return SearchConfig()
+
+
+def save_search_config(db: Session, config: SearchConfig) -> SearchConfig:
+    row = db.get(AppSetting, _SEARCH_CONFIG_KEY)
+    serialized = json.dumps(config.model_dump(), ensure_ascii=False)
+    if row is None:
+        db.add(AppSetting(key=_SEARCH_CONFIG_KEY, value=serialized))
+    else:
+        row.value = serialized
+    db.commit()
+    return config

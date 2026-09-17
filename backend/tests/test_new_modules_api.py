@@ -69,20 +69,29 @@ def test_materials_crud_and_category_listing(client):
     assert client.get(f"/api/materials/{material_id}").status_code == 404
 
 
-def test_material_requires_content_and_caps_images(client):
+def test_material_requires_content_and_caps_attachments(client):
     empty = client.post("/api/materials", json={"title": "", "content": "", "files": []})
     assert empty.status_code == 422
-    # 一份资料最多 2 张图片（图片体积远大于文字，是一次请求里的主要开销）。
-    too_many = client.post(
-        "/api/materials",
-        json={
-            "title": "三张图",
-            "files": [
-                {"name": f"{index}.png", "data_url": PHOTO_PNG} for index in range(3)
-            ],
-        },
-    )
-    assert too_many.status_code == 422
+
+    from app.schemas.material import MAX_MATERIAL_FILES, MAX_MATERIAL_IMAGE_FILES
+
+    def upload(count: int, *, image: bool) -> int:
+        files = [
+            {
+                "name": f"{index}.png" if image else f"{index}.txt",
+                "data_url": PHOTO_PNG if image else "",
+                "text": "" if image else "正文",
+            }
+            for index in range(count)
+        ]
+        return client.post("/api/materials", json={"title": "上限测试", "files": files}).status_code
+
+    # 张数上限之内可用，超过才拒绝。
+    assert upload(MAX_MATERIAL_IMAGE_FILES, image=True) == 201
+    assert upload(MAX_MATERIAL_IMAGE_FILES + 1, image=True) == 422
+    # 文本附件同样有上限，且额度比图片大（文字体积小得多）。
+    assert upload(MAX_MATERIAL_FILES, image=False) == 201
+    assert upload(MAX_MATERIAL_FILES + 1, image=False) == 422
 
 
 # ===== 备选岗位 =====
@@ -227,11 +236,22 @@ def test_resume_template_catalog_and_layout_update(client):
     catalog = client.get("/api/resumes/templates")
     assert catalog.status_code == 200
     body = catalog.json()
-    assert {item["name"] for item in body["templates"]} == {"classic", "modern", "compact"}
+    names = {item["name"] for item in body["templates"]}
+    # 内置样式模板（自制模板以 custom=True 追加在后面，未创建时应为空）。
+    assert {"classic", "modern", "compact", "elegant", "technical", "minimal"} <= names
+    assert [item for item in body["templates"] if item["custom"]] == []
     assert {item["name"] for item in body["font_scales"]} == {"small", "standard", "large"}
-    # 三个版式参数的默认值都由后端下发：生成弹窗每次打开按它重置，
+    # 格式模板的参数清单与内置预设也要一起下发：生成弹窗与工作台共用这一份。
+    assert {item["key"] for item in body["format_fields"]} >= {"accent", "line_height", "page_padding"}
+    assert "compact" in {item["name"] for item in body["format_presets"]}
+    # 四个版式参数的默认值都由后端下发：生成弹窗每次打开按它重置，
     # 前端自行写死的话，改默认值就会变成两处不一致。
-    assert body["defaults"] == {"template": "classic", "font_scale": "standard", "page_limit": 1}
+    assert body["defaults"] == {
+        "template": "classic",
+        "font_scale": "standard",
+        "page_limit": 1,
+        "format_name": "",
+    }
     # 有没有中文字体决定「直接下载 PDF」是否可用，接口必须如实报告。
     assert isinstance(body["pdf_direct_available"], bool)
 

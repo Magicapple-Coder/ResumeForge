@@ -7,12 +7,14 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   SettingOutlined,
+  SolutionOutlined,
   StarOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Skeleton, Tooltip, Typography } from "antd";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import ExitAppButton from "./components/common/ExitAppButton";
 import { APP_NAME, APP_NAME_EN, GITHUB_REPO } from "./config";
 import { consumeFirstVisitGuide } from "./utils/userGuide";
 
@@ -24,6 +26,7 @@ const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
 const SkillsPage = lazy(() => import("./pages/SkillsPage"));
+const InterviewPage = lazy(() => import("./pages/InterviewPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UserGuideModal = lazy(() => import("./components/UserGuideModal"));
 
@@ -35,8 +38,9 @@ const MENU_ITEMS = [
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
   { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
   { key: "/assistant", icon: <MessageOutlined />, label: "求职助手" },
+  { key: "/interview", icon: <SolutionOutlined />, label: "模拟面试" },
   { key: "/materials", icon: <InboxOutlined />, label: "资料箱" },
-  { key: "/skills", icon: <ToolOutlined />, label: "技能工作台" },
+  { key: "/skills", icon: <ToolOutlined />, label: "工作台" },
   { key: "/profile", icon: <ProfileOutlined />, label: "我的资料" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
@@ -79,17 +83,20 @@ function MainLayout() {
             onClick={({ key }) => navigate(key)}
           />
           <div className="app-sider-footer">
-            <Tooltip title="使用指南" placement="right">
-              <Button
-                className="app-guide-button"
-                type="text"
-                icon={<QuestionCircleOutlined />}
-                onClick={() => setGuideOpen(true)}
-                aria-label="使用指南"
-              >
-                <span className="app-guide-label">使用指南</span>
-              </Button>
-            </Tooltip>
+            <div className="app-sider-footer-actions">
+              <Tooltip title="使用指南" placement="right">
+                <Button
+                  className="app-guide-button"
+                  type="text"
+                  icon={<QuestionCircleOutlined />}
+                  onClick={() => setGuideOpen(true)}
+                  aria-label="使用指南"
+                >
+                  <span className="app-guide-label">使用指南</span>
+                </Button>
+              </Tooltip>
+              <ExitAppButton />
+            </div>
           </div>
         </Sider>
         <Layout className="app-main">
@@ -135,6 +142,7 @@ export default function App() {
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/materials" element={<MaterialsPage />} />
         <Route path="/skills" element={<SkillsPage />} />
+        <Route path="/interview" element={<InterviewPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

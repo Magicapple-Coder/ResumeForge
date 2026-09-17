@@ -7,11 +7,46 @@ import type {
   AssistantStreamEvent,
   ReasoningEffort,
 } from "../types";
-import { request } from "./client";
+import type { Material } from "../types";
+import { ApiError, getFilenameFromDisposition, request, extractError } from "./client";
 import { consumeSSE } from "./stream";
 
 export function listAssistantConversations(): Promise<AssistantConversationBrief[]> {
   return request("/assistant/conversations?limit=100");
+}
+
+/** 导出格式：Markdown（可读可贴）、纯文本（去掉标记）、JSON（结构化，便于再加工）。 */
+export type ConversationExportFormat = "md" | "txt" | "json";
+
+/** 导出对话为文件；返回 blob 与服务端建议的文件名。 */
+export async function exportConversation(
+  id: number,
+  format: ConversationExportFormat = "md",
+): Promise<{ blob: Blob; filename: string }> {
+  // 裸 fetch：响应是文件内容，不是 JSON。
+  const resp = await fetch(`/api/assistant/conversations/${id}/export?format=${format}`);
+  if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
+  return {
+    blob: await resp.blob(),
+    filename:
+      getFilenameFromDisposition(resp.headers.get("Content-Disposition")) ??
+      `conversation.${format}`,
+  };
+}
+
+/**
+ * 把一段对话存进资料箱。
+ *
+ * 存进去的是一份可读的对话记录，助手之后能读它、总结它，或按用户要求整理进个人资料。
+ */
+export function conversationToMaterial(
+  id: number,
+  payload: { title?: string; category?: string; note?: string } = {},
+): Promise<Material> {
+  return request(`/assistant/conversations/${id}/to-material`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
@@ -73,6 +108,17 @@ export function deleteAssistantConversation(id: number): Promise<void> {
   return request(`/assistant/conversations/${id}`, { method: "DELETE" });
 }
 
+/**
+ * 删除单条消息。
+ *
+ * 引用它的消息不会被级联删除：引用块是快照，删掉原消息后引用仍然可读。
+ */
+export function deleteAssistantMessage(conversationId: number, messageId: number): Promise<void> {
+  return request(`/assistant/conversations/${conversationId}/messages/${messageId}`, {
+    method: "DELETE",
+  });
+}
+
 export function sendAssistantMessage(
   id: number,
   payload: {
@@ -82,6 +128,8 @@ export function sendAssistantMessage(
     include_profile?: boolean;
     web_search?: boolean;
     reasoning_effort?: ReasoningEffort;
+    /** 引用某条历史消息追问；被引用内容的快照会存进消息里。 */
+    quoted_message_id?: number | null;
     attachments?: AssistantAttachmentInput[];
   },
   onEvent: (event: AssistantStreamEvent) => void,

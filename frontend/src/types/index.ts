@@ -8,6 +8,8 @@ export * from "./common";
 export * from "./profile";
 export * from "./job";
 export * from "./resume";
+export * from "./resumeTemplate";
+export * from "./interview";
 export * from "./assistant";
 export * from "./attachment";
 export * from "./skill";

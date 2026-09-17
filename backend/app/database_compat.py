@@ -33,6 +33,7 @@ SQLITE_REQUIRED_COLUMNS = {
         "enhancement_enabled": "BOOLEAN NOT NULL DEFAULT 0",
         "enhancement_level": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
         "template": "VARCHAR(32) NOT NULL DEFAULT 'classic'",
+        "format_name": "VARCHAR(64) NOT NULL DEFAULT ''",
         "page_limit": "INTEGER NOT NULL DEFAULT 1",
         "font_scale": "VARCHAR(16) NOT NULL DEFAULT 'standard'",
         "custom_instruction": "TEXT NOT NULL DEFAULT ''",
@@ -43,10 +44,19 @@ SQLITE_REQUIRED_COLUMNS = {
         "archived": "BOOLEAN NOT NULL DEFAULT 0",
         "group_name": "VARCHAR(64) NOT NULL DEFAULT ''",
     },
+    "chat_message": {
+        "quoted_message_id": "INTEGER",
+    },
     "llm_config_record": {
         "top_p": "FLOAT",
         "frequency_penalty": "FLOAT",
         "presence_penalty": "FLOAT",
         "seed": "INTEGER",
+        "api_style": "VARCHAR(16) NOT NULL DEFAULT 'openai'",
+        "top_k": "INTEGER",
+        "repetition_penalty": "FLOAT",
+        "stop": "TEXT NOT NULL DEFAULT '[]'",
+        "thinking_budget": "INTEGER",
+        "extra_body": "TEXT NOT NULL DEFAULT '{}'",
     },
 }

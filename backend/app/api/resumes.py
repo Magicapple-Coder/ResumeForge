@@ -39,14 +39,21 @@ from ..services.pdf_exporter import ResumePDFError, build_resume_pdf, font_avail
 from ..services.profile_service import get_profile_detail, to_profile_out
 from ..services.resume_generator import ResumeGenerator
 from ..services.resume_suggestions import generate_suggestions
+from ..services.resume_template_store import (
+    custom_format_options,
+    custom_template_options,
+    resolve_format_config,
+    resolve_style_template,
+)
 from ..services.resume_templates import (
     DEFAULT_FONT_SCALE,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_TEMPLATE,
+    FORMAT_PRESETS,
     font_scale_options,
     font_scale_spec,
-    template_options,
-    template_spec,
+    format_field_options,
+    template_options_with_custom,
 )
 from ..services.settings_service import get_llm_config
 
@@ -69,19 +76,43 @@ PDF_PAGE_LIMIT_HEADER = "X-Resume-Page-Limit"
 
 
 @router.get("/templates")
-def read_resume_templates():
-    """可选的简历模板与字号档位（生成与预览页共用这一份清单）。
+def read_resume_templates(db: Session = Depends(get_db)):
+    """可选的简历模板、格式模板与字号档位（生成、预览、工作台共用这一份清单）。
 
     必须定义在 ``/{resume_id}`` 之前：否则 ``templates`` 会被当成记录 id 匹配，
     请求会以 422 结束。
     """
     return {
-        "templates": template_options(),
+        "templates": template_options_with_custom(custom_template_options(db)),
         "font_scales": font_scale_options(),
+        "format_fields": format_field_options(),
+        "format_presets": [
+            {
+                "name": item["name"],
+                "label": item["label"],
+                "description": item["description"],
+                "config": item["config"],
+                "custom": False,
+                "id": None,
+            }
+            for item in FORMAT_PRESETS
+        ]
+        + [
+            {
+                "name": item["name"],
+                "label": item["label"],
+                "description": item["description"],
+                "config": item["config"],
+                "custom": True,
+                "id": item["id"],
+            }
+            for item in custom_format_options(db)
+        ],
         "defaults": {
             "template": DEFAULT_TEMPLATE,
             "font_scale": DEFAULT_FONT_SCALE,
             "page_limit": DEFAULT_PAGE_LIMIT,
+            "format_name": "",
         },
         "pdf_direct_available": font_available(),
     }
@@ -90,6 +121,28 @@ def read_resume_templates():
 def _format_sse(payload: dict) -> str:
     """把事件转成 SSE 数据帧。"""
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _resolved_format_name(db: Session, name: str) -> str:
+    """格式模板名只有在能解析出配置时才存进记录；否则存空串（用模板自带版式）。"""
+    key = (name or "").strip()
+    if not key:
+        return ""
+    return key if resolve_format_config(db, key) else ""
+
+
+def _resolved_style_name(db: Session, name: str) -> str:
+    """样式模板名：内置的存规范化名字，自制模板存**用户起的名字**。
+
+    不能用 ``template_spec()`` 的结果：它会把查不到的名字悄悄换成默认内置模板，于是
+    "用自制模板生成"的记录里存的是 classic，重新打开预览就变回内置样式——用户以为
+    自己选的模板没生效。
+    """
+    key = (name or "").strip()
+    if not key:
+        return DEFAULT_TEMPLATE
+    builtin_name, user_html = resolve_style_template(db, key)
+    return key if user_html else builtin_name
 
 
 @router.post("/generate")
@@ -151,6 +204,7 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
                         payload.options.enhancement_level,
                         requested_title=payload.title,
                         template=payload.options.template,
+                        format_name=payload.options.format_name,
                         page_limit=payload.options.page_limit,
                         font_scale=payload.options.font_scale,
                         custom_instruction=payload.options.custom_instruction,
@@ -184,6 +238,7 @@ def _save_record(
     source: str = "ai",
     requested_title: str = "",
     template: str = DEFAULT_TEMPLATE,
+    format_name: str = "",
     page_limit: int = 1,
     font_scale: str = DEFAULT_FONT_SCALE,
     custom_instruction: str = "",
@@ -215,7 +270,13 @@ def _save_record(
         model=model,
         enhancement_enabled=enhancement_enabled,
         enhancement_level=enhancement_level,
-        template=template_spec(template)["name"],
+        # 与 PATCH 路径同一套解析：自制样式模板要按**名字**存下来，不能拿 template_spec()
+        # 去归一——那个函数会把不认识的模板名悄悄换成 classic，于是用户用自制模板生成的
+        # 简历一重开就变回内置样式。内置模板仍然只存规范化后的名字。
+        template=_resolved_style_name(db, template),
+        # 格式模板按名字存一份：生成时选的版式要跟着记录走，否则重新打开预览/导出会
+        # 悄悄退回模板自带版式（用户会以为"我选的版式没生效"）。
+        format_name=_resolved_format_name(db, format_name),
         page_limit=normalize_page_limit(page_limit),
         font_scale=font_scale_spec(font_scale)["name"],
         custom_instruction=custom_instruction.strip()[:2000],
@@ -286,6 +347,7 @@ def _to_resume_out(record: ResumeRecord) -> ResumeOut:
         enhancement_enabled=record.enhancement_enabled,
         enhancement_level=record.enhancement_level,
         template=record.template or DEFAULT_TEMPLATE,
+        format_name=record.format_name or "",
         page_limit=record.page_limit or 1,
         font_scale=record.font_scale or DEFAULT_FONT_SCALE,
         created_at=record.created_at,
@@ -447,7 +509,10 @@ def update_resume_layout(
     record = db.get(ResumeRecord, resume_id)
     if record is None:
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
-    record.template = template_spec(payload.template)["name"]
+    # 样式模板名按"内置优先，其次用户自制"解析；格式模板单独存一份名字，渲染时再解析成
+    # 具体的覆盖配置——这样用户改了格式模板，引用它的简历跟着变。
+    record.template = _resolved_style_name(db, payload.template)
+    record.format_name = _resolved_format_name(db, payload.format_name)
     record.page_limit = normalize_page_limit(payload.page_limit)
     record.font_scale = font_scale_spec(payload.font_scale)["name"]
     db.commit()
@@ -456,14 +521,20 @@ def update_resume_layout(
 
 
 @router.post("/render")
-def render_resume(payload: ResumeRenderRequest):
-    """渲染为 HTML（生成完成后、未落库前的即时预览也走这里）。"""
+def render_resume(payload: ResumeRenderRequest, db: Session = Depends(get_db)):
+    """渲染为 HTML（生成完成后、未落库前的即时预览也走这里）。
+
+    传入的模板名既可以是内置模板，也可以是用户自制的样式模板；格式模板同理。
+    """
+    template_name, template_html = resolve_style_template(db, payload.template)
     return Response(
         render_html(
             payload.content,
-            template=payload.template,
+            template=template_name,
             page_limit=payload.page_limit,
             font_scale=payload.font_scale,
+            format_config=resolve_format_config(db, payload.format_name),
+            template_html=template_html,
         ),
         media_type="text/html; charset=utf-8",
     )
@@ -485,12 +556,15 @@ def export_resume(
     elif format == "md":
         content, media_type = export_markdown(resume), _EXPORT_FORMATS["md"]
     elif format == "html":
+        export_template, export_html = resolve_style_template(db, record.template)
         content, media_type = (
             render_html(
                 resume,
-                template=record.template,
+                template=export_template,
                 page_limit=record.page_limit,
                 font_scale=record.font_scale,
+                format_config=resolve_format_config(db, record.format_name),
+                template_html=export_html,
             ),
             _EXPORT_FORMATS["html"],
         )
@@ -498,9 +572,10 @@ def export_resume(
         try:
             pdf = build_resume_pdf(
                 resume,
-                template=record.template,
+                template=resolve_style_template(db, record.template)[0],
                 page_limit=record.page_limit,
                 font_scale=record.font_scale,
+                format_config=resolve_format_config(db, record.format_name),
             )
         except ResumePDFError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -162,8 +162,481 @@
   font-size: 12px;
 }
 
+.assistant-reasoning-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.assistant-reasoning-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+}
+
 .assistant-reasoning-select {
   min-width: 84px;
+}
+
+/* 技能下拉：用真实勾选框表达"已启用"（菜单自带高亮在浅色主题下几乎看不出来）。 */
+.assistant-skill-menu-hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.assistant-skill-option {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.assistant-skill-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.assistant-skill-option-name {
+  font-weight: 500;
+}
+
+.assistant-skill-option-desc {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  white-space: normal;
+}
+
+/* ===== 模拟面试 ===== */
+.interview-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 16px;
+}
+
+.interview-room {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.interview-room-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.interview-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.interview-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+/* 面试官在左、候选人在右：一眼看出谁在说话。 */
+.interview-message--interviewer {
+  align-self: flex-start;
+}
+
+.interview-message--me {
+  align-self: flex-end;
+  background: #eef4fb;
+  border-color: #d6e4f2;
+}
+
+.interview-message-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.interview-message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.interview-feedback {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #f0b429;
+  background: #fffaeb;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: #5c4406;
+  white-space: pre-wrap;
+}
+
+.interview-note {
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.interview-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interview-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.interview-report-score {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 8px;
+}
+
+.interview-dimension-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interview-report-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px 20px;
+  margin: 8px 0 12px;
+}
+
+.interview-report-lists ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #4b5563;
+  line-height: 1.8;
+}
+
+/* 引用追问：消息里的引用块与输入框上方的引用条，都用左侧竖线表示"这是被引用的内容"。 */
+.assistant-quoted-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.assistant-quoted-label {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.assistant-quoted-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-quote-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 6px 6px 10px;
+  border-left: 3px solid #16365c;
+  background: #f1f5f9;
+  border-radius: 0 6px 6px 0;
+}
+
+.assistant-quote-chip-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #16365c;
+  white-space: nowrap;
+}
+
+.assistant-quote-chip-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 工作台：简历模板 ===== */
+.workbench-page .ant-tabs {
+  margin-top: 4px;
+}
+
+.template-chip {
+  margin-bottom: 4px;
+}
+
+/* 包住"导入 HTML"按钮的 label：让点击落到里面的按钮上。 */
+.template-upload-button {
+  display: inline-flex;
+}
+
+.style-template-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .style-template-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.style-template-code textarea {
+  font-family: Consolas, "Cascadia Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.style-template-preview,
+.template-preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f5f6f8;
+  overflow: hidden;
+}
+
+.style-template-preview {
+  min-height: 420px;
+}
+
+/* A4 逻辑宽度 794px，缩放到列宽里显示完整一页。 */
+.style-template-frame {
+  width: 794px;
+  height: 1123px;
+  border: 0;
+  background: #ffffff;
+  transform: scale(0.54);
+  transform-origin: top center;
+}
+
+.template-preview-frame {
+  width: 100%;
+  height: min(72vh, 900px);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.format-color-input {
+  width: 48px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+/* 模板一览：每个模板一列缩略图 + 说明，缩略图是真的渲染结果（缩放到卡片里）。 */
+.template-gallery-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.template-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.template-gallery-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.template-gallery-card.is-active {
+  border-color: #16365c;
+  box-shadow: 0 0 0 2px rgba(22, 54, 92, 0.12);
+}
+
+.template-gallery-preview {
+  position: relative;
+  height: 260px;
+  background: #f5f6f8;
+  overflow: hidden;
+}
+
+/* A4 页面按缩放后的大小渲染：iframe 逻辑宽度是 794px，这里用 transform 缩到卡片宽度。 */
+.template-gallery-frame {
+  width: 794px;
+  height: 1123px;
+  border: 0;
+  transform: scale(0.36);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.template-gallery-loading,
+.template-gallery-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.template-gallery-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.template-gallery-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.template-gallery-desc {
+  font-size: 12px;
+  min-height: 32px;
+}
+
+/* 多份招聘信息确认面板：每份一张小卡片，勾选框在标题左侧。 */
+.multi-draft-list {
+  padding: 4px 0;
+}
+
+.multi-draft-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.multi-draft-title {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.multi-draft-excerpt {
+  margin: 6px 0 0 !important;
+  font-size: 12px;
+}
+
+.multi-draft-warning {
+  font-size: 12px;
+}
+
+/* 拖拽导入容器：默认不改变布局，只在拖拽中显示覆盖提示。 */
+.file-drop-zone {
+  position: relative;
+}
+
+.file-drop-overlay {
+  position: absolute;
+  inset: -6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #7ba7d0;
+  border-radius: 8px;
+  background: rgba(234, 242, 250, 0.92);
+  pointer-events: none;
+}
+
+.file-drop-overlay-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #16365c;
+}
+
+/* 简历预览页脚：按钮多时换行，而不是把最后一个按钮挤出弹窗。 */
+.generate-preview-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.generate-preview-footer .ant-space {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+/* 侧栏底部的退出入口：低调但可点，和"使用指南"并排。 */
+.app-sider-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.app-exit-button {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.app-exit-button:hover {
+  color: #b42318 !important;
+}
+
+/* 退出后盖住整个界面：此时所有接口都不可用，继续操作只会到处报错。 */
+.app-exited-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
 }
 
 /* ===== 简历版式控件 ===== */
@@ -183,11 +656,16 @@
 
 /* ===== 个人照片面板 ===== */
 
+/* 照片一行横排、可左右滑动：竖着堆成两行会把「我的资料」右栏撑得很长（截图反馈）。 */
 .profile-photo-thumbs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-top: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
 }
 
 .profile-photo-thumb {
@@ -195,6 +673,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
 }
 
 .profile-photo-thumb-button {

@@ -17,6 +17,7 @@ from ..schemas.setting import (
     LLMModelsResult,
     LLMTestRequest,
     LLMTestResult,
+    SearchConfig,
 )
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
@@ -24,11 +25,13 @@ from ..services.llm.model_catalog import list_available_models
 from ..services.settings_service import (
     delete_llm_config_record,
     get_llm_config,
+    get_search_config,
     list_llm_config_records,
     mask_llm_config,
     resolve_llm_config_api_key,
     save_llm_config,
     save_llm_config_record,
+    save_search_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +49,10 @@ def _is_loopback_request(request: Request) -> bool:
         return False
     if address.is_loopback:
         return True
-    return address.ipv4_mapped is not None and address.ipv4_mapped.is_loopback
+    # ipv4_mapped 只存在于 IPv6 地址对象上：直接用属性访问会在"IPv4 且非回环"时
+    # 抛 AttributeError，本该是 403 的请求变成 500。
+    mapped = getattr(address, "ipv4_mapped", None)
+    return mapped is not None and mapped.is_loopback
 
 
 @router.get("/llm/records", response_model=list[LLMConfigRecordOut])
@@ -96,6 +102,17 @@ def write_llm_config(payload: LLMConfig, db: Session = Depends(get_db)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return mask_llm_config(db, saved)
+
+
+@router.get("/search", response_model=SearchConfig)
+def read_search_settings(db: Session = Depends(get_db)):
+    """联网搜索设置：来源、自建 SearXNG 地址、正文抓取条数与结果上限。"""
+    return get_search_config(db)
+
+
+@router.put("/search", response_model=SearchConfig)
+def write_search_settings(payload: SearchConfig, db: Session = Depends(get_db)):
+    return save_search_config(db, payload)
 
 
 @router.post("/llm/models", response_model=LLMModelsResult)

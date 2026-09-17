@@ -33,6 +33,9 @@ class ResumeRecord(Base):
     enhancement_level: Mapped[str] = mapped_column(String(16), default="balanced")
     # 生成时选择的版式参数：重新预览/导出时按同一套参数渲染，改参数不必重新生成。
     template: Mapped[str] = mapped_column(String(32), default="classic", server_default="classic")
+    # 格式模板：一组版式覆盖的名字（内置预设名或用户自制格式模板名）；空串表示用样式
+    # 模板自带的版式。
+    format_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
     page_limit: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     font_scale: Mapped[str] = mapped_column(
         String(16), default="standard", server_default="standard"

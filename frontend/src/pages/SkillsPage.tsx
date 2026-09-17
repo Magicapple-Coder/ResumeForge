@@ -15,6 +15,7 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import { deleteSkill, importSkill, listSkills, setSkillEnabled } from "../api/skill";
 import { RowActions, RowContextMenu } from "../components/common/RowActions";
 import SkillEditorModal, { type SkillDraft } from "../components/skills/SkillEditorModal";
+import TemplateWorkbench from "../components/templates/TemplateWorkbench";
 import type { AssistantSkill } from "../types";
 import { formatDateTime } from "../utils/format";
 
@@ -83,6 +85,7 @@ const ACCEPT = ".md,.zip";
 
 export default function SkillsPage() {
   const { message } = App.useApp();
+  const [tab, setTab] = useState<"skills" | "templates">("skills");
   const [skills, setSkills] = useState<AssistantSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -237,96 +240,115 @@ export default function SkillsPage() {
   ];
 
   return (
-    <div className="skills-page">
-      <div className="skills-page-header">
+    <div className="workbench-page">
+      <div className="profile-page-header">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            技能工作台
+            工作台
           </Typography.Title>
           <Typography.Text type="secondary">
-            把"你希望助手长期怎么做"写成技能，之后每次对话都会按它执行。
+            技能决定助手怎么回答，简历模板决定简历长什么样——两件事都在这里管。
           </Typography.Text>
         </div>
-        <Space>
-          <Upload
-            accept={ACCEPT}
-            showUploadList={false}
-            disabled={importing}
-            beforeUpload={(file) => {
-              void importFile(file as File);
-              return Upload.LIST_IGNORE;
-            }}
-          >
-            <Button icon={<UploadOutlined />} loading={importing}>
-              导入技能（.md / .zip）
+        {tab === "skills" && (
+          <Space>
+            <Upload
+              accept={ACCEPT}
+              showUploadList={false}
+              disabled={importing}
+              beforeUpload={(file) => {
+                void importFile(file as File);
+                return Upload.LIST_IGNORE;
+              }}
+            >
+              <Button icon={<UploadOutlined />} loading={importing}>
+                导入技能（.md / .zip）
+              </Button>
+            </Upload>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
+              新建技能
             </Button>
-          </Upload>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
-            新建技能
-          </Button>
-        </Space>
+          </Space>
+        )}
       </div>
 
-      <Card size="small" className="settings-card skills-intro-card">
-        <Typography.Title level={5} style={{ marginTop: 0 }}>
-          技能是什么
-        </Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-          技能由两部分组成：<b>提示词</b>是加进助手系统提示的长期要求（例如"改写简历要点时每条不超过
-          35 字"）；<b>知识文件</b>
-          是助手按需查阅的参考资料（例如常见面试题清单）。技能只影响助手怎么回答，
-          不会改动你的岗位、简历和资料。
-        </Typography.Paragraph>
-        <Typography.Title level={5}>工作台怎么用</Typography.Title>
-        <ol className="skills-intro-steps">
-          <li>从下面的模板复制一个起点，或直接点「新建技能」；</li>
-          <li>用「你要…」「不要…」把要求写具体，保存后技能立即生效；</li>
-          <li>在求职助手页可以随时开关技能，也可以用「导入技能」加载别人分享的 .md / .zip。</li>
-        </ol>
-        <Space wrap>
-          <Typography.Text type="secondary">模板：</Typography.Text>
-          {SKILL_TEMPLATES.map((template) => (
-            <Tooltip key={template.label} title={template.hint}>
-              <Button size="small" onClick={() => openCreate(template.draft)}>
-                {template.label}
-              </Button>
-            </Tooltip>
-          ))}
-        </Space>
-      </Card>
-
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="启用的技能越多，系统提示越长：技能提示词总量超过预算时，后面的技能不会被加载（助手会用一句话说明）。"
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => setTab(key as "skills" | "templates")}
+        items={[
+          { key: "skills", label: "助手技能" },
+          { key: "templates", label: "简历模板" },
+        ]}
       />
 
-      {loading ? (
-        <Spin />
-      ) : skills.length === 0 ? (
-        <Empty description="还没有技能，先用模板建一个试试" />
+      {tab === "templates" ? (
+        <TemplateWorkbench />
       ) : (
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={skills}
-          pagination={false}
-          components={{
-            body: {
-              // 整行右键：和「更多」菜单共用同一份菜单项，右键即可编辑。
-              row: (props: HTMLAttributes<HTMLTableRowElement>) => {
-                const rowKey = String((props as { "data-row-key"?: string })["data-row-key"] ?? "");
-                const skill = skills.find((item) => String(item.id) === rowKey);
-                return (
-                  <RowContextMenu items={skill ? actionsFor(skill) : []}>
-                    <tr {...props} />
-                  </RowContextMenu>
-                );
-              },
-            },
-          }}
-        />
+        <>
+          <Card size="small" className="settings-card skills-intro-card">
+            <Typography.Title level={5} style={{ marginTop: 0 }}>
+              技能是什么
+            </Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+              技能由两部分组成：<b>提示词</b>
+              是加进助手系统提示的长期要求（例如"改写简历要点时每条不超过 35 字"）；<b>知识文件</b>
+              是助手按需查阅的参考资料（例如常见面试题清单）。技能只影响助手怎么回答，
+              不会改动你的岗位、简历和资料。
+            </Typography.Paragraph>
+            <Typography.Title level={5}>工作台怎么用</Typography.Title>
+            <ol className="skills-intro-steps">
+              <li>从下面的模板复制一个起点，或直接点「新建技能」；</li>
+              <li>用「你要…」「不要…」把要求写具体，保存后技能立即生效；</li>
+              <li>在求职助手页可以随时开关技能，也可以用「导入技能」加载别人分享的 .md / .zip。</li>
+            </ol>
+            <Space wrap>
+              <Typography.Text type="secondary">模板：</Typography.Text>
+              {SKILL_TEMPLATES.map((template) => (
+                <Tooltip key={template.label} title={template.hint}>
+                  <Button size="small" onClick={() => openCreate(template.draft)}>
+                    {template.label}
+                  </Button>
+                </Tooltip>
+              ))}
+            </Space>
+          </Card>
+
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="启用的技能越多，系统提示越长：技能提示词总量超过预算时，后面的技能不会被加载（助手会用一句话说明）。"
+          />
+
+          {loading ? (
+            <Spin />
+          ) : skills.length === 0 ? (
+            <Empty description="还没有技能，先用模板建一个试试" />
+          ) : (
+            <Table
+              rowKey="id"
+              columns={columns}
+              dataSource={skills}
+              pagination={false}
+              components={{
+                body: {
+                  // 整行右键：和「更多」菜单共用同一份菜单项，右键即可编辑。
+                  row: (props: HTMLAttributes<HTMLTableRowElement>) => {
+                    const rowKey = String(
+                      (props as { "data-row-key"?: string })["data-row-key"] ?? "",
+                    );
+                    const skill = skills.find((item) => String(item.id) === rowKey);
+                    return (
+                      <RowContextMenu items={skill ? actionsFor(skill) : []}>
+                        <tr {...props} />
+                      </RowContextMenu>
+                    );
+                  },
+                },
+              }}
+            />
+          )}
+        </>
       )}
 
       <SkillEditorModal

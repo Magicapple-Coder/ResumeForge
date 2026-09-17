@@ -483,12 +483,14 @@ def test_web_search_never_exceeds_the_documented_limit(client, monkeypatch):
     _configure_llm(client)
     executed: list[str] = []
 
-    async def fake_search(query: str) -> list[dict[str, str]]:
+    # web_search 工具内部是"每次调用现取"聚合入口，所以替换包上的属性即可生效；
+    # 签名比单引擎版本多一个搜索设置参数。
+    async def fake_search(query: str, _config) -> list[dict[str, str]]:
         executed.append(query)
         index = len(executed)
         return [{"title": f"招聘 {index}", "url": f"https://example.com/{index}", "snippet": "摘要"}]
 
-    monkeypatch.setattr("app.services.assistant_web_search.search_web", fake_search)
+    monkeypatch.setattr("app.services.search.aggregate_search", fake_search)
     # 每一轮都要搜索，永不收敛：没有上限就会一直搜到工具轮次用尽。
     provider = _ScriptedProvider([[_tool_call("web_search", {"query": "后端 招聘"})]])
     monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)

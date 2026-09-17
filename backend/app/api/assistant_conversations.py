@@ -1,4 +1,5 @@
 """求职助手会话的数据库读写。"""
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -14,6 +15,8 @@ from ..schemas.assistant import (
     ChatConversationForkRequest,
     ChatConversationUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TITLE = "新对话"
 WELCOME_TITLE = "开始使用求职助手"
@@ -195,11 +198,42 @@ def delete_conversation(conversation_id: int, db: Session) -> None:
     db.commit()
 
 
+def delete_messages(db: Session, conversation_id: int, message_ids: list[int]) -> int:
+    """删除会话里的若干条消息，返回实际删除的条数。
+
+    引用关系要显式解除：`quoted_message_id` 没有外键（SQLite 不支持给已有表加外键列），
+    所以这里先把指向被删消息的引用置空——否则界面上会出现指向不存在消息的引用块。
+    引用消息的 `context.quoted` 快照保留，正文里的引用内容仍然可读。
+    """
+    conversation = conversation_or_404(db, conversation_id)
+    rows = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.id.in_(message_ids),
+        )
+        .all()
+    )
+    if not rows:
+        return 0
+    ids = [row.id for row in rows]
+    db.query(ChatMessage).filter(ChatMessage.quoted_message_id.in_(ids)).update(
+        {ChatMessage.quoted_message_id: None}, synchronize_session=False
+    )
+    for row in rows:
+        db.delete(row)
+    conversation.updated_at = utcnow()
+    db.commit()
+    logger.info("已删除消息 conversation_id=%s count=%s", conversation_id, len(rows))
+    return len(rows)
+
+
 __all__ = [
     "DEFAULT_TITLE",
     "WELCOME_TITLE",
     "conversation_or_404",
     "create_conversation",
+    "delete_messages",
     "fork_conversation",
     "list_conversations",
     "read_conversation",

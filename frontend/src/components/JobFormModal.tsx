@@ -14,12 +14,19 @@ import {
   Upload,
 } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { createJob, parseJobText, updateJob } from "../api/jobs";
+import { createJob, parseJobsMultiple, updateJob } from "../api/jobs";
 import { attachmentInputs, useRecognitionFiles } from "../hooks/useRecognitionFiles";
 import { readAsDataUrl } from "../utils/attachments";
+import MultiJobDraftList from "./jobs/MultiJobDraftList";
 import RecognitionFileField from "./RecognitionFileField";
 import RecognitionOutcome from "./RecognitionOutcome";
-import type { Job, JobPayload, JobRecognitionSource, RecognitionSource } from "../types";
+import type {
+  Job,
+  JobPayload,
+  JobRecognitionSource,
+  ParsedJobDraft,
+  RecognitionSource,
+} from "../types";
 
 /** 与后端 MAX_JOB_NOTE_IMAGES / 图片体积上限一致（服务端仍是权威校验）。 */
 const MAX_NOTE_IMAGES = 2;
@@ -75,6 +82,10 @@ export default function JobFormModal({
   // 这次识别是用什么输入的：保存时据此把「图片识别 / 文档识别 / 粘贴文本识别」写进溯源字段。
   const [inputKind, setInputKind] = useState<RecognitionInputKind>("text");
   const [noteImages, setNoteImages] = useState<string[]>([]);
+  // 一次粘贴里识别出多份招聘信息时，先在这里存下来让用户确认，不直接覆盖表单。
+  const [drafts, setDrafts] = useState<ParsedJobDraft[]>([]);
+  const [draftsEngine, setDraftsEngine] = useState<RecognitionSource>("local");
+  const [savingDrafts, setSavingDrafts] = useState(false);
   const { files, reading, addFiles, removeFile, clear, onPaste } = useRecognitionFiles();
   const parseRequestId = useRef(0);
   const submittingRef = useRef(false);
@@ -86,6 +97,9 @@ export default function JobFormModal({
     setParsing(false);
     setSubmitting(false);
     submittingRef.current = false;
+    // 每次打开都从干净状态开始：上次留下的多份草稿不该出现在这一次的弹窗里。
+    setDrafts([]);
+    setSavingDrafts(false);
     if (!open) return;
     if (initial) {
       form.setFieldsValue(initial);
@@ -119,6 +133,9 @@ export default function JobFormModal({
     }
   };
 
+  // 至少两份才算"多份"：只有一份时走原来的回填表单流程，不打断用户。
+  const multiMode = drafts.length > 1;
+
   const parseImport = async () => {
     if (submittingRef.current) return;
     const value = rawText.trim();
@@ -134,17 +151,27 @@ export default function JobFormModal({
     const hasDocuments = files.some((file) => file.kind === "document");
     setInputKind(hasImages ? "image" : hasDocuments ? "document" : "text");
     try {
-      const {
-        warnings,
-        parse_engine: recognitionSource,
-        recognized_text: recognized,
-        ...draft
-      } = await parseJobText({
+      const result = await parseJobsMultiple({
         text: value,
         images: attachmentInputs(files, "image"),
         documents: attachmentInputs(files, "document"),
       });
       if (requestId !== parseRequestId.current) return;
+      if (result.items.length > 1) {
+        // 多份：交给确认面板。这里**不**回填表单——回填只会显示最后一份，用户看不见
+        // 其它几份，也看不出拆分对不对。
+        setDrafts(result.items);
+        setDraftsEngine(result.parse_engine);
+        setParseWarnings(result.warnings ?? []);
+        message.success(`识别出 ${result.items.length} 份招聘信息，请确认后保存`);
+        return;
+      }
+      const {
+        warnings,
+        parse_engine: recognitionSource,
+        recognized_text: recognized,
+        ...draft
+      } = result.items[0];
       // 没有任何识别内容时（图片识别失败时的本地草稿就是这样）不要回填：无条件写入
       // 会把用户已经手填的标题、公司一起抹掉。判定只看**内容字段**——job_type 和
       // status 永远有默认值，把它们算进去会让这个判断恒为真。有内容时仍然全量覆盖，
@@ -172,12 +199,72 @@ export default function JobFormModal({
     }
   };
 
+  /** 多份草稿批量保存：逐条创建，成功的计数、失败的列出原因。 */
+  const saveDrafts = async (chosen: ParsedJobDraft[]) => {
+    if (submittingRef.current || chosen.length === 0) return;
+    submittingRef.current = true;
+    setSavingDrafts(true);
+    const failures: string[] = [];
+    let created = 0;
+    for (const draft of chosen) {
+      try {
+        await createJob({
+          title: draft.title.trim() || "待补充岗位",
+          company: draft.company,
+          location: draft.location,
+          salary: draft.salary,
+          job_type: draft.job_type,
+          description: draft.description,
+          requirements: draft.requirements,
+          additional_info: draft.additional_info,
+          source_url: draft.source_url,
+          posted_at: draft.posted_at,
+          status: draft.status,
+          recognition_source: sourceForInputKind(inputKind),
+        });
+        created += 1;
+      } catch (err) {
+        failures.push(
+          `${draft.title.trim() || "未命名岗位"}：${err instanceof Error ? err.message : "保存失败"}`,
+        );
+      }
+    }
+    submittingRef.current = false;
+    setSavingDrafts(false);
+    if (created > 0) {
+      message.success(`已保存 ${created} 个岗位`);
+      onSaved();
+    }
+    if (failures.length > 0) {
+      // 部分失败时留在面板上，用户能看到哪几条没成功、原文也还在。
+      message.error(`有 ${failures.length} 条未保存：${failures[0]}`);
+      return;
+    }
+    close(true);
+  };
+
+  /** 从多份里挑一份填进表单继续编辑。 */
+  const editSingleDraft = (draft: ParsedJobDraft) => {
+    const { warnings, parse_engine, recognized_text, ...fields } = draft;
+    void warnings;
+    void recognized_text;
+    form.setFieldsValue(fields);
+    setDrafts([]);
+    setRecognitionSource(parse_engine);
+    setInputKind("text");
+  };
+
+  /** 输入方式 → 溯源标注（多份导入时也要按同一套规则标注）。 */
+  const sourceForInputKind = (kind: RecognitionInputKind): JobRecognitionSource => {
+    if (kind === "image") return "图片识别";
+    if (kind === "document") return "文档识别";
+    return "粘贴文本识别";
+  };
+
   /** 按"这次识别用了什么输入"决定溯源标注；没做过识别就是手动填写。 */
   const recognitionSourceValue = (): JobRecognitionSource => {
     if (!recognitionSource) return "手动填写";
-    if (inputKind === "image") return "图片识别";
-    if (inputKind === "document") return "文档识别";
-    return "粘贴文本识别";
+    return sourceForInputKind(inputKind);
   };
 
   const close = (force = false) => {
@@ -232,7 +319,7 @@ export default function JobFormModal({
 
   return (
     <Modal
-      title={isEdit ? "编辑岗位" : "手动添加岗位"}
+      title={multiMode ? "确认要导入的招聘信息" : isEdit ? "编辑岗位" : "手动添加岗位"}
       open={open}
       onOk={() => void submit()}
       onCancel={() => close()}
@@ -245,163 +332,176 @@ export default function JobFormModal({
       closable={!submitting}
       width={720}
       styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: 8 } }}
+      // 多份确认面板自带操作按钮，保留默认的「保存/取消」会让用户以为要点弹窗底部。
+      footer={multiMode ? null : undefined}
       destroyOnHidden
     >
-      <Form
-        form={form}
-        layout="vertical"
-        disabled={submitting}
-        initialValues={{ job_type: "校招", status: "开放中" }}
-      >
-        {!isEdit && (
-          <>
-            <Form.Item label="完整招聘信息">
-              <Input.TextArea
-                aria-label="完整招聘信息"
-                value={rawText}
+      {multiMode ? (
+        <MultiJobDraftList
+          drafts={drafts}
+          saving={savingDrafts}
+          engineLabel={draftsEngine === "ai" ? "AI 拆分" : "按分隔符拆分"}
+          onSave={(chosen) => void saveDrafts(chosen)}
+          onEditSingle={editSingleDraft}
+          onCancel={() => setDrafts([])}
+        />
+      ) : (
+        <Form
+          form={form}
+          layout="vertical"
+          disabled={submitting}
+          initialValues={{ job_type: "校招", status: "开放中" }}
+        >
+          {!isEdit && (
+            <>
+              <Form.Item label="完整招聘信息">
+                <Input.TextArea
+                  aria-label="完整招聘信息"
+                  value={rawText}
+                  disabled={parsing}
+                  onPaste={onPaste}
+                  onChange={(event) => {
+                    // 内容改了，上一次识别的来源与抄录都不再对应当前内容。
+                    setRawText(event.target.value);
+                    setParseWarnings([]);
+                    setRecognizedText("");
+                    setRecognitionSource(null);
+                  }}
+                  placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图（也可以上传 pdf/docx 招聘文档）"
+                  style={{ height: 220, resize: "none" }}
+                />
+              </Form.Item>
+              <RecognitionFileField
+                files={files}
+                reading={reading}
                 disabled={parsing}
-                onPaste={onPaste}
-                onChange={(event) => {
-                  // 内容改了，上一次识别的来源与抄录都不再对应当前内容。
-                  setRawText(event.target.value);
-                  setParseWarnings([]);
-                  setRecognizedText("");
-                  setRecognitionSource(null);
-                }}
-                placeholder="粘贴职位名称、地点、职位描述、职位要求等完整招聘信息，或按 Ctrl+V 直接贴招聘截图（也可以上传 pdf/docx 招聘文档）"
-                style={{ height: 220, resize: "none" }}
+                onAddFiles={(incoming) => void addFiles(incoming)}
+                onRemove={removeFile}
               />
-            </Form.Item>
-            <RecognitionFileField
-              files={files}
-              reading={reading}
-              disabled={parsing}
-              onAddFiles={(incoming) => void addFiles(incoming)}
-              onRemove={removeFile}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: -12,
+                  marginBottom: 16,
+                }}
+              >
+                <Button
+                  type="primary"
+                  icon={<FileSearchOutlined />}
+                  loading={parsing}
+                  onClick={() => void parseImport()}
+                >
+                  识别并填充
+                </Button>
+              </div>
+              <RecognitionOutcome source={recognitionSource} text={recognizedText} />
+              {parseWarnings.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={parseWarnings.join("；")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
+            </>
+          )}
+          <Form.Item
+            name="title"
+            label="职位名称"
+            rules={[{ required: true, message: "请填写职位名称" }]}
+          >
+            <Input placeholder="如：后端开发工程师（校招）" />
+          </Form.Item>
+          <Form.Item name="company" label="公司名称">
+            <Input placeholder="如：字节跳动" />
+          </Form.Item>
+          <Form.Item name="location" label="工作地点">
+            <Input placeholder="如：北京" />
+          </Form.Item>
+          <Form.Item name="salary" label="薪资范围">
+            <Input placeholder="如：25-40K·15薪" />
+          </Form.Item>
+          <Form.Item name="job_type" label="岗位类型">
+            <Select options={JOB_TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="status" label="状态">
+            <Select options={STATUS_OPTIONS} />
+          </Form.Item>
+          <Form.Item
+            name="source_url"
+            label="投递链接"
+            rules={[{ type: "url", message: "请输入合法的 URL" }]}
+          >
+            <Input placeholder="招聘官网投递链接（选填）" />
+          </Form.Item>
+          <Form.Item name="posted_at" label="发布时间（选填）">
+            <Input placeholder="如：2026-08-15" />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label="职位描述（JD）"
+            rules={[{ required: true, message: "请填写职位描述" }]}
+          >
+            <Input.TextArea rows={7} placeholder="粘贴完整 JD，生成简历时 AI 会据此定制内容" />
+          </Form.Item>
+          <Form.Item name="requirements" label="任职要求（选填）">
+            <Input.TextArea rows={3} placeholder="可单独填写任职要求，没有可留空" />
+          </Form.Item>
+          <Form.Item name="additional_info" label="其他招聘信息（选填）">
+            <Input.TextArea
+              rows={4}
+              placeholder="如：公司与团队介绍、职位编号、福利待遇、工作安排、申请或面试流程"
             />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginTop: -12,
-                marginBottom: 16,
-              }}
-            >
-              <Button
-                type="primary"
-                icon={<FileSearchOutlined />}
-                loading={parsing}
-                onClick={() => void parseImport()}
-              >
-                识别并填充
-              </Button>
-            </div>
-            <RecognitionOutcome source={recognitionSource} text={recognizedText} />
-            {parseWarnings.length > 0 && (
-              <Alert
-                type="warning"
-                showIcon
-                message={parseWarnings.join("；")}
-                style={{ marginBottom: 16 }}
-              />
-            )}
-          </>
-        )}
-        <Form.Item
-          name="title"
-          label="职位名称"
-          rules={[{ required: true, message: "请填写职位名称" }]}
-        >
-          <Input placeholder="如：后端开发工程师（校招）" />
-        </Form.Item>
-        <Form.Item name="company" label="公司名称">
-          <Input placeholder="如：字节跳动" />
-        </Form.Item>
-        <Form.Item name="location" label="工作地点">
-          <Input placeholder="如：北京" />
-        </Form.Item>
-        <Form.Item name="salary" label="薪资范围">
-          <Input placeholder="如：25-40K·15薪" />
-        </Form.Item>
-        <Form.Item name="job_type" label="岗位类型">
-          <Select options={JOB_TYPE_OPTIONS} />
-        </Form.Item>
-        <Form.Item name="status" label="状态">
-          <Select options={STATUS_OPTIONS} />
-        </Form.Item>
-        <Form.Item
-          name="source_url"
-          label="投递链接"
-          rules={[{ type: "url", message: "请输入合法的 URL" }]}
-        >
-          <Input placeholder="招聘官网投递链接（选填）" />
-        </Form.Item>
-        <Form.Item name="posted_at" label="发布时间（选填）">
-          <Input placeholder="如：2026-08-15" />
-        </Form.Item>
-        <Form.Item
-          name="description"
-          label="职位描述（JD）"
-          rules={[{ required: true, message: "请填写职位描述" }]}
-        >
-          <Input.TextArea rows={7} placeholder="粘贴完整 JD，生成简历时 AI 会据此定制内容" />
-        </Form.Item>
-        <Form.Item name="requirements" label="任职要求（选填）">
-          <Input.TextArea rows={3} placeholder="可单独填写任职要求，没有可留空" />
-        </Form.Item>
-        <Form.Item name="additional_info" label="其他招聘信息（选填）">
-          <Input.TextArea
-            rows={4}
-            placeholder="如：公司与团队介绍、职位编号、福利待遇、工作安排、申请或面试流程"
-          />
-        </Form.Item>
-        <Form.Item name="note" label="备注（选填）">
-          <Input.TextArea
-            rows={3}
-            maxLength={2000}
-            showCount
-            placeholder="记录投递进展、内推联系人、面试安排等；保存时会自动补一行「来源：…」"
-          />
-        </Form.Item>
-        <Form.Item label={`备注图片（选填，最多 ${MAX_NOTE_IMAGES} 张）`}>
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Space wrap>
-              <Upload
-                accept="image/jpeg,image/png,image/webp"
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  void addNoteImage(file as File);
-                  return Upload.LIST_IGNORE;
-                }}
-              >
-                <Button icon={<PictureOutlined />}>添加图片</Button>
-              </Upload>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                招聘截图、内推码等，每张不超过 2 MB
-              </Typography.Text>
-            </Space>
-            {noteImages.length > 0 && (
+          </Form.Item>
+          <Form.Item name="note" label="备注（选填）">
+            <Input.TextArea
+              rows={3}
+              maxLength={2000}
+              showCount
+              placeholder="记录投递进展、内推联系人、面试安排等；保存时会自动补一行「来源：…」"
+            />
+          </Form.Item>
+          <Form.Item label={`备注图片（选填，最多 ${MAX_NOTE_IMAGES} 张）`}>
+            <Space direction="vertical" style={{ width: "100%" }}>
               <Space wrap>
-                {noteImages.map((source, index) => (
-                  <div key={`${index}-${source.slice(-16)}`} className="job-note-image-item">
-                    <Image src={source} alt={`备注图片 ${index + 1}`} width={96} />
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      aria-label={`移除备注图片 ${index + 1}`}
-                      icon={<DeleteOutlined />}
-                      onClick={() =>
-                        setNoteImages((current) => current.filter((_, i) => i !== index))
-                      }
-                    />
-                  </div>
-                ))}
+                <Upload
+                  accept="image/jpeg,image/png,image/webp"
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    void addNoteImage(file as File);
+                    return Upload.LIST_IGNORE;
+                  }}
+                >
+                  <Button icon={<PictureOutlined />}>添加图片</Button>
+                </Upload>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  招聘截图、内推码等，每张不超过 2 MB
+                </Typography.Text>
               </Space>
-            )}
-          </Space>
-        </Form.Item>
-      </Form>
+              {noteImages.length > 0 && (
+                <Space wrap>
+                  {noteImages.map((source, index) => (
+                    <div key={`${index}-${source.slice(-16)}`} className="job-note-image-item">
+                      <Image src={source} alt={`备注图片 ${index + 1}`} width={96} />
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        aria-label={`移除备注图片 ${index + 1}`}
+                        icon={<DeleteOutlined />}
+                        onClick={() =>
+                          setNoteImages((current) => current.filter((_, i) => i !== index))
+                        }
+                      />
+                    </div>
+                  ))}
+                </Space>
+              )}
+            </Space>
+          </Form.Item>
+        </Form>
+      )}
     </Modal>
   );
 }

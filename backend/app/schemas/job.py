@@ -31,6 +31,9 @@ RECOGNITION_SOURCES = (
     "备选岗位导入",
     "AI 助手录入",
 )
+
+# 一次粘贴的材料最多拆成多少份岗位草稿；再多就不是"顺手粘了几份"了。
+MAX_MULTI_JOBS = 12
 JobId = Annotated[int, Field(strict=True, ge=1, le=MAX_SQLITE_INTEGER)]
 
 
@@ -214,6 +217,18 @@ class JobTextParseResult(BaseModel):
     parse_engine: Literal["ai", "local"] = "local"
     # 图片识别时模型逐字抄录的原文，供用户对照截图核对；纯文本识别为空。
     recognized_text: str = Field(default="", max_length=MAX_RECOGNIZED_TEXT_CHARS)
+
+
+class JobMultiTextParseResult(BaseModel):
+    """一次粘贴里含多份招聘信息时的解析结果。
+
+    每一条都是独立的岗位草稿，字段规则与单份解析完全一致（都要求能在原文里找到）。
+    ``items`` 只有一个元素时说明没识别出多份，前端按普通单份流程处理即可。
+    """
+
+    items: list[JobTextParseResult] = Field(default_factory=list, max_length=MAX_MULTI_JOBS)
+    parse_engine: Literal["ai", "local"] = "local"
+    warnings: list[str] = Field(default_factory=list)
 
 
 class JobOut(JobCreate):

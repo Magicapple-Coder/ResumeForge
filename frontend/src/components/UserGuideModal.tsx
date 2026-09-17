@@ -72,32 +72,35 @@ export default function UserGuideModal({ open, onClose, onNavigate }: UserGuideM
         </div>
       }
     >
-      {/* labelPlacement="vertical"：标题放到图标下面，每项独占一列的整宽。
-          这不只是换个样式——antd 只在**非**垂直标签时才给步骤项写 `white-space: nowrap`，
-          横排时中文标题因此永远不换行，窄一点就整块被裁掉（"完善资料…"）。用这个官方属性
-          把 nowrap 从源头上拿掉，比在自己的 CSS 里跟它抢优先级可靠。 */}
-      <Steps
-        className="user-guide-steps"
-        current={current}
-        items={GUIDE_STEPS.map(({ title }) => ({ title }))}
-        onChange={setCurrent}
-        labelPlacement="vertical"
-      />
-      <Divider />
-      <section className="user-guide-step-content" aria-live="polite">
-        <div className="user-guide-step-icon" aria-hidden="true">
-          <StepIcon />
-        </div>
-        <div className="user-guide-step-copy">
-          <Typography.Title level={4}>{step.heading}</Typography.Title>
-          <Typography.Paragraph>{step.description}</Typography.Paragraph>
-          <ul className="user-guide-points">
-            {step.points.map((point) => (
-              <li key={point}>{point}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      {/* 步骤竖排在左侧当导航，内容在右侧。
+          横排一行的做法在模块变多之后标题会互相挤压（截图反馈"小标题有点拥挤"）：
+          9 个步骤平分 720px，每个标题只剩 70 多像素，中文标题被迫折成两三行。
+          竖排后每个标题独占一行，再加模块也不用重新排版。 */}
+      <div className="user-guide-body">
+        <Steps
+          className="user-guide-steps"
+          direction="vertical"
+          size="small"
+          current={current}
+          items={GUIDE_STEPS.map(({ title }) => ({ title }))}
+          onChange={setCurrent}
+        />
+        <Divider type="vertical" className="user-guide-divider" />
+        <section className="user-guide-step-content" aria-live="polite">
+          <div className="user-guide-step-icon" aria-hidden="true">
+            <StepIcon />
+          </div>
+          <div className="user-guide-step-copy">
+            <Typography.Title level={4}>{step.heading}</Typography.Title>
+            <Typography.Paragraph>{step.description}</Typography.Paragraph>
+            <ul className="user-guide-points">
+              {step.points.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      </div>
     </Modal>
   );
 }

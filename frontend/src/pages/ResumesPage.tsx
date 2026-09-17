@@ -171,19 +171,20 @@ export default function ResumesPage() {
       key: "actions",
       width: 150,
       render: (_, record) => (
-        <RowActions
-          primary={[
-            { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(record.id) },
-          ]}
-          more={actionsFor(record)}
-        />
+        <RowActions primary={primaryActions(record)} more={secondaryActions(record)} />
       ),
     },
   ];
 
-  /** 行的完整操作清单：三点菜单与整行右键共用同一份。 */
-  const actionsFor = (record: ResumeBrief): RowActionItem[] => [
+  /**
+   * 行操作分两层，两层**不重叠**：主操作是行上的蓝色链接，「更多」里只放其余操作。
+   * 菜单里再出现一遍「预览 / 导出」会让人以为那是另一个入口。
+   */
+  const primaryActions = (record: ResumeBrief): RowActionItem[] => [
     { key: "preview", label: "预览 / 导出", onClick: () => setPreviewId(record.id) },
+  ];
+
+  const secondaryActions = (record: ResumeBrief): RowActionItem[] => [
     {
       key: "rename",
       label: "重命名",
@@ -204,6 +205,12 @@ export default function ResumesPage() {
       confirm: "确定删除这条记录？",
       onClick: () => void remove(record.id),
     },
+  ];
+
+  /** 整行右键：鼠标不在行内链接上，给完整清单更方便。 */
+  const contextActions = (record: ResumeBrief): RowActionItem[] => [
+    ...primaryActions(record),
+    ...secondaryActions(record),
   ];
 
   const confirmRename = async () => {
@@ -259,7 +266,7 @@ export default function ResumesPage() {
               const record = (data?.items ?? []).find((item) => String(item.id) === rowKey);
               if (!record) return <tr {...props} />;
               return (
-                <RowContextMenu items={actionsFor(record)}>
+                <RowContextMenu items={contextActions(record)}>
                   <tr {...props} />
                 </RowContextMenu>
               );

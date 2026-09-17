@@ -274,11 +274,16 @@ export default function SettingsPage() {
   /** 收集表单值并剔除前端专用的 preset 字段 */
   const collectValues = async (): Promise<LLMConfig | null> => {
     try {
-      const values = await form.validateFields();
-      return configFromFormValues(values);
+      await form.validateFields();
     } catch {
       return null;
     }
+    // 取值用 getFieldsValue(true) 而不是 validateFields() 的返回值：validateFields 只
+    // 返回**已注册**的字段，而高级参数所在的区块默认折叠、那些 Form.Item 根本没挂载，
+    // extra_body 更是连控件都没有。用它的结果去保存会把用户已经配好的 top_k / 停止词 /
+    // extra_body 等一并清空（接口是整份替换语义）。
+    const values = form.getFieldsValue(true) as SettingsFormValues;
+    return configFromFormValues(values);
   };
 
   const save = async () => {

@@ -313,7 +313,7 @@ describe("AssistantPage", () => {
     expect(stopWatching()).toEqual(["add"]);
   });
 
-  it("shows an empty conversation which skills are shaping the reply", async () => {
+  it("shows how many skills are shaping the reply", async () => {
     skillApiMocks.listSkills.mockResolvedValue([
       makeSkill(1, "面试官追问", true),
       makeSkill(2, "简历诊断", true),
@@ -322,19 +322,18 @@ describe("AssistantPage", () => {
 
     renderPage();
 
-    const hint = await screen.findByRole("button", { name: "已启用 2 个助手技能，点击管理" });
-    expect(hint).toHaveTextContent("技能：面试官追问、简历诊断");
-    // 停用的技能不参与作答，就不该出现在"正在生效"的说明里。
-    expect(screen.queryByText(/暂时不用/)).not.toBeInTheDocument();
-    // 有技能在生效时页头已经写着了，空态不再重复推销同一个功能。
-    expect(screen.queryByText("到技能工作台添加技能")).not.toBeInTheDocument();
+    // 页头那枚常驻提示已经去掉了（截图反馈：右上角不需要技能模块），数量改由输入框
+    // 旁的技能按钮承担——它同时也是一键开关的入口。
+    const control = await screen.findByRole("button", { name: "技能" });
+    expect(control).toHaveTextContent("技能（2）");
+    // 没有启用的技能不参与作答，因此不计入数量。
+    expect(control).not.toHaveTextContent("3");
   });
 
-  it("takes the user to the skill workbench that manages skills", async () => {
-    skillApiMocks.listSkills.mockResolvedValue([makeSkill(1, "面试官追问", true)]);
-
+  it("takes the user to the workbench that manages skills", async () => {
+    // 一个都没启用时，空态里有直达工作台的入口（本次不再走页头那枚提示）。
     renderPageWithLocationProbe();
-    fireEvent.click(await screen.findByRole("button", { name: "已启用 1 个助手技能，点击管理" }));
+    fireEvent.click(await screen.findByRole("button", { name: "到技能工作台添加技能" }));
 
     expect(screen.getByTestId("current-path")).toHaveTextContent("/skills");
   });
@@ -355,6 +354,7 @@ describe("AssistantPage", () => {
           conversation_id: 1,
           role: "assistant",
           content: "已加载的回复",
+          quoted_message_id: null,
           attachments: [],
           context: {},
           status: "complete",
@@ -400,6 +400,7 @@ describe("AssistantPage", () => {
           conversation_id: 1,
           role: "assistant",
           content: "最新回复",
+          quoted_message_id: null,
           attachments: [],
           context: {},
           status: "complete",

@@ -2,8 +2,10 @@
 
 import logging
 from pathlib import Path
+from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -17,21 +19,38 @@ from ..schemas.assistant import (
     ChatConversationDetail,
     ChatConversationForkRequest,
     ChatConversationUpdate,
+    ChatMessageDeleteRequest,
+    ChatMessageDeleteResult,
+    ConversationToMaterialRequest,
+)
+from ..schemas.material import (
+    MAX_MATERIAL_CONTENT_CHARS,
+    MAX_MATERIAL_NOTE_CHARS,
+    MAX_MATERIAL_TITLE_CHARS,
+    MaterialCreate,
+    MaterialOut,
 )
 from ..services.assistant_service import (
     conversation_title,
     normalize_attachments,
 )
 from ..services.assistant_skills import build_skill_prompt
-from ..services.assistant_web_search import search_web
+from ..services.conversation_export import (
+    EXPORT_FORMATS,
+    build_conversation_filename,
+    conversation_to_markdown,
+)
+from ..services.materials import create_material as create_material_record
 from ..services.llm import create_provider
-from ..services.settings_service import get_llm_config
+from ..services.search import aggregate_search
+from ..services.settings_service import get_llm_config, get_search_config
 from .assistant_context import load_local_context
 from .assistant_conversations import (
     DEFAULT_TITLE,
     conversation_or_404,
     create_conversation as create_conversation_record,
     delete_conversation as delete_conversation_record,
+    delete_messages as delete_message_records,
     fork_conversation as fork_conversation_record,
     list_conversations as list_conversation_records,
     read_conversation as read_conversation_record,
@@ -117,6 +136,99 @@ def fork_conversation(
     return fork_conversation_record(conversation_id, payload, db)
 
 
+def _conversation_messages(db: Session, conversation_id: int) -> list[ChatMessage]:
+    return (
+        db.query(ChatMessage)
+        .filter(ChatMessage.conversation_id == conversation_id)
+        .order_by(ChatMessage.id)
+        .all()
+    )
+
+
+@router.get("/conversations/{conversation_id}/export")
+def export_conversation(
+    conversation_id: int,
+    format: str = Query("md", pattern="^(md|txt|json)$"),
+    db: Session = Depends(get_db),
+):
+    """把一段对话导出成文件：Markdown / 纯文本 / JSON。
+
+    导出内容包含消息正文、时间、附件名、助手做过的操作与参考来源——用户要的是
+    "带得走的记录"，不是只有一问一答。
+    """
+    conversation = conversation_or_404(db, conversation_id)
+    media_type, builder = EXPORT_FORMATS[format]
+    body = builder(conversation, _conversation_messages(db, conversation_id))
+    filename = build_conversation_filename(conversation, format)
+    return Response(
+        body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}"
+        },
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/to-material",
+    response_model=MaterialOut,
+    status_code=201,
+)
+def conversation_to_material(
+    conversation_id: int,
+    payload: ConversationToMaterialRequest,
+    db: Session = Depends(get_db),
+):
+    """把这段对话存进资料箱。
+
+    存进去的是导出的 Markdown：助手之后能直接读它、总结它，或按用户要求整理进个人资料。
+    """
+    conversation = conversation_or_404(db, conversation_id)
+    markdown = conversation_to_markdown(conversation, _conversation_messages(db, conversation_id))
+    truncated = len(markdown) > MAX_MATERIAL_CONTENT_CHARS
+    if truncated:
+        markdown = markdown[:MAX_MATERIAL_CONTENT_CHARS]
+    note = payload.note.strip()
+    if truncated:
+        note = "\n".join(
+            part for part in (note, "对话过长，已截断保存；完整内容请用「导出」下载文件。") if part
+        )
+    return create_material_record(
+        db,
+        MaterialCreate(
+            title=(payload.title.strip() or conversation.title or "求职助手对话")[
+                :MAX_MATERIAL_TITLE_CHARS
+            ],
+            category=payload.category.strip() or "面试复盘",
+            content=markdown,
+            note=note[:MAX_MATERIAL_NOTE_CHARS],
+        ),
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/delete",
+    response_model=ChatMessageDeleteResult,
+)
+def delete_messages(
+    conversation_id: int,
+    payload: ChatMessageDeleteRequest,
+    db: Session = Depends(get_db),
+):
+    """批量删除消息（前端勾选多条后走这里；单条删除见下面的 DELETE 路由）。"""
+    deleted = delete_message_records(db, conversation_id, payload.message_ids)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="消息不存在或已被删除")
+    return ChatMessageDeleteResult(deleted=deleted)
+
+
+@router.delete("/conversations/{conversation_id}/messages/{message_id}", status_code=204)
+def delete_message(conversation_id: int, message_id: int, db: Session = Depends(get_db)):
+    """删除单条消息（引用它的消息会解除引用，正文里的引用快照保留）。"""
+    if delete_message_records(db, conversation_id, [message_id]) == 0:
+        raise HTTPException(status_code=404, detail="消息不存在或已被删除")
+
+
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(
     conversation_id: int,
@@ -138,10 +250,26 @@ async def send_message(
 
     history = history_snapshot(db, conversation_id)
     had_messages = bool(history)
+    # 搜索设置在这里读出来并绑进闭包：流式响应期间请求会话已经关闭。
+    search_config = get_search_config(db)
+    # 「引用追问」：只允许引用同一会话里的消息，并把被引用内容的快照存进 context——
+    # 这样即使那条消息之后被删掉，引用块仍然可读。
+    quoted_snapshot: dict[str, Any] | None = None
+    if payload.quoted_message_id is not None:
+        quoted = db.get(ChatMessage, payload.quoted_message_id)
+        if quoted is None or quoted.conversation_id != conversation_id:
+            raise HTTPException(status_code=404, detail="被引用的消息不存在或不在当前会话")
+        quoted_snapshot = {
+            "id": quoted.id,
+            "role": quoted.role,
+            "excerpt": quoted.content.strip()[:500],
+        }
+        context_metadata["quoted"] = quoted_snapshot
     user_message = ChatMessage(
         conversation_id=conversation_id,
         role="user",
         content=payload.content,
+        quoted_message_id=payload.quoted_message_id,
         attachments=attachments,
         context=context_metadata,
         status="complete",
@@ -181,7 +309,9 @@ async def send_message(
             assistant_message_id=assistant_message_id,
             generated_title=generated_title,
             system_prompt=_system_prompt(db, web_search=payload.web_search),
-            search_web_fn=search_web,
+            # 多来源聚合（Bing + DuckDuckGo + 可选自建 SearXNG），按设置决定是否抓正文。
+            search_web_fn=lambda query: aggregate_search(query, search_config),
+            quoted=quoted_snapshot,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

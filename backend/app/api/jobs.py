@@ -15,6 +15,7 @@ from ..schemas.job import (
     JobBatchStatusRequest,
     JobBatchStatusResult,
     JobCreate,
+    JobMultiTextParseResult,
     JobOut,
     JobTextParseRequest,
     JobTextParseResult,
@@ -23,6 +24,7 @@ from ..schemas.job import (
 from ..schemas.job_analysis import JobAnalysisResult
 from ..services.job_analysis import generate_job_analysis
 from ..services.job_service import create_job_record, update_job_record
+from ..services.job_multi_parser import extract_multiple_jobs, local_multi_drafts
 from ..services.job_text_parser import parse_job_text
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
@@ -151,6 +153,70 @@ async def parse_job_text_draft(payload: JobTextParseRequest, db: Session = Depen
     return finalize_recognition_result(
         result, has_images=has_images, document_warnings=documents.warnings
     )
+
+
+@router.post("/parse-multiple", response_model=JobMultiTextParseResult)
+async def parse_job_text_multiple(payload: JobTextParseRequest, db: Session = Depends(get_db)):
+    """一次粘贴多份招聘信息：拆成多份草稿，用户逐条或全部保存。
+
+    与单份 ``/parse-text`` 共用输入校验与兜底策略：没有可用模型、或模型切不出来时，
+    退回本地按显式分隔切分，绝不返回一份"吞掉了其它几份"的草稿。
+    """
+    try:
+        images = normalize_extraction_images(payload.images)
+        documents = extract_documents_text(payload.documents)
+        assert_attachment_budget(
+            count=len(payload.images) + len(payload.documents),
+            total_bytes=total_attachment_bytes(images) + documents.size_bytes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    image_urls = image_data_urls(images)
+    has_images = bool(image_urls)
+    has_documents = bool(payload.documents)
+    source_text = "\n\n".join(part for part in (payload.text, documents.text) if part.strip())
+    if not source_text.strip() and not image_urls:
+        raise HTTPException(status_code=422, detail="请先粘贴招聘信息或上传截图、文档")
+
+    def _local_items(reason: str) -> list[JobTextParseResult]:
+        drafts = local_multi_drafts(source_text)
+        return [mark_local_fallback(draft, reason) for draft in drafts]
+
+    config = get_llm_config(db)
+    if not llm_is_configured(config):
+        items = _local_items(no_model_warning(has_images, has_documents))
+        return JobMultiTextParseResult(
+            items=[
+                finalize_recognition_result(
+                    item, has_images=has_images, document_warnings=documents.warnings
+                )
+                for item in items
+            ],
+            parse_engine="local",
+        )
+
+    provider = create_provider(config)
+    db.close()
+    try:
+        results = await extract_multiple_jobs(provider, source_text, image_urls)
+        engine = "ai"
+    except LLMError as exc:
+        logger.warning("多份岗位 AI 识别失败，已回退本地切分：%s", exc)
+        results = _local_items(ai_failed_warning(has_images, str(exc), has_documents))
+        engine = "local"
+    except Exception:  # noqa: BLE001 - 外部模型异常不能阻断草稿解析
+        logger.exception("多份岗位 AI 识别发生内部错误，已回退本地切分")
+        results = _local_items(ai_failed_warning(has_images, "", has_documents))
+        engine = "local"
+
+    items = [
+        finalize_recognition_result(
+            item, has_images=has_images, document_warnings=documents.warnings
+        )
+        for item in results
+    ]
+    return JobMultiTextParseResult(items=items, parse_engine=engine)
 
 
 @router.post("/batch-status", response_model=JobBatchStatusResult)

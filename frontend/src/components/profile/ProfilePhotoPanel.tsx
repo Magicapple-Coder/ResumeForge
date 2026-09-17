@@ -11,6 +11,7 @@ import {
 } from "../../api/photo";
 import { MAX_PROFILE_PHOTOS, type ProfilePhoto } from "../../types";
 import { readAsDataUrl } from "../../utils/attachments";
+import FileDropZone from "../common/FileDropZone";
 
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -107,70 +108,81 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
   };
 
   return (
-    <div className="profile-photo-panel">
-      <div className="profile-photo-frame">
-        {activePhoto ? (
-          <Image src={activePhoto} alt="简历照片" preview={false} />
+    <FileDropZone
+      accept="image/jpeg,image/png,image/webp"
+      disabled={disabled || busy}
+      hint="松开即可上传照片"
+      onFiles={(dropped) => void upload(dropped[0])}
+      onRejected={() => message.error("只支持 JPG、PNG 或 WebP 照片")}
+    >
+      <div className="profile-photo-panel">
+        <div className="profile-photo-frame">
+          {activePhoto ? (
+            <Image src={activePhoto} alt="简历照片" preview={false} />
+          ) : (
+            <UserOutlined className="profile-photo-placeholder" />
+          )}
+        </div>
+        <Space wrap>
+          <Upload
+            accept="image/jpeg,image/png,image/webp"
+            beforeUpload={(file) => {
+              void upload(file as File);
+              return Upload.LIST_IGNORE;
+            }}
+            showUploadList={false}
+            disabled={disabled || busy}
+          >
+            <Button icon={<CameraOutlined />} loading={busy}>
+              {activePhoto ? "上传新照片" : "选择照片"}
+            </Button>
+          </Upload>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            JPG、PNG 或 WebP，最大 2 MB，最多保存 {MAX_PROFILE_PHOTOS} 张
+          </Typography.Text>
+        </Space>
+        {loading ? (
+          <Spin size="small" />
+        ) : photos.length > 0 ? (
+          <div className="profile-photo-thumbs">
+            {photos.map((photo) => {
+              const isActive = photo.image === activePhoto || photo.is_primary;
+              return (
+                <div
+                  key={photo.id}
+                  className={`profile-photo-thumb${isActive ? " is-active" : ""}`}
+                >
+                  <Tooltip title="设为简历照片">
+                    <button
+                      type="button"
+                      className="profile-photo-thumb-button"
+                      disabled={disabled || busy}
+                      aria-label={`使用照片 ${photo.name || photo.id}`}
+                      onClick={() => void selectPhoto(photo)}
+                    >
+                      <img src={photo.image} alt={photo.name || "照片"} />
+                      {isActive && <Tag color="blue">使用中</Tag>}
+                    </button>
+                  </Tooltip>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    aria-label={`删除照片 ${photo.name || photo.id}`}
+                    icon={<DeleteOutlined />}
+                    disabled={disabled || busy}
+                    onClick={() => void remove(photo)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <UserOutlined className="profile-photo-placeholder" />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            还没有保存过照片。上传后会存进照片库，可以随时切换或删除。
+          </Typography.Text>
         )}
       </div>
-      <Space wrap>
-        <Upload
-          accept="image/jpeg,image/png,image/webp"
-          beforeUpload={(file) => {
-            void upload(file as File);
-            return Upload.LIST_IGNORE;
-          }}
-          showUploadList={false}
-          disabled={disabled || busy}
-        >
-          <Button icon={<CameraOutlined />} loading={busy}>
-            {activePhoto ? "上传新照片" : "选择照片"}
-          </Button>
-        </Upload>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          JPG、PNG 或 WebP，最大 2 MB，最多保存 {MAX_PROFILE_PHOTOS} 张
-        </Typography.Text>
-      </Space>
-      {loading ? (
-        <Spin size="small" />
-      ) : photos.length > 0 ? (
-        <div className="profile-photo-thumbs">
-          {photos.map((photo) => {
-            const isActive = photo.image === activePhoto || photo.is_primary;
-            return (
-              <div key={photo.id} className={`profile-photo-thumb${isActive ? " is-active" : ""}`}>
-                <Tooltip title="设为简历照片">
-                  <button
-                    type="button"
-                    className="profile-photo-thumb-button"
-                    disabled={disabled || busy}
-                    aria-label={`使用照片 ${photo.name || photo.id}`}
-                    onClick={() => void selectPhoto(photo)}
-                  >
-                    <img src={photo.image} alt={photo.name || "照片"} />
-                    {isActive && <Tag color="blue">使用中</Tag>}
-                  </button>
-                </Tooltip>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  aria-label={`删除照片 ${photo.name || photo.id}`}
-                  icon={<DeleteOutlined />}
-                  disabled={disabled || busy}
-                  onClick={() => void remove(photo)}
-                />
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          还没有保存过照片。上传后会存进照片库，可以随时切换或删除。
-        </Typography.Text>
-      )}
-    </div>
+    </FileDropZone>
   );
 }

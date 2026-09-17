@@ -2,6 +2,7 @@ import {
   DatabaseOutlined,
   FileTextOutlined,
   HomeOutlined,
+  InboxOutlined,
   MessageOutlined,
   ProfileOutlined,
   SettingOutlined,
@@ -107,6 +108,21 @@ export const GUIDE_STEPS: GuideStep[] = [
     path: "/assistant",
     actionLabel: "打开求职助手",
     icon: MessageOutlined,
+  },
+  {
+    title: "资料箱与工作台",
+    heading: "存放零散材料，打造自己的助手与模板",
+    description:
+      "资料箱放还没成体系的材料（证书、面经、复盘、公司信息）；工作台里自制助手技能与简历模板。",
+    points: [
+      "资料箱支持写正文、贴链接、传图片与文本文件，文件可以直接拖进来；助手能读取它们并帮你整理。",
+      "助手对话右侧的「⋮」可以把这段对话导出成 Markdown 文件，或一键存进资料箱留着复盘。",
+      "工作台的「助手技能」是一段长期生效的提示词，勾选后就对之后每次对话生效。",
+      "工作台的「简历模板」可以从内置模板复制一份来改，也可以只调版式（行高、页边距）；生成和预览简历时随时切换。",
+    ],
+    path: "/materials",
+    actionLabel: "打开资料箱",
+    icon: InboxOutlined,
   },
   {
     title: "数据备份与更新",

@@ -41,6 +41,13 @@ export interface Job {
   updated_at: string;
 }
 
+/** 一次粘贴里含多份招聘信息时的解析结果；只有一个元素表示没识别出多份。 */
+export interface JobMultiParseResult {
+  items: ParsedJobDraft[];
+  parse_engine: RecognitionSource;
+  warnings: string[];
+}
+
 export interface JobPayload {
   title: string;
   company?: string;

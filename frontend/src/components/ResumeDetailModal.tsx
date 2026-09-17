@@ -26,6 +26,7 @@ interface Props {
 
 const DEFAULT_LAYOUT: ResumeLayout = {
   template: "classic",
+  format_name: "",
   page_limit: 1,
   font_scale: "standard",
 };
@@ -76,6 +77,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
         // 版式跟着记录走：上次用的是哪套，这次打开还是哪套。
         setLayout({
           template: data.template || DEFAULT_LAYOUT.template,
+          format_name: data.format_name ?? DEFAULT_LAYOUT.format_name,
           page_limit: data.page_limit || DEFAULT_LAYOUT.page_limit,
           font_scale: data.font_scale || DEFAULT_LAYOUT.font_scale,
         });
@@ -181,6 +183,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
             <ResumeLayoutControls
               compact
               layout={layout}
+              resumeId={detail.id}
               disabled={relayouting}
               onChange={(next) => void applyLayout(next)}
             />

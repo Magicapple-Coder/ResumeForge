@@ -147,21 +147,23 @@ export default function JobTable({
       render: (_, job) => (
         <RowActions
           disabled={batchAction !== null}
-          // 只留最常用的两个：其余（含删除）收进「更多」，避免一排红色按钮挤在一起。
-          primary={[
-            { key: "detail", label: "详情", onClick: () => onOpenDetail(job) },
-            { key: "generate", label: "生成简历", onClick: () => onGenerate(job) },
-          ]}
-          more={actionsFor(job)}
+          primary={primaryActions(job)}
+          more={secondaryActions(job)}
         />
       ),
     },
   ];
 
-  /** 行的完整操作清单：三点菜单与整行右键共用同一份。 */
-  const actionsFor = (job: Job): RowActionItem[] => [
-    { key: "detail", label: "查看详情", onClick: () => onOpenDetail(job) },
+  /**
+   * 行操作分两层，两层**不重叠**：主操作是行上的蓝色链接，「更多」里只放其余操作。
+   * 菜单里再出现一遍「详情」会让人以为那是另一个入口（也白白多一次点击）。
+   */
+  const primaryActions = (job: Job): RowActionItem[] => [
+    { key: "detail", label: "详情", onClick: () => onOpenDetail(job) },
     { key: "generate", label: "生成简历", onClick: () => onGenerate(job) },
+  ];
+
+  const secondaryActions = (job: Job): RowActionItem[] => [
     { key: "write", label: "自行编写", onClick: () => onWrite(job) },
     { key: "resumes", label: "相关简历", onClick: () => onViewResumes(job) },
     { key: "edit", label: "编辑", onClick: () => onEdit(job) },
@@ -172,6 +174,12 @@ export default function JobTable({
       confirm: "确定删除该岗位？",
       onClick: () => onDelete(job),
     },
+  ];
+
+  /** 整行右键：鼠标不在行内链接上，给完整清单更方便。 */
+  const contextActions = (job: Job): RowActionItem[] => [
+    ...primaryActions(job),
+    ...secondaryActions(job),
   ];
 
   return (
@@ -190,7 +198,7 @@ export default function JobTable({
             const job = (jobs?.items ?? []).find((item) => String(item.id) === rowKey);
             if (batchAction !== null || !job) return <tr {...props} />;
             return (
-              <RowContextMenu items={actionsFor(job)}>
+              <RowContextMenu items={contextActions(job)}>
                 <tr {...props} />
               </RowContextMenu>
             );

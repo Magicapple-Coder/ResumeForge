@@ -63,6 +63,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   // 默认 1 页 A4 + 标准字号：绝大多数简历就该是一页。
   const [layout, setLayout] = useState<ResumeLayout>({
     template: "classic",
+    format_name: "",
     page_limit: 1,
     font_scale: "standard",
   });
@@ -121,6 +122,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
         setLayout((current) => ({
           ...current,
           template: catalog.defaults.template,
+          format_name: catalog.defaults.format_name ?? "",
           font_scale: catalog.defaults.font_scale,
           page_limit: catalog.defaults.page_limit,
         }));
@@ -244,6 +246,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
             page_limit: layout.page_limit,
             font_scale: layout.font_scale,
             template: layout.template,
+            format_name: layout.format_name,
             custom_instruction: customInstruction.trim(),
           },
         },
@@ -476,6 +479,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
             <ResumeLayoutControls
               compact
               layout={layout}
+              resumeId={result.recordId ?? undefined}
               disabled={relayouting}
               onChange={(next) => void applyLayout(next)}
             />
@@ -524,22 +528,17 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
               setEditorOpen(true);
             }}
           />
-          <div
-            style={{
-              marginTop: 16,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Space>
+          {/* 按钮组用 flex + wrap：窄屏或按钮多时换行，而不是把「完成」挤出弹窗
+              （截图反馈：右侧按钮整体溢出到弹窗外面）。 */}
+          <div className="generate-preview-footer">
+            <Space wrap>
               {result.recordId ? (
                 <ExportButtons recordId={result.recordId} pdfDirectAvailable={pdfDirectAvailable} />
               ) : (
                 <Tag color="orange">记录保存中…</Tag>
               )}
             </Space>
-            <Space>
+            <Space wrap>
               <Button
                 icon={<EditOutlined />}
                 disabled={!result.recordId}

@@ -61,11 +61,20 @@ export interface AssistantToolCall {
   error: string;
 }
 
+/** 被引用的那条消息的快照：原消息删掉之后这里仍然可读。 */
+export interface AssistantQuotedMessage {
+  id: number;
+  role: "user" | "assistant";
+  excerpt: string;
+}
+
 export interface AssistantMessage {
   id: number;
   conversation_id: number;
   role: "user" | "assistant";
   content: string;
+  /** 引用追问：这条消息引用的是哪一条。 */
+  quoted_message_id: number | null;
   attachments: AssistantAttachment[];
   context: {
     job_id?: number | null;
@@ -74,6 +83,7 @@ export interface AssistantMessage {
     web_search?: boolean;
     sources?: AssistantSource[];
     tool_calls?: AssistantToolCall[];
+    quoted?: AssistantQuotedMessage;
   };
   status: "pending" | "complete" | "error" | "cancelled";
   error: string;
