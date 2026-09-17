@@ -201,13 +201,23 @@ async def extract_multiple_jobs(
             logger.info("多份识别：某一份的摘录无法与原文比对，退回整段材料作为锚点")
         anchor = excerpt if grounded else anchor_pool
         local = _local_draft_for(excerpt if grounded else source_text, source_text)
-        results.append(normalize_job_result(item, local, anchor))
+        # 把摘录随结果带回去：确认面板要逐份显示"原文：…"，用户才能核对拆分对不对。
+        # 只带**核对通过**的那份——没通过的可能就是模型编的，展示出来等于让人去核对一段
+        # 原文里根本不存在的文字。
+        results.append(
+            normalize_job_result(item, local, anchor, recognized_text=excerpt if grounded else "")
+        )
     return results
 
 
 def local_multi_drafts(source_text: str) -> list[JobTextParseResult]:
     """不调用模型时的多份草稿：只按显式分隔切分，每段各跑一次本地规则。"""
-    return [parse_job_text(part) for part in split_job_text_local(source_text)]
+    drafts = []
+    for part in split_job_text_local(source_text):
+        # 本地路径没有模型摘录，但每一段本身就是原文，直接充当"原文"。
+        draft = parse_job_text(part)
+        drafts.append(draft.model_copy(update={"recognized_text": part.strip()}))
+    return drafts
 
 
 __all__ = [

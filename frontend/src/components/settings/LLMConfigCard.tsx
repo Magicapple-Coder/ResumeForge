@@ -103,7 +103,7 @@ export default function LLMConfigCard({
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、通义千问、智谱、MiniMax、硅基流动、OpenRouter、OpenAI、Gemini、Ollama 等。API Key 保存在本地数据库中，仅本机可访问。"
+        message="默认支持所有兼容 OpenAI Chat Completions 协议的模型服务：DeepSeek、豆包（火山方舟）、Kimi、通义千问、智谱、MiniMax、硅基流动、OpenRouter、OpenAI、Gemini、Ollama 等；把「接口协议」切到 Anthropic 原生后也可以直连 Claude。API Key 保存在本地数据库中，仅本机可访问。"
       />
       <Form
         form={form}
@@ -127,7 +127,7 @@ export default function LLMConfigCard({
         <Form.Item
           name="api_style"
           label="接口协议"
-          tooltip="多数服务商（含 Claude 的 OpenAI 兼容层）走 Chat Completions，选「OpenAI 兼容」。只有要用 Claude 原生 Messages 协议（支持扩展思考、独立 system 字段）时才选 Anthropic 原生——此时 Base URL 填 https://api.anthropic.com。"
+          tooltip="多数服务商（含 Claude 的 OpenAI 兼容层）走 Chat Completions，选「OpenAI 兼容」。只有要用 Claude 原生 Messages 协议（支持扩展思考、独立 system 字段）时才选 Anthropic 原生——此时 Base URL 填 https://api.anthropic.com/v1（本应用会在后面接 /messages）。"
         >
           <Select
             options={[

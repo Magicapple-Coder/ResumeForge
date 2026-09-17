@@ -1,8 +1,21 @@
 /** 助手技能管理：导入、点击查看详情、启用/停用与删除。 */
 
 import { DeleteOutlined, UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, List, Space, Switch, Tag, Tooltip, Typography, Upload } from "antd";
+import {
+  App,
+  Button,
+  Card,
+  Empty,
+  List,
+  Space,
+  Switch,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+} from "antd";
 import type { AssistantSkill } from "../../types";
+import FileDropZone from "../common/FileDropZone";
 import { RowActions } from "../common/RowActions";
 import { formatDateTime } from "../../utils/format";
 
@@ -40,6 +53,7 @@ export default function SkillsCard({
   onDelete,
   onOpen,
 }: Props) {
+  const { message } = App.useApp();
   // 同一时刻只允许一个改动在进行，避免连点产生互相覆盖的请求。
   const busy = importing || deletingId !== null;
 
@@ -52,22 +66,32 @@ export default function SkillsCard({
         <strong>技能工作台</strong>。
       </Typography.Paragraph>
 
-      <Upload
+      <FileDropZone
         accept=".md,.zip"
-        showUploadList={false}
+        multiple={false}
         disabled={busy}
-        // 设置页上有多个上传入口，这个 aria-label 让它们（以及测试）都能精确定位。
-        aria-label="选择技能文件"
-        beforeUpload={(file) => {
-          onImport(file as File);
-          // 与仓库其它上传一致：本地读取后自行提交，不走 antd 的上传通道。
-          return Upload.LIST_IGNORE;
-        }}
+        hint="松开即可导入技能（.md / .zip）"
+        onFiles={(files) => onImport(files[0])}
+        onRejected={() => message.error("技能只支持 .md 或 .zip")}
+        className="settings-import-drop"
       >
-        <Button icon={<UploadOutlined />} loading={importing} disabled={busy}>
-          导入技能（.md 或 .zip）
-        </Button>
-      </Upload>
+        <Upload
+          accept=".md,.zip"
+          showUploadList={false}
+          disabled={busy}
+          // 设置页上有多个上传入口，这个 aria-label 让它们（以及测试）都能精确定位。
+          aria-label="选择技能文件"
+          beforeUpload={(file) => {
+            onImport(file as File);
+            // 与仓库其它上传一致：本地读取后自行提交，不走 antd 的上传通道。
+            return Upload.LIST_IGNORE;
+          }}
+        >
+          <Button icon={<UploadOutlined />} loading={importing} disabled={busy}>
+            导入技能（.md 或 .zip）
+          </Button>
+        </Upload>
+      </FileDropZone>
 
       <List
         style={{ marginTop: 16 }}

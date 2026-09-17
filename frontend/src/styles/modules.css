@@ -578,6 +578,26 @@
   position: relative;
 }
 
+/*
+ * 按钮型拖拽区：只包住按钮本身，不接管整行。
+ *
+ * 设置页的一行里常常并排放着好几个导入入口（导出/导入备份、导入技能、导入 HTML），
+ * 整行接管拖拽会让"到底拖进了哪一个"变得含糊；贴住按钮反而指哪打哪。
+ */
+.settings-import-drop,
+.template-upload-drop {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* 拖拽覆盖层默认是 inset:-6px 的整块高亮，贴在按钮上时收窄一点免得压到邻居。 */
+.settings-import-drop .file-drop-overlay,
+.template-upload-drop .file-drop-overlay {
+  inset: -3px;
+  padding: 0 8px;
+  text-align: center;
+}
+
 .file-drop-overlay {
   position: absolute;
   inset: -6px;

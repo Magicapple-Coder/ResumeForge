@@ -38,13 +38,17 @@ MAX_TEMPLATE_NAME_CHARS = 40
 _NAME_RE = re.compile(r"^[\w\u4e00-\u9fff][\w\u4e00-\u9fff\- ]*$")
 # 需要剥离的标签：脚本与任何会发起网络请求的元素。
 _STRIP_TAG_RE = re.compile(
-    r"<\s*(script|iframe|object|embed|base|link|meta\s+http-equiv\s*=\s*['\"]?refresh)\b[^>]*>.*?<\s*/\s*\1\s*>",
+    r"<\s*(script|iframe|object|embed|base|link)\b[^>]*>.*?<\s*/\s*\1\s*>",
     re.IGNORECASE | re.DOTALL,
 )
 _STRIP_SELF_CLOSING_RE = re.compile(
     r"<\s*(iframe|object|embed|base|link)\b[^>]*/?>",
     re.IGNORECASE,
 )
+# 带 http-equiv 的 meta 单独剥：它是**空元素**，永远没有闭合标签，放进上面那条
+# 成对匹配的正则里等于永远不生效。它能做两件坏事：refresh 自动跳转到外部地址，
+# 以及自带一条 CSP 把应用补的那条顶掉。
+_STRIP_META_EQUIV_RE = re.compile(r"<\s*meta\b[^>]*http-equiv\s*=[^>]*>", re.IGNORECASE)
 # 单独收尾的 <script src="..."></script> 之类（上面那条要求成对出现，这里兜底）。
 _ORPHAN_SCRIPT_RE = re.compile(r"<\s*/?\s*script\b[^>]*>", re.IGNORECASE)
 _CSP_META = (
@@ -63,16 +67,18 @@ def sanitize_template_html(html: str) -> str:
     cleaned = _STRIP_TAG_RE.sub("", html or "")
     cleaned = _STRIP_SELF_CLOSING_RE.sub("", cleaned)
     cleaned = _ORPHAN_SCRIPT_RE.sub("", cleaned)
+    cleaned = _STRIP_META_EQUIV_RE.sub("", cleaned)
     if "<meta" not in cleaned.lower() or "charset" not in cleaned.lower():
         cleaned = cleaned.replace(
             "<head>", '<head>\n<meta charset="utf-8" />', 1
         ) if "<head>" in cleaned else cleaned
-    if "Content-Security-Policy" not in cleaned:
-        # 所有模板都必须带 CSP：导出的 HTML 会被当成普通网页打开。
-        if "</head>" in cleaned:
-            cleaned = cleaned.replace("</head>", f"{_CSP_META}\n</head>", 1)
-        else:
-            cleaned = f"{_CSP_META}\n{cleaned}"
+    # 无条件补上应用的 CSP。此前是"文档里已经出现 Content-Security-Policy 字样就跳过"，
+    # 于是模板只要在注释或属性里带上这个词（或自带一条宽松的 CSP meta），就能让应用这条
+    # 完全不注入——没有 CSP 之后，事件属性里的脚本会照常执行。
+    if "</head>" in cleaned:
+        cleaned = cleaned.replace("</head>", f"{_CSP_META}\n</head>", 1)
+    else:
+        cleaned = f"{_CSP_META}\n{cleaned}"
     return cleaned
 
 

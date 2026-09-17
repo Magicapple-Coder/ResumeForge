@@ -16,6 +16,47 @@
   border-color: #d6e4ff;
 }
 
+/*
+ * 多选模式：勾选框在气泡左侧，整行可点。
+ *
+ * 用户消息的气泡是 `margin-left: auto` 靠右的，所以整行也要跟着变成 flex 才排得整齐；
+ * 勾选框 `align-items: flex-start` 对齐到气泡顶部，消息很高时不用滚到底才能勾。
+ */
+.assistant-message-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* 勾选框自己撑满一行会把气泡挤窄，固定宽度让它只占该占的位置。 */
+.assistant-message-pick > .ant-checkbox-wrapper,
+.assistant-message-pick > .ant-checkbox {
+  flex: 0 0 auto;
+  margin-top: 14px;
+}
+
+.assistant-message-pick .assistant-message {
+  flex: 1 1 auto;
+}
+
+.assistant-message--selected {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
+.assistant-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  background: #f3f7ff;
+}
+
 .assistant-message-content {
   margin-top: 6px;
   line-height: 1.75;

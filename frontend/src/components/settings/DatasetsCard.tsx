@@ -23,6 +23,12 @@ import {
 } from "antd";
 import type { DatasetInfo } from "../../types";
 import { formatDateTime } from "../../utils/format";
+import FileDropZone from "../common/FileDropZone";
+
+/** 备份包导入后默认用的数据集名字：去掉扩展名，空文件名时给一个兜底。 */
+function datasetNameFrom(file: File): string {
+  return (file?.name || "").replace(/\.zip$/i, "") || "导入的数据集";
+}
 
 interface Props {
   datasets: DatasetInfo[];
@@ -99,23 +105,31 @@ export default function DatasetsCard({
           数据不会被动到；导出的备份中不包含大模型 API Key。
         </Typography.Paragraph>
 
-        <Upload
+        <FileDropZone
           accept=".zip,application/zip"
-          showUploadList={false}
+          multiple={false}
           disabled={busy}
-          // 设置页上有多个上传入口，这个 aria-label 让它们（以及测试）都能精确定位。
-          aria-label="选择备份文件"
-          beforeUpload={(file) => {
-            const name = (file.name || "").replace(/\.zip$/i, "") || "导入的数据集";
-            onImport(file as File, name);
-            // 与仓库其它上传一致：本地读取后自行提交，不走 antd 的上传通道。
-            return Upload.LIST_IGNORE;
-          }}
+          hint="松开即可导入备份包（.zip）"
+          onFiles={(files) => onImport(files[0], datasetNameFrom(files[0]))}
+          className="settings-import-drop"
         >
-          <Button icon={<UploadOutlined />} loading={importing} disabled={busy}>
-            导入备份为新数据集
-          </Button>
-        </Upload>
+          <Upload
+            accept=".zip,application/zip"
+            showUploadList={false}
+            disabled={busy}
+            // 设置页上有多个上传入口，这个 aria-label 让它们（以及测试）都能精确定位。
+            aria-label="选择备份文件"
+            beforeUpload={(file) => {
+              onImport(file as File, datasetNameFrom(file as File));
+              // 与仓库其它上传一致：本地读取后自行提交，不走 antd 的上传通道。
+              return Upload.LIST_IGNORE;
+            }}
+          >
+            <Button icon={<UploadOutlined />} loading={importing} disabled={busy}>
+              导入备份为新数据集
+            </Button>
+          </Upload>
+        </FileDropZone>
 
         <List
           style={{ marginTop: 16 }}

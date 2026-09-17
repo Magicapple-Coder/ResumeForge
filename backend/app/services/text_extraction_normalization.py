@@ -155,8 +155,13 @@ def _safe_source_url(value: str, source_text: str) -> str:
 
 
 def normalize_job_result(
-    data: dict[str, Any], local: JobTextParseResult, source_text: str
+    data: dict[str, Any],
+    local: JobTextParseResult,
+    source_text: str,
+    *,
+    recognized_text: str | None = None,
 ) -> JobTextParseResult:
+    """``recognized_text`` 传给调用方自带的一份原文（多份识别时是这一份的摘录）。"""
     state = {"truncated": False}
     values = {
         field: _bounded_text(data.get(field), _JOB_TEXT_LIMITS[field], state)
@@ -180,7 +185,9 @@ def normalize_job_result(
             **values,
             "warnings": warnings,
             "parse_engine": "ai",
-            "recognized_text": _recognized_text(data),
+            "recognized_text": (
+                recognized_text if recognized_text is not None else _recognized_text(data)
+            ),
         }
     )
 

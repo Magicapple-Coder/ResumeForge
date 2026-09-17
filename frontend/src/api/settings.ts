@@ -6,6 +6,7 @@ import type {
   LLMConfigRecord,
   LLMModelsResult,
   LLMTestResult,
+  SearchConfig,
   UpdateCheckResult,
 } from "../types";
 import { ApiError, extractError, getFilenameFromDisposition, request } from "./client";
@@ -58,6 +59,14 @@ export function saveLLMConfigRecord(
 
 export function deleteLLMConfigRecord(id: number): Promise<void> {
   return request(`/settings/llm/records/${id}`, { method: "DELETE" });
+}
+
+export function getSearchConfig(): Promise<SearchConfig> {
+  return request("/settings/search");
+}
+
+export function saveSearchConfig(config: SearchConfig): Promise<SearchConfig> {
+  return request("/settings/search", { method: "PUT", body: JSON.stringify(config) });
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {

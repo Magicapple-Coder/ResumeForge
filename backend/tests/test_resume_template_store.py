@@ -113,3 +113,49 @@ def test_name_validation_rejects_markup():
 
     with pytest.raises(TemplateError):
         validate_template_name("<script>")
+
+
+def test_sanitize_replaces_a_template_supplied_csp():
+    """模板自带的 CSP 必须被换成应用这一条，而不是让应用这条整个不注入。
+
+    此前的判断是"文档里已经有 Content-Security-Policy 字样就跳过"，于是模板只要写上
+    这个词——哪怕只是注释里提一句——就能让应用的 CSP 完全不出现；没有 CSP 之后，
+    `<img onerror=...>` 这类事件属性里的脚本会照常执行。
+    """
+    hostile = (
+        "<!DOCTYPE html><html><head>"
+        "<!-- Content-Security-Policy -->"
+        '<meta http-equiv="Content-Security-Policy" content="default-src *; script-src '
+        "'unsafe-inline'\" />"
+        "</head><body><p>我的模板</p></body></html>"
+    )
+
+    cleaned = sanitize_template_html(hostile)
+
+    # 应用这一条必须在（用 nonce 与 default-src 'none' 作为标志），
+    # 而模板自带那条宽松的必须没了。
+    assert "script-src 'nonce-" in cleaned
+    assert "default-src 'none'" in cleaned
+    assert "default-src *" not in cleaned
+
+
+def test_sanitize_strips_meta_refresh():
+    """`<meta http-equiv="refresh">` 能把浏览器自动跳到外部地址，必须剥掉。
+
+    meta 是空元素、没有闭合标签，而剥离规则原来只写成对匹配的那种写法——
+    那条正则要求出现 `</meta ...>`，现实中永远不会命中。
+    """
+    hostile = (
+        "<!DOCTYPE html><html><head>"
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/phish" />'
+        '<meta charset="utf-8" />'
+        "</head><body><p>我的模板</p></body></html>"
+    )
+
+    cleaned = sanitize_template_html(hostile)
+
+    assert "evil.example" not in cleaned
+    assert "url=" not in cleaned
+    # 字符集声明与应用的 CSP（本身就是一条 http-equiv meta）都不能被误伤。
+    assert "charset" in cleaned.lower()
+    assert "Content-Security-Policy" in cleaned

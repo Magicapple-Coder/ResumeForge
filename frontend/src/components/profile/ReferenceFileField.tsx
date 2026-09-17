@@ -3,6 +3,7 @@ import { DeleteOutlined, EyeOutlined, FileTextOutlined, UploadOutlined } from "@
 import { App, Button, Form, Input, Modal, Space, Tag, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
 import { useEffect, useRef, useState } from "react";
+import FileDropZone from "../common/FileDropZone";
 
 const MAX_FILE_BYTES = 200_000;
 const MAX_FILE_NAME_CHARS = 255;
@@ -58,19 +59,20 @@ export default function ReferenceFileField({ listName, fieldName, editable }: Pr
     form.setFieldValue([listName, currentFieldName, "reference_content"], text);
   };
 
-  const beforeUpload: UploadProps["beforeUpload"] = (file) => {
-    if (!editable) return Upload.LIST_IGNORE;
+  /** 校验并读入一个文件。点选和拖入走的是同一条路，两边的限制不会漂移。 */
+  const acceptFile = (file: File) => {
+    if (!editableRef.current) return;
     if (!hasSupportedExtension(file.name)) {
       message.error("仅支持 .md 或 .txt 格式的总结文件");
-      return Upload.LIST_IGNORE;
+      return;
     }
     if (file.name.length > MAX_FILE_NAME_CHARS) {
       message.error("总结文件名不能超过 255 个字符");
-      return Upload.LIST_IGNORE;
+      return;
     }
     if (file.size > MAX_FILE_BYTES) {
       message.error("总结文件不能超过 200 KB");
-      return Upload.LIST_IGNORE;
+      return;
     }
 
     const currentReadId = ++readId.current;
@@ -89,6 +91,12 @@ export default function ReferenceFileField({ listName, fieldName, editable }: Pr
       .finally(() => {
         if (readId.current === currentReadId) setReading(false);
       });
+  };
+
+  const beforeUpload: UploadProps["beforeUpload"] = (file) => {
+    if (!editable) return Upload.LIST_IGNORE;
+    acceptFile(file);
+    // 永远是"不自动上传"：文件由上面这段读进表单，不经服务端。
     return false;
   };
 
@@ -99,7 +107,15 @@ export default function ReferenceFileField({ listName, fieldName, editable }: Pr
   };
 
   return (
-    <div className="profile-reference-field">
+    <FileDropZone
+      className="profile-reference-field"
+      accept=".md,.txt"
+      multiple={false}
+      disabled={!editable || reading}
+      hint="松开即可导入总结文件（.md / .txt）"
+      onFiles={(files) => acceptFile(files[0])}
+      onRejected={() => message.error("仅支持 .md 或 .txt 格式的总结文件")}
+    >
       {editable ? (
         <>
           <Form.Item
@@ -181,6 +197,6 @@ export default function ReferenceFileField({ listName, fieldName, editable }: Pr
         <Typography.Text type="secondary">{content.length.toLocaleString()} 字</Typography.Text>
         <pre className="profile-reference-preview">{content}</pre>
       </Modal>
-    </div>
+    </FileDropZone>
   );
 }

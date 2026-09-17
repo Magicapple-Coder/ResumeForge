@@ -41,7 +41,7 @@ describe("first-visit guide", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "使用指南" }));
     expect(await screen.findByRole("dialog", { name: "欢迎使用简历通" })).toBeInTheDocument();
-  }, 15_000);
+  });
 });
 
 describe("application navigation", () => {

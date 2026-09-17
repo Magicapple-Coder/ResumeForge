@@ -126,6 +126,7 @@ npm audit --registry=https://registry.npmjs.org
 - **不要手写 `cmd /c "…"` 命令行。** 把 `.cmd` 直接交给 `Start-Process -FilePath`，它会自己套好 `cmd.exe` 的引号；手写的话 `-ArgumentList` 不加引号而 `/s /c` 会剥掉首尾引号，路径含空格就起不来。
 - **启动器里调用原生命令要看 stderr。** `$ErrorActionPreference = "Stop"` 下，任何原生命令写到 stderr 的输出都会变成终止性错误——"预期会失败"的探测（比如在空 venv 上 `import`）必须先把它降成 `Continue` 再读 `$LASTEXITCODE`。
 - 改完必须跑 `scripts/tests/Test-Start-ResumeForge.ps1`；它无法覆盖的（真机首次安装、镜像可用性）要在交付说明里写清楚验证到什么程度。
+- **`uninstall.cmd` / `scripts/Uninstall-ResumeForge.ps1` 是唯一会主动删东西的入口**，改它必须跑 `scripts/tests/Test-Uninstall-ResumeForge.ps1`。三条不能退让的性质：默认只删启动器生成的东西（`backend\data` 与 `backend\.env` 要留着，`-Purge` 才删）、**永远不删源码**、只在真正的 checkout 里运行。测试全部在临时目录里复制一份脚本来跑，不会碰当前仓库。
 
 ## 版本与发布
 

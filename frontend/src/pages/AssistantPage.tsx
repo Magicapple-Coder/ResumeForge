@@ -1,8 +1,9 @@
 /** AI 求职助手：流式对话、历史记录、技能开关、附件与项目上下文联动。 */
-import { App, Input, Modal, Typography } from "antd";
+import { CheckSquareOutlined, CloseOutlined, DeleteOutlined } from "@ant-design/icons";
+import { App, Button, Input, Modal, Space, Typography } from "antd";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { deleteAssistantMessage } from "../api/assistant";
+import { deleteAssistantMessage, deleteAssistantMessages } from "../api/assistant";
 import AssistantComposer from "../features/assistant/components/AssistantComposer";
 import AssistantMessageList from "../features/assistant/components/AssistantMessageList";
 import ConversationSidebar from "../features/assistant/components/ConversationSidebar";
@@ -37,7 +38,7 @@ function readStoredEffort(): ReasoningEffort {
 }
 
 export default function AssistantPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [content, setContent] = useState("");
@@ -52,6 +53,9 @@ export default function AssistantPage() {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(readStoredEffort);
   const [groupTarget, setGroupTarget] = useState<AssistantConversationBrief | null>(null);
   const [groupValue, setGroupValue] = useState("");
+  /** 多选删除：进入后每条消息左侧出勾选框，可一次删掉几条。 */
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
   const mountedRef = useRef(true);
   const messageEndRef = useRef<HTMLDivElement>(null);
   /** 深链已经定位过的会话 id：只认一次，之后列表怎么刷新都不再抢焦点。 */
@@ -121,6 +125,47 @@ export default function AssistantPage() {
     },
     [activeId, loadDetail, message],
   );
+
+  const exitSelecting = useCallback(() => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const messageCount = detail?.messages.length ?? 0;
+
+  // 换会话就退出多选：勾着的是上一条会话的消息 id，留着会让新会话里 id 相同的消息
+  // 出现在"已选"里，一点删除就删错了。
+  useEffect(() => {
+    exitSelecting();
+  }, [activeId, exitSelecting]);
+
+  const toggleSelected = useCallback((target: AssistantMessage) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(target.id)) next.delete(target.id);
+      else next.add(target.id);
+      return next;
+    });
+  }, []);
+
+  /**
+   * 多选删除。
+   *
+   * 一条都不选时按钮是禁用的，所以这里不用处理空集合；后端在 `message_ids` 为空时
+   * 会直接 422（它要求至少一条）。删除后退出多选态：留着勾选状态而那条消息已经不见了，
+   * 再点删除会把一批旧 id 发过去。
+   */
+  const removeSelected = useCallback(async () => {
+    if (!activeId || selectedIds.size === 0) return;
+    try {
+      const { deleted } = await deleteAssistantMessages(activeId, [...selectedIds]);
+      await loadDetail(activeId);
+      exitSelecting();
+      message.success(`已删除 ${deleted} 条消息`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "删除消息失败");
+    }
+  }, [activeId, exitSelecting, loadDetail, message, selectedIds]);
 
   const stream = useAssistantStream({
     activeIdRef,
@@ -301,7 +346,45 @@ export default function AssistantPage() {
             </Typography.Title>
             <Typography.Text type="secondary">当前回复由「设置」中的模型配置提供。</Typography.Text>
           </div>
+          {/* 多选只在有历史消息时才有意义；流式回复期间也不给进——那两条临时气泡还不在
+              数据库里，勾不上。 */}
+          {messageCount > 0 && !selecting && (
+            <Button
+              icon={<CheckSquareOutlined />}
+              disabled={sending}
+              onClick={() => setSelecting(true)}
+            >
+              多选
+            </Button>
+          )}
         </header>
+        {selecting && (
+          <div className="assistant-select-bar">
+            <Space wrap>
+              <Typography.Text strong>已选 {selectedIds.size} 条</Typography.Text>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={selectedIds.size === 0}
+                onClick={() =>
+                  modal.confirm({
+                    title: `删除选中的 ${selectedIds.size} 条消息？`,
+                    content: "删除后无法恢复。引用这些消息的提问仍会保留引用内容。",
+                    okText: "删除",
+                    okButtonProps: { danger: true },
+                    cancelText: "取消",
+                    onOk: () => removeSelected(),
+                  })
+                }
+              >
+                删除所选
+              </Button>
+              <Button icon={<CloseOutlined />} onClick={exitSelecting}>
+                退出多选
+              </Button>
+            </Space>
+          </div>
+        )}
         <AssistantMessageList
           detail={detail}
           showLoading={awaitingConversation}
@@ -322,6 +405,9 @@ export default function AssistantPage() {
           onManageSkills={openSkillWorkbench}
           onQuote={quoteMessage}
           onDeleteMessage={(target) => void removeMessage(target)}
+          selecting={selecting}
+          selectedIds={selectedIds}
+          onToggleSelected={toggleSelected}
         />
         <AssistantComposer
           content={content}

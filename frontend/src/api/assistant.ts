@@ -119,6 +119,22 @@ export function deleteAssistantMessage(conversationId: number, messageId: number
   });
 }
 
+/**
+ * 一次删除多条消息（多选模式走这里）。
+ *
+ * 单独走批量接口而不是循环调单条：后端在一个事务里删完并校验会话归属，中途失败不会
+ * 留下"删了一半"的状态。一次最多 200 条。
+ */
+export function deleteAssistantMessages(
+  conversationId: number,
+  messageIds: number[],
+): Promise<{ deleted: number }> {
+  return request(`/assistant/conversations/${conversationId}/messages/delete`, {
+    method: "POST",
+    body: JSON.stringify({ message_ids: messageIds }),
+  });
+}
+
 export function sendAssistantMessage(
   id: number,
   payload: {

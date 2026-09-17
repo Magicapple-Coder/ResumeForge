@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 # 一次回复里最多允许几轮工具调用；防止模型在两个工具之间来回打转。
 MAX_TOOL_ROUNDS = 5
-# 一轮回答里最多搜几次网。系统提示、README 与使用指南都写着"最多 3 次"，这里把它变成
-# 真的：此前只有提示词里那句话，代码侧真正的约束是 5 轮工具调用，而且每轮可以并行发多个
-# 搜索——用户按文档预期 3 次，实际可能多花好几倍。
+# 一轮回答里最多搜几次网，**含自动预搜的那一次**。系统提示、README 与使用指南都写着
+# "最多 3 次"，这里把它变成真的：此前只有提示词里那句话，代码侧真正的约束是 5 轮工具
+# 调用，而且每轮可以并行发多个搜索——用户按文档预期 3 次，实际可能多花好几倍。
 MAX_WEB_SEARCHES = 3
 
 
@@ -168,6 +168,7 @@ async def stream_message_events(
     system_prompt: str,
     search_web_fn: Callable[[str], Awaitable[list[dict[str, str]]]],
     quoted: dict[str, Any] | None = None,
+    fetch_pages: int = 0,
 ) -> AsyncIterator[str]:
     parts: list[str] = []
     metadata = dict(context_metadata)
@@ -207,12 +208,17 @@ async def stream_message_events(
         )
 
         # 只有用户打开联网开关时才把搜索工具下发给模型；关掉开关就是不希望联网。
-        tools = tool_definitions(web_search=payload.web_search)
+        # fetch_pages 决定工具描述怎么说（开了抓正文就不能再说"不打开网页"）。
+        tools = tool_definitions(web_search=payload.web_search, fetch_pages=fetch_pages)
         tool_records: list[dict[str, Any]] = []
         # 工具里搜到的来源与手动搜索的来源合并展示，按 URL 去重。
         collected_sources: list[dict[str, Any]] = list(metadata.get("sources") or [])
         seen_source_urls = {str(item.get("url", "")) for item in collected_sources}
-        web_searches_used = 0
+        # 上面那次自动预搜**也算一次**：它同样真的发了网络请求、真的花了时间。此前这个
+        # 计数从 0 起算，于是开了联网开关时"最多 3 次"实际是 4 次，和系统提示、README、
+        # 使用指南里写的数字对不上。失败的预搜不计数——它没给模型任何资料，这时更需要
+        # 让工具补上。
+        web_searches_used = 1 if metadata.get("sources") else 0
         for _round in range(MAX_TOOL_ROUNDS):
             calls: list[dict[str, Any]] = []
             async for delta in provider.stream_chat_events(messages, tools):

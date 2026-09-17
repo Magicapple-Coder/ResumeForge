@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AssistantConversationBrief,
   AssistantConversationDetail,
+  AssistantMessage,
   AssistantSkill,
   AssistantStreamEvent,
 } from "../types";
@@ -18,6 +19,8 @@ import AssistantPage, {
 const apiMocks = vi.hoisted(() => ({
   createAssistantConversation: vi.fn(),
   deleteAssistantConversation: vi.fn(),
+  deleteAssistantMessage: vi.fn(),
+  deleteAssistantMessages: vi.fn(),
   getAssistantConversation: vi.fn(),
   listAssistantConversations: vi.fn(),
   renameAssistantConversation: vi.fn(),
@@ -29,9 +32,15 @@ const apiMocks = vi.hoisted(() => ({
 const skillApiMocks = vi.hoisted(() => ({ listSkills: vi.fn() }));
 const scrollIntoViewMock = vi.fn();
 
-vi.mock("../api/assistant", () => ({
+// 先把真实导出铺开再覆盖要断言的那几个：只列名字的话，页面一旦导入新函数（比如批量删除），
+// 这个替身里就没有它，调用处会抛 "is not a function"——而报错指向的是页面代码，很难看出
+// 问题出在测试替身上。
+vi.mock("../api/assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/assistant")>()),
   createAssistantConversation: apiMocks.createAssistantConversation,
   deleteAssistantConversation: apiMocks.deleteAssistantConversation,
+  deleteAssistantMessage: apiMocks.deleteAssistantMessage,
+  deleteAssistantMessages: apiMocks.deleteAssistantMessages,
   getAssistantConversation: apiMocks.getAssistantConversation,
   listAssistantConversations: apiMocks.listAssistantConversations,
   renameAssistantConversation: apiMocks.renameAssistantConversation,
@@ -168,6 +177,8 @@ beforeEach(() => {
     ...(CONVERSATIONS.find((item) => item.id === id) ?? CONVERSATIONS[0]),
     ...patch,
   }));
+  apiMocks.deleteAssistantMessage.mockReset().mockResolvedValue(undefined);
+  apiMocks.deleteAssistantMessages.mockReset().mockResolvedValue({ deleted: 0 });
   apiMocks.sendAssistantMessage.mockReset().mockResolvedValue(undefined);
   apiMocks.listJobs.mockReset().mockResolvedValue({ items: [], total: 0 });
   apiMocks.listResumes.mockReset().mockResolvedValue({ items: [], total: 0 });
@@ -761,5 +772,88 @@ describe("AssistantPage", () => {
 
     expect(await screen.findByText(/失败：岗位 999 不存在/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "前往查看" })).not.toBeInTheDocument();
+  });
+});
+
+describe("消息多选删除", () => {
+  function message(id: number, role: "user" | "assistant"): AssistantMessage {
+    return {
+      id,
+      conversation_id: 1,
+      role,
+      content: `${role} 消息 ${id}`,
+      quoted_message_id: null,
+      attachments: [],
+      context: {},
+      status: "complete",
+      error: "",
+      model: "test-model",
+      created_at: CREATED_AT,
+    };
+  }
+
+  function detailWithMessages() {
+    return {
+      ...conversationDetail(1),
+      messages: [message(11, "user"), message(12, "assistant")],
+    };
+  }
+
+  it("deletes the checked messages in one request", async () => {
+    apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
+    renderPage();
+    await screen.findByText("user 消息 11");
+
+    fireEvent.click(screen.getByRole("button", { name: /多选/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 你的这条消息" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 助手的这条消息" }));
+    expect(screen.getByText("已选 2 条")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /删除所选/ }));
+    // 删除不可撤销，所以中间要过一次确认弹窗。按钮只在弹窗范围内找：页面上还有一个
+    // 「删除所选」也含"删除"二字。antd 会在两个汉字的按钮里插一个空格（"删 除"），
+    // 所以按正则匹配。
+    const confirmDialog = await screen.findByRole("dialog");
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: /删\s*除/ }));
+
+    // 一次请求删完，而不是循环调单条接口——后端在一个事务里删并校验会话归属。
+    await waitFor(() => expect(apiMocks.deleteAssistantMessages).toHaveBeenCalledWith(1, [11, 12]));
+  });
+
+  it("cannot delete until something is checked", async () => {
+    apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
+    renderPage();
+    await screen.findByText("user 消息 11");
+
+    fireEvent.click(screen.getByRole("button", { name: /多选/ }));
+
+    expect(screen.getByText("已选 0 条")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /删除所选/ })).toBeDisabled();
+    expect(apiMocks.deleteAssistantMessages).not.toHaveBeenCalled();
+  });
+
+  it("offers no multi-select entry for an empty conversation", async () => {
+    renderPage();
+    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalled());
+
+    // 一条消息都没有时"多选"无从选起，按钮不该出现。
+    expect(screen.queryByRole("button", { name: /多选/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves multi-select when the user switches conversations", async () => {
+    apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
+    renderPage();
+    await screen.findByText("user 消息 11");
+
+    fireEvent.click(screen.getByRole("button", { name: /多选/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 你的这条消息" }));
+    expect(screen.getByText("已选 1 条")).toBeInTheDocument();
+
+    // 切到另一条会话：勾着的是上一条会话的消息 id，留着会让新会话里 id 相同的消息
+    // 出现在"已选"里。
+    fireEvent.click(screen.getByText("会话二"));
+
+    await waitFor(() => expect(screen.queryByText("已选 1 条")).not.toBeInTheDocument());
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });

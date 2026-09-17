@@ -1,7 +1,7 @@
 /** 对话消息、流式回复和加载状态展示。 */
 
 import { CommentOutlined, CopyOutlined, DeleteOutlined } from "@ant-design/icons";
-import { Alert, App, Skeleton, Typography } from "antd";
+import { Alert, App, Checkbox, Skeleton, Typography } from "antd";
 import type { RefObject } from "react";
 import type {
   AssistantConversationDetail,
@@ -45,6 +45,10 @@ interface Props {
   /** 引用某条历史消息追问（右键菜单）。 */
   onQuote: (message: AssistantMessage) => void;
   onDeleteMessage: (message: AssistantMessage) => void;
+  /** 多选模式：勾选多条后一次删掉。 */
+  selecting: boolean;
+  selectedIds: ReadonlySet<number>;
+  onToggleSelected: (message: AssistantMessage) => void;
 }
 
 export default function AssistantMessageList({
@@ -67,6 +71,9 @@ export default function AssistantMessageList({
   onManageSkills,
   onQuote,
   onDeleteMessage,
+  selecting,
+  selectedIds,
+  onToggleSelected,
 }: Props) {
   const { message } = App.useApp();
   const historyMessages = detail?.messages ?? [];
@@ -112,9 +119,13 @@ export default function AssistantMessageList({
           onManageSkills={onManageSkills}
         />
       ) : (
-        historyMessages.map((item) => (
-          <RowContextMenu key={item.id} items={actionsFor(item)}>
-            <article className={`assistant-message assistant-message--${item.role}`}>
+        historyMessages.map((item) => {
+          const bubble = (
+            <article
+              className={`assistant-message assistant-message--${item.role}${
+                selectedIds.has(item.id) ? " assistant-message--selected" : ""
+              }`}
+            >
               <div className="assistant-message-head">
                 <Typography.Text strong>{item.role === "user" ? "你" : "求职助手"}</Typography.Text>
                 <Typography.Text type="secondary" className="assistant-message-time">
@@ -135,8 +146,26 @@ export default function AssistantMessageList({
               <MessageToolCalls calls={item.context.tool_calls ?? []} />
               {item.status === "error" && item.error && <Alert type="error" message={item.error} />}
             </article>
-          </RowContextMenu>
-        ))
+          );
+          // 多选时不挂右键菜单：那套操作（引用、复制）此时都用不上，右键还要和勾选抢交互。
+          if (selecting) {
+            return (
+              <label key={item.id} className="assistant-message-pick">
+                <Checkbox
+                  checked={selectedIds.has(item.id)}
+                  onChange={() => onToggleSelected(item)}
+                  aria-label={`选择 ${item.role === "user" ? "你的" : "助手的"}这条消息`}
+                />
+                {bubble}
+              </label>
+            );
+          }
+          return (
+            <RowContextMenu key={item.id} items={actionsFor(item)}>
+              {bubble}
+            </RowContextMenu>
+          );
+        })
       )}
       {activeStream && (pendingUserText || pendingUserAttachments.length > 0) && (
         <article className="assistant-message assistant-message--user">

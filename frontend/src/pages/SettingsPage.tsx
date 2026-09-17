@@ -23,6 +23,7 @@ import { LLM_PRESETS } from "../config";
 import DatasetsCard from "../components/settings/DatasetsCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
+import SearchCard from "../components/settings/SearchCard";
 import SkillsCard from "../components/settings/SkillsCard";
 import UpdateCard from "../components/settings/UpdateCard";
 import {
@@ -262,10 +263,14 @@ export default function SettingsPage() {
     const preset = LLM_PRESETS.find((item) => item.provider === provider);
     if (!preset) return;
     resetRevealedApiKey();
+    // 协议跟着预设走。不写这一行的话，从 Claude 原生切到 DeepSeek 会留下
+    // `api_style: anthropic` + DeepSeek 地址的组合，请求必失败；反过来选 Claude
+    // 预设却不切协议，则会拿 Messages 的地址发 Chat Completions。
     form.setFieldsValue({
       provider: preset.provider,
       base_url: preset.base_url,
       model: preset.model,
+      api_style: preset.api_style ?? "openai",
     });
   };
 
@@ -517,6 +522,9 @@ export default function SettingsPage() {
           if (!recordSaving) setRecordModalOpen(false);
         }}
       />
+
+      {/* 联网搜索：与模型配置相邻，因为两者一起决定助手"能查什么、查得多细"。 */}
+      <SearchCard />
 
       <SkillsCard
         skills={skills}

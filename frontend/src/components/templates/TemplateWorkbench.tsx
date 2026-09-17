@@ -24,6 +24,7 @@ import {
   listResumeTemplates,
 } from "../../api/resumeTemplates";
 import type { ResumeTemplateCatalog, ResumeTemplateDetail } from "../../types";
+import FileDropZone from "../common/FileDropZone";
 import { RowActions } from "../common/RowActions";
 import FormatTemplateEditorModal from "./FormatTemplateEditorModal";
 import StyleTemplateEditorModal from "./StyleTemplateEditorModal";
@@ -219,22 +220,31 @@ export default function TemplateWorkbench({ onChanged }: Props) {
             >
               <Button icon={<CopyOutlined />}>复制改一份</Button>
             </Dropdown>
-            <label className="template-upload-button">
-              <input
-                type="file"
-                accept=".html,.htm,.j2,.jinja,.txt"
-                hidden
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  // 清空 value：同一个文件连续导入两次也要触发 change。
-                  event.target.value = "";
-                  if (file) void importFile(file);
-                }}
-              />
-              <Button icon={<UploadOutlined />} onClick={(event) => event.preventDefault()}>
-                导入 HTML
-              </Button>
-            </label>
+            <FileDropZone
+              accept=".html,.htm,.j2,.jinja,.txt"
+              multiple={false}
+              disabled={catalogLoading}
+              hint="松开即可导入模板 HTML"
+              onFiles={(files) => void importFile(files[0])}
+              className="template-upload-drop"
+            >
+              <label className="template-upload-button">
+                <input
+                  type="file"
+                  accept=".html,.htm,.j2,.jinja,.txt"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    // 清空 value：同一个文件连续导入两次也要触发 change。
+                    event.target.value = "";
+                    if (file) void importFile(file);
+                  }}
+                />
+                <Button icon={<UploadOutlined />} onClick={(event) => event.preventDefault()}>
+                  导入 HTML
+                </Button>
+              </label>
+            </FileDropZone>
           </Space>
         }
       >

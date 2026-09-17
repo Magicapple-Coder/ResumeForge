@@ -5,9 +5,6 @@ from .openai_compat import OpenAICompatProvider
 
 __all__ = ["BaseLLMProvider", "LLMError", "OpenAICompatProvider", "create_provider"]
 
-# 供设置页展示：哪些协议可选，以及各自的默认地址。
-DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
-
 
 def create_provider(config: LLMConfig, *, request_overrides: dict | None = None) -> BaseLLMProvider:
     """按配置创建模型调用器。

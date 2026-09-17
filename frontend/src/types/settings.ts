@@ -65,6 +65,26 @@ export interface LLMModelsResult {
   message: string;
 }
 
+/** 联网搜索的来源。 */
+export type SearchSource = "bing" | "duckduckgo" | "searxng";
+
+/**
+ * 联网搜索设置。
+ *
+ * 每个字段都要与后端 `SearchConfig` 对齐：这个接口也是**整份替换**语义，少声明一个
+ * 字段就会在保存时被默认值填回去（与 `LLMConfig` 同一类坑）。
+ */
+export interface SearchConfig {
+  /** 至少一个来源；后端要求 1~3 项且自动去重。 */
+  sources: SearchSource[];
+  /** 自建 SearXNG 实例根地址（`http://` 或 `https://` 开头）；不用可留空。 */
+  searxng_url: string;
+  /** 抓取前 N 条结果的正文，0 = 只取摘要。取值范围 0~3。 */
+  fetch_pages: number;
+  /** 每次搜索最多返回多少条，1~15。 */
+  max_results: number;
+}
+
 /** 一份数据集：一整个数据库，可切换。 */
 export interface DatasetInfo {
   id: string;

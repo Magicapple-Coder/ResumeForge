@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteLLMConfigRecord: vi.fn(),
   exportDataset: vi.fn(),
   getLLMConfig: vi.fn(),
+  getSearchConfig: vi.fn(),
   importDataset: vi.fn(),
   listDatasets: vi.fn(),
   listLLMConfigRecords: vi.fn(),
@@ -16,6 +17,7 @@ const apiMocks = vi.hoisted(() => ({
   revealLLMApiKey: vi.fn(),
   saveLLMConfig: vi.fn(),
   saveLLMConfigRecord: vi.fn(),
+  saveSearchConfig: vi.fn(),
   testLLM: vi.fn(),
 }));
 
@@ -55,6 +57,13 @@ const llmConfig = {
   max_tokens: 4096,
 };
 
+const searchConfig = {
+  sources: ["bing", "duckduckgo"],
+  searxng_url: "",
+  fetch_pages: 0,
+  max_results: 8,
+};
+
 /**
  * 选一个快速预设。
  *
@@ -80,6 +89,7 @@ function tooltipTriggerFor(label: string): HTMLElement {
 
 beforeEach(() => {
   apiMocks.getLLMConfig.mockResolvedValue(llmConfig);
+  apiMocks.getSearchConfig.mockResolvedValue(searchConfig);
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
   apiMocks.listDatasets.mockResolvedValue([mainDataset]);
   apiMocks.revealLLMApiKey.mockResolvedValue({ api_key: "sk-revealed" });
@@ -223,7 +233,7 @@ describe("SettingsPage model presets", () => {
         }),
       ),
     );
-  }, 15_000);
+  });
 
   it("keeps showing 纯手动配置 after it is saved", async () => {
     apiMocks.getLLMConfig.mockResolvedValue({
@@ -266,7 +276,65 @@ describe("SettingsPage model presets", () => {
         }),
       ),
     );
-  }, 15_000);
+  });
+
+  it("switches the protocol on when the Claude preset is chosen", async () => {
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    await choosePreset("Claude（Anthropic 原生协议）");
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    // 只填地址不改协议的话，用户会拿着一整套 Messages 协议的配置去发 Chat
+    // Completions 请求，报错只会说 404，看不出是协议选错了。
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "anthropic",
+          api_style: "anthropic",
+          // /v1 不能省：provider 拼的是 `{base_url}/messages`。
+          base_url: "https://api.anthropic.com/v1",
+          model: "claude-sonnet-5",
+        }),
+      ),
+    );
+  });
+
+  it("switches the protocol back when a non-Anthropic preset is chosen", async () => {
+    apiMocks.getLLMConfig.mockResolvedValue({
+      ...llmConfig,
+      provider: "anthropic",
+      base_url: "https://api.anthropic.com/v1",
+      model: "claude-sonnet-5",
+      api_style: "anthropic",
+    });
+    apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
+
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑设置/ }));
+    await choosePreset("DeepSeek（深度求索）");
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+
+    // 留在 anthropic 的话就成了「DeepSeek 地址 + Messages 协议」，请求必失败。
+    await waitFor(() =>
+      expect(apiMocks.saveLLMConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "deepseek", api_style: "openai" }),
+      ),
+    );
+  });
 
   it("saves a custom local model without an API key", async () => {
     apiMocks.saveLLMConfig.mockImplementation(async (config) => config);
@@ -303,7 +371,7 @@ describe("SettingsPage model presets", () => {
         }),
       ),
     );
-  }, 15_000);
+  });
 });
 
 describe("SettingsPage API key reveal", () => {

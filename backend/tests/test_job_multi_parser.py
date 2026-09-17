@@ -13,6 +13,7 @@ from app.services.job_multi_parser import (
     build_multi_job_extraction_messages,
     excerpt_is_grounded,
     extract_multiple_jobs,
+    local_multi_drafts,
     split_job_text_local,
 )
 from app.services.llm.openai_compat import OpenAICompatProvider
@@ -155,6 +156,9 @@ async def test_extract_multiple_jobs_uses_per_item_excerpt_as_anchor():
     # 它自己的要求由本地规则从第二段补出，那部分是正确的。
     assert "Go" not in f"{results[1].requirements}{results[1].description}"
     assert "SQL" in results[1].requirements
+    # 每份要带回**它自己**那段摘录，确认面板才有的可核对（此前只当锚点用完就丢）。
+    assert results[0].recognized_text == first_excerpt
+    assert results[1].recognized_text == second_excerpt
 
 
 @pytest.mark.asyncio
@@ -212,3 +216,23 @@ def test_parse_multiple_endpoint_falls_back_to_local_without_model(client, monke
 def test_parse_multiple_endpoint_requires_input(client):
     response = client.post("/api/jobs/parse-multiple", json={"text": "   "})
     assert response.status_code == 422
+
+
+def test_each_draft_carries_the_excerpt_the_confirm_panel_shows():
+    """每份草稿要带上自己的原文摘录——确认面板逐份显示"原文：…"，用户才能核对拆分。
+
+    此前这段摘录只被当作字段锚点用完就丢，前端读的 `recognized_text` 一直是空串：
+    拆分结果看起来每份都没有原文可核对。
+    """
+    # 用本地切分认得的那种序号小标题（「岗位N：」）写样例，保证这段材料确实会拆成两份。
+    source = (
+        "岗位1：后端开发工程师\n公司：甲公司\n职责：负责服务端接口开发与维护，熟悉 Python。\n"
+        "岗位2：前端开发工程师\n公司：乙公司\n职责：负责页面开发与性能优化，熟悉 TypeScript。"
+    )
+    drafts = local_multi_drafts(source)
+
+    assert len(drafts) == 2
+    for draft in drafts:
+        assert draft.recognized_text.strip()
+        # 带回来的必须是这段材料的原文，而不是别处的内容。
+        assert draft.recognized_text.strip() in source

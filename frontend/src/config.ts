@@ -13,12 +13,24 @@ export interface LLMPreset {
   provider: string;
   base_url: string;
   model: string;
+  /**
+   * 这个预设要走的接口协议，省略即 OpenAI 兼容。
+   *
+   * 预设是协议的入口：选了 Anthropic 原生那条就必须把 `api_style` 一起切过去。
+   * 只填地址不改协议的话，用户会拿着一整套 Messages 协议的配置去发 Chat Completions
+   * 请求，而错误信息只会说"接口返回 404"，看不出是协议选错了。
+   *
+   * 类型写联合类型而不是 `LLMApiStyle`：本文件**不引入 `types/`**，原因见
+   * `enhancementLevelDescription` 上方的说明。
+   */
+  api_style?: "openai" | "anthropic";
 }
 
 /**
  * 大模型预设：选择后自动填充 Base URL 与模型名。
  *
- * 只收录**提供 OpenAI 兼容接口**的服务商，因为项目走的是 Chat Completions 协议。
+ * 绝大多数条目是**提供 OpenAI 兼容接口**的服务商；Claude 另有一条走 Messages 原生协议
+ * （扩展思考、独立 system 字段），所以预设里带了 `api_style`。
  * 模型名只作为起点，各家的模型迭代很快，界面上提供了「获取可用模型」按钮按当前
  * 账号实际可用的模型覆盖它。
  */
@@ -28,6 +40,15 @@ export const LLM_PRESETS: LLMPreset[] = [
     provider: "deepseek",
     base_url: "https://api.deepseek.com",
     model: "deepseek-chat",
+  },
+  {
+    // 地址必须带 /v1：provider 拼的是 `{base_url}/messages`，少了这一段会打到
+    // https://api.anthropic.com/messages，那是官方根本不存在的路径。
+    label: "Claude（Anthropic 原生协议）",
+    provider: "anthropic",
+    base_url: "https://api.anthropic.com/v1",
+    model: "claude-sonnet-5",
+    api_style: "anthropic",
   },
   {
     label: "豆包（火山方舟）",

@@ -309,6 +309,11 @@ class _ScriptedProvider(_FakeProvider):
                 yield delta.text
 
 
+async def _empty_search(_query: str, _config) -> list[dict[str, str]]:
+    """自动预搜的空替身：只为让预搜别去打真实网络，不关心它返回什么。"""
+    return []
+
+
 def _tool_call(name, arguments, call_id="call_1"):
     return LLMDelta(
         tool_calls=[
@@ -477,20 +482,26 @@ def test_web_search_never_exceeds_the_documented_limit(client, monkeypatch):
 
     此前那句话只活在提示词里：代码侧真正的约束是 5 轮工具调用，而且每轮可以并行发多个
     搜索请求，用户按 3 次的预期可能会多花几倍。
+
+    这个 3 次是**总数**，包含打开联网开关时那次自动预搜——它同样真的发了请求。此前那个
+    计数从 0 起算，所以两个入口加起来实际是 4 次。
     """
     from app.api.assistant_stream import MAX_WEB_SEARCHES, MAX_TOOL_ROUNDS
 
     _configure_llm(client)
     executed: list[str] = []
 
-    # web_search 工具内部是"每次调用现取"聚合入口，所以替换包上的属性即可生效；
     # 签名比单引擎版本多一个搜索设置参数。
     async def fake_search(query: str, _config) -> list[dict[str, str]]:
         executed.append(query)
         index = len(executed)
         return [{"title": f"招聘 {index}", "url": f"https://example.com/{index}", "snippet": "摘要"}]
 
+    # 两个入口要分别替换：工具内部是"每次调用现取"（函数内 import），改包上的属性即可；
+    # 自动预搜走的是 api 模块导入时就绑好的名字。以前只替换了前者，于是预搜那次真的去打
+    # 了网络——不仅让这个测试依赖外网，它的那次搜索也没被算进断言里。
     monkeypatch.setattr("app.services.search.aggregate_search", fake_search)
+    monkeypatch.setattr("app.api.assistant.aggregate_search", fake_search)
     # 每一轮都要搜索，永不收敛：没有上限就会一直搜到工具轮次用尽。
     provider = _ScriptedProvider([[_tool_call("web_search", {"query": "后端 招聘"})]])
     monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
@@ -502,9 +513,63 @@ def test_web_search_never_exceeds_the_documented_limit(client, monkeypatch):
     )
 
     assert response.status_code == 200
+    # 第 1 次是自动预搜，剩 2 次留给工具。
     assert len(executed) == MAX_WEB_SEARCHES
     # 确实是被搜索上限拦下的，而不是因为工具轮次用尽才停。
     assert MAX_WEB_SEARCHES < MAX_TOOL_ROUNDS
+    # 超预算时模型要收到"次数已用完"，而不是这次调用被静默丢掉（那会让它以为搜索失败，
+    # 换个词再烧一轮）。这里只断言"传达到了"：同一轮的消息会在后续每一轮的请求里重复出现，
+    # 数出现次数没有意义。
+    assert any(
+        "次数已用完" in str(message.get("content", ""))
+        for request in provider.requests
+        for message in request["messages"]
+        if message.get("role") == "tool"
+    )
+
+
+def test_web_search_tool_description_follows_the_page_fetch_setting(client, monkeypatch):
+    """工具描述要跟着「抓取正文的条数」走。
+
+    描述是模型判断"这个工具能拿到什么"的唯一依据：设置里开了正文抓取、应用真的会打开
+    结果页，却还告诉模型"不打开网页"，它就会认为只有摘要——于是明明够用的资料还要反复换词
+    搜，或者直接告诉用户"我只能看到摘要"。这条链路（设置 → tool_definitions → 请求体）
+    隔了三层，只能靠端到端断言拴住。
+    """
+    _configure_llm(client)
+    monkeypatch.setattr("app.api.assistant.aggregate_search", _empty_search)
+    provider = _ScriptedProvider([[LLMDelta(text="好的。")]])
+    monkeypatch.setattr("app.api.assistant.create_provider", lambda _config: provider)
+    conversation = _create_conversation(client)
+
+    def prompt_for(fetch_pages: int) -> str:
+        """按指定的抓取条数发一次请求，把发给模型的系统提示拼上工具描述一起取回来。"""
+        client.put(
+            "/api/settings/search",
+            json={"sources": ["bing"], "fetch_pages": fetch_pages, "max_results": 8},
+        )
+        provider.requests.clear()
+        client.post(
+            f"/api/assistant/conversations/{conversation['id']}/messages",
+            json={"content": "帮我搜最新的招聘信息", "web_search": True},
+        )
+        request = provider.requests[0]
+        tools = request["tools"]
+        tool_description = next(
+            item["function"]["description"]
+            for item in tools
+            if item["function"]["name"] == "web_search"
+        )
+        # 系统提示同样是"关于这个工具能做什么"的说明，两处必须一致。
+        return f"{request['messages'][0]['content']}\n{tool_description}"
+
+    only_summaries = prompt_for(0)
+    with_pages = prompt_for(2)
+
+    assert "不打开网页" in only_summaries
+    assert "不打开网页" not in with_pages
+    assert "抓取正文" in with_pages
+    assert "正文节选" in with_pages
 
 
 def test_every_tool_has_a_chinese_label_in_the_ui():
@@ -529,3 +594,26 @@ def test_every_tool_has_a_chinese_label_in_the_ui():
 
     missing = [tool.name for tool in assistant_tools._TOOLS if f"{tool.name}:" not in labels_source]
     assert missing == []
+
+
+def test_system_prompt_does_not_deny_capabilities_the_tools_provide():
+    """系统提示不能否认工具真的有的能力。
+
+    提示里曾写着"教育经历、工作经历、项目、技能、奖项等结构化条目你也改不了"，而
+    ``add_profile_entry`` 一直能追加这些条目。模型照着提示回答，用户听到的是"我没有
+    修改你资料的权限"——「把资料箱里的材料整理进个人资料」这条路就这样被挡在门外，
+    而代码里其实什么都不缺。提示和工具注册表隔着一个文件，只能靠断言拴住。
+    """
+    from pathlib import Path
+
+    from app.services.assistant_tools import tool_names
+
+    prompt = (
+        Path(__file__).resolve().parents[1] / "app" / "prompts" / "assistant_system.md"
+    ).read_text(encoding="utf-8")
+
+    # 工具还在，提示就必须提到它，否则模型不知道这条路存在。
+    assert "add_profile_entry" in tool_names()
+    assert "add_profile_entry" in prompt
+    # 那句一票否决不能再回来。
+    assert "结构化条目你也改不了" not in prompt
