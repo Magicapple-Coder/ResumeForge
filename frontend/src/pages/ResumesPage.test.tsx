@@ -39,6 +39,7 @@ const RESUME: ResumeBrief = {
   enhancement_level: "balanced",
   template: "classic",
   format_name: "",
+  format_config: {},
   page_limit: 1,
   font_scale: "standard",
   created_at: "2026-08-20T10:00:00",

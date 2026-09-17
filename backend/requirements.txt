@@ -22,3 +22,7 @@ pypdf==6.18.1
 # the first-run install reproducible.
 fpdf2==2.8.4
 fonttools==4.65.0
+# Browser automation for the apply center: the CDP client talks to a user's real
+# Chrome/Edge over the DevTools WebSocket. Pure Python (no compiler, has wheels),
+# and the HTTP side reuses the existing httpx dependency.
+websocket-client==1.8.0

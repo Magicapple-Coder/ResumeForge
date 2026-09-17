@@ -24,6 +24,9 @@ node_modules/.tmp/
 .env.*
 !.env.example
 backend/data/
+# 投递专用浏览器的 user-data-dir：含登录态（Cookie / 本地存储），体积可能很大。
+# 绝不进 Git（也不进数据库备份包——登录态由 Chromium 自己持久化，应用不读取）。
+backend/data/browser-profile/
 backend/*.db
 backend/*.db-*
 backend/*.sqlite
@@ -40,6 +43,11 @@ runtime/
 .DS_Store
 # 本地 AI 代理工具目录（技能与运行脚本），不属于项目代码
 .claude/
+.workbuddy/
+
+# ===== 过程产出 =====
+# 需求/设计/评审等协作过程文档，不属于产品代码；如需纳入版本管理可自行移除本行。
+deliverables/
 
 # ===== 日志 =====
 *.log

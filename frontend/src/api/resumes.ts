@@ -7,6 +7,8 @@ import type {
   ResumeDetail,
   ResumeFontScale,
   ResumeLayout,
+  ResumeLayoutAnalysis,
+  ResumeLayoutMeasure,
   ResumeSuggestions,
   ResumeTemplateCatalog,
   StreamEvent,
@@ -120,6 +122,21 @@ export function updateResumeLayout(id: number, layout: ResumeLayout): Promise<Re
   });
 }
 
+/**
+ * 版面诊断：把预览里量到的两个高度发过去，拿回结论与逐档收紧方案。
+ *
+ * 规则全在后端（多少算满、先动哪个旋钮、字号缩到哪为止），前端只负责量准和呈现。
+ */
+export function analyzeResumeLayout(
+  id: number,
+  measure: ResumeLayoutMeasure,
+): Promise<ResumeLayoutAnalysis> {
+  return request(`/resumes/${id}/layout/analyze`, {
+    method: "POST",
+    body: JSON.stringify({ measure }),
+  });
+}
+
 /** 渲染简历内容为 HTML（生成完成后、落库前的即时预览） */
 export async function renderResume(
   content: ResumeContent,
@@ -139,8 +156,11 @@ export async function renderResume(
 export async function exportResume(
   id: number,
   format: ExportFormat,
+  /** 为真时跳过"正文还有未完成标记"的拦截，导出一份草稿自查。 */
+  allowIncomplete = false,
 ): Promise<{ blob: Blob; filename: string; pages: number | null; pageLimit: number | null }> {
-  const resp = await fetch(`/api/resumes/${id}/export?format=${format}`);
+  const suffix = allowIncomplete ? "&allow_incomplete=true" : "";
+  const resp = await fetch(`/api/resumes/${id}/export?format=${format}${suffix}`);
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
   return {
     blob: await resp.blob(),
@@ -159,7 +179,7 @@ function readCountHeader(value: string | null): number | null {
 }
 
 /** 读取导出 HTML 文本（用于打开打印窗口生成 PDF） */
-export async function fetchResumeHtml(id: number): Promise<string> {
-  const { blob } = await exportResume(id, "html");
+export async function fetchResumeHtml(id: number, allowIncomplete = false): Promise<string> {
+  const { blob } = await exportResume(id, "html", allowIncomplete);
   return blob.text();
 }

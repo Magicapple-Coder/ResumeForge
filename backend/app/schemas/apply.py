@@ -1,0 +1,408 @@
+"""自动投递中心的请求/响应结构：配置、浏览器状态、队列、批次与记录。
+
+状态/失败分类等字符串取值与 ``models/apply`` 里的常量**逐字一致**（前端再镜像一份），
+改一处必须同步另一处。
+"""
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from ..config import DEFAULT_BROWSER_PORT
+from ..models.apply import FAILURE_CATEGORIES
+from .job_match import AdmissionResult, HardGateResult
+
+# ===== 配置默认值（出厂默认，键与 app_setting 一致）=====
+DEFAULT_INTERVAL_SECONDS = 25
+DEFAULT_INTERVAL_JITTER_SECONDS = 8
+DEFAULT_DAILY_LIMIT = 60
+DEFAULT_PER_TASK_LIMIT = 20
+DEFAULT_BREAKER_THRESHOLD = 3
+DEFAULT_GREETING = "您好，我对该岗位很感兴趣，期待进一步沟通。"
+
+DEFAULT_COLLECT_KEYWORDS: list[str] = []
+DEFAULT_COLLECT_PER_TASK_LIMIT = 20
+DEFAULT_COLLECT_INTERVAL_SECONDS = 6
+DEFAULT_COLLECT_INTERVAL_JITTER_SECONDS = 3
+
+# 投递专用浏览器的选择方式与自定义路径长度上限。
+DEFAULT_BROWSER_CHOICE = "auto"
+BROWSER_PATH_MAX_CHARS = 512
+
+
+def default_site_key() -> str:
+    """当前站点的出厂默认值：注册表里第一个站点的标识。
+
+    延迟导入注册表，避免"schemas ← services.sites ← ..."在导入期形成不必要的耦合；
+    注册表本身缓存且轻量，这里按需取即可。取不到（注册表为空）时返回空串，由业务层兜底。
+    """
+    from ..services.sites.registry import get_registry
+
+    try:
+        return get_registry().default_key()
+    except Exception:  # noqa: BLE001 - 默认值计算失败不该让配置模型无法实例化
+        return ""
+
+# 招呼语落库时的截断上限：记用户写给 HR 的全文，但不让单条无限增长。
+GREETING_RECORD_MAX_CHARS = 500
+GREETING_INPUT_MAX_CHARS = 1000
+
+MAX_QUEUE_BATCH = 200
+MAX_TASK_TARGETS = 500
+MAX_COLLECT_KEYWORDS = 10
+
+BrowserState = Literal["stopped", "starting", "running", "unknown"]
+# 浏览器选择：auto=自动（优先 Chrome，未装回退 Edge）/ chrome / edge / custom=自定义路径。
+BrowserChoice = Literal["auto", "chrome", "edge", "custom"]
+QueueStatus = Literal["pending", "skipped", "done"]
+TaskStatus = Literal[
+    "pending",
+    "running",
+    "paused",
+    "breaker_paused",
+    "completed",
+    "stopped",
+    "failed",
+]
+TaskKind = Literal["collect", "apply"]
+TaskItemStatus = Literal["pending", "running", "success", "failed", "skipped"]
+FailureCategory = Literal[
+    "selector_invalid",
+    "login_required",
+    "captcha_required",
+    "greeting_missing",
+    "network_timeout",
+    "file_upload_failed",
+    "unknown",
+]
+
+
+def _check_failure_category(value: str) -> str:
+    cleaned = (value or "").strip()
+    if cleaned and cleaned not in FAILURE_CATEGORIES:
+        raise ValueError(f"无效的失败分类，可选值：{'、'.join(FAILURE_CATEGORIES)}")
+    return cleaned
+
+
+# ===== 投递配置 =====
+
+
+class ApplyConfigIn(BaseModel):
+    """投递配置（覆盖写）。范围校验不合法由 FastAPI 返回 422。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    interval_seconds: int = Field(default=DEFAULT_INTERVAL_SECONDS, ge=1, le=600)
+    interval_jitter_seconds: int = Field(default=DEFAULT_INTERVAL_JITTER_SECONDS, ge=0, le=300)
+    daily_limit: int = Field(default=DEFAULT_DAILY_LIMIT, ge=1, le=1000)
+    per_task_limit: int = Field(default=DEFAULT_PER_TASK_LIMIT, ge=1, le=200)
+    breaker_threshold: int = Field(default=DEFAULT_BREAKER_THRESHOLD, ge=1, le=20)
+    default_greeting: str = Field(default=DEFAULT_GREETING, max_length=GREETING_INPUT_MAX_CHARS)
+    skip_same_company: bool = True
+    confirm_real_gap: bool = False
+    browser_port: int = Field(default=DEFAULT_BROWSER_PORT, ge=1024, le=65535)
+    # 用户可自由选择投递台使用的浏览器：auto（优先 Chrome）/ chrome / edge / custom（自定义路径）。
+    browser_choice: BrowserChoice = DEFAULT_BROWSER_CHOICE
+    # 自定义浏览器可执行文件的绝对路径；仅当 browser_choice == "custom" 时生效。
+    browser_path: str = Field(default="", max_length=BROWSER_PATH_MAX_CHARS)
+    # 当前对接的招聘网站（站点适配器 key）；默认取注册表里第一个站点。
+    site_key: str = Field(default_factory=default_site_key, max_length=32)
+
+
+class ApplyConfigOut(ApplyConfigIn):
+    """当前生效的投递配置 + 出厂默认值回显。"""
+
+    defaults: ApplyConfigIn = Field(default_factory=ApplyConfigIn)
+
+
+# ===== 采集配置 =====
+
+
+class CollectConfigIn(BaseModel):
+    """采集配置。关键词 + 城市 + 翻页是首期确定生效的；薪资/经验/学历依赖站点映射，
+
+    映射失败时由界面显示「未生效」，绝不静默忽略。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    keywords: list[str] = Field(default_factory=list, max_length=MAX_COLLECT_KEYWORDS)
+    city: str = Field(default="", max_length=64)
+    salary_min: int | None = Field(default=None, ge=0, le=1000)
+    experience: str = Field(default="", max_length=32)
+    education: str = Field(default="", max_length=32)
+    per_task_limit: int = Field(default=DEFAULT_COLLECT_PER_TASK_LIMIT, ge=1, le=200)
+    interval_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_SECONDS, ge=1, le=600)
+    interval_jitter_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_JITTER_SECONDS, ge=0, le=300)
+
+    @field_validator("keywords")
+    @classmethod
+    def keywords_must_be_clean(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for item in value:
+            text = (item or "").strip()
+            if not text:
+                continue
+            if len(text) > 50:
+                raise ValueError("单个关键词不能超过 50 个字")
+            if text not in cleaned:
+                cleaned.append(text)
+        return cleaned
+
+
+class CollectConfigOut(CollectConfigIn):
+    """当前生效的采集配置 + 出厂默认值回显。"""
+
+    defaults: CollectConfigIn = Field(default_factory=CollectConfigIn)
+
+
+# ===== 投递专用浏览器 =====
+
+
+class BrowserStatusOut(BaseModel):
+    """投递专用浏览器的状态。"""
+
+    state: BrowserState = "stopped"
+    port: int = DEFAULT_BROWSER_PORT
+    profile_dir: str = ""
+    browser_path: str = ""
+    # 人类可读的浏览器名（Google Chrome / Microsoft Edge / 自定义浏览器），别只给路径。
+    browser_name: str = ""
+    # 启动浏览器时要打开的站点入口地址，同时用于界面上的"打开招聘网站"按钮。
+    entry_url: str = ""
+    # 给用户看的登录提示（例如"请在弹出的窗口里扫码登录一次"），不读取也不解析登录态。
+    logged_in_hint: str = ""
+
+
+# ===== 招聘网站（站点适配器）=====
+
+
+class SiteOptionOut(BaseModel):
+    """一个已注册的招聘网站（供界面展示当前站点、也为将来加站点预留）。"""
+
+    key: str
+    display_name: str
+    host: str = ""
+    entry_url: str = ""
+    supports_collect: bool = True
+    supports_apply: bool = True
+
+
+class SiteListOut(BaseModel):
+    """已注册站点列表 + 当前选中项。
+
+    前端**只**从这里读取站点清单与名称，绝不把站点名写死在组件里——这样以后新增一个
+    招聘网站，只要在后端注册表里 ``register`` 一行，界面自动跟着变。
+    """
+
+    current: str = ""
+    sites: list[SiteOptionOut] = Field(default_factory=list)
+
+
+# ===== 投递队列 =====
+
+
+class ApplyQueueAddItem(BaseModel):
+    """加入队列的一项：岗位必填，简历与招呼语可选。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: int = Field(ge=1)
+    resume_id: int | None = Field(default=None, ge=1)
+    greeting: str = Field(default="", max_length=GREETING_INPUT_MAX_CHARS)
+    # 命中"真实缺口"时，用户需要显式确认为真才会入队。
+    confirm_real_gap: bool = False
+    # 尚未分析过的岗位，用户需要显式确认"我知道它没分析过"。
+    confirm_unanalyzed: bool = False
+
+
+class ApplyQueueAddRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ApplyQueueAddItem] = Field(min_length=1, max_length=MAX_QUEUE_BATCH)
+
+
+class ApplyQueueItemUpdate(BaseModel):
+    """PATCH 语义：只更新提交了的字段（None = 不改）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    greeting: str | None = Field(default=None, max_length=GREETING_INPUT_MAX_CHARS)
+    resume_id: int | None = Field(default=None, ge=1)
+
+
+class ApplyQueueReorderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order: list[int] = Field(default_factory=list, max_length=MAX_TASK_TARGETS)
+
+
+class ApplyQueueItemOut(BaseModel):
+    """队列条目，附带该岗位最近一次匹配结论的摘要，供界面展示准入。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int | None = None
+    job_title: str = ""
+    company: str = ""
+    resume_id: int | None = None
+    resume_title: str = ""
+    greeting: str = ""
+    sort_order: int = 0
+    status: QueueStatus = "pending"
+    # 最近一次匹配结论摘要：未分析时 admission / hard_gate 为 None。
+    admission: AdmissionResult | None = None
+    hard_gate: HardGateResult | None = None
+    requires_confirm: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+# ===== 批次（执行）=====
+
+
+class ApplyTaskCreate(BaseModel):
+    """显式开始投递：默认取整队列；给了 job_ids 就只投这几个已勾选的。
+
+    两个都不给（空体且 use_queue=False）必须由 API 层返回 400——绝无"无参数即全网海投"。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_ids: list[int] | None = Field(default=None, max_length=MAX_TASK_TARGETS)
+    use_queue: bool = False
+
+
+class ApplyTaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: TaskKind
+    status: TaskStatus
+    total: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    skipped: int = 0
+    current_step: str = ""
+    stop_reason: str = ""
+    config: dict[str, Any] = Field(default_factory=dict)
+    message: str = ""
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+
+
+class ApplyTaskItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    job_id: int | None = None
+    job_title: str = ""
+    company: str = ""
+    resume_id: int | None = None
+    resume_title: str = ""
+    greeting: str = ""
+    status: TaskItemStatus = "pending"
+    failure_category: str = ""
+    failure_detail: str = ""
+    attempt: int = 0
+    sort_order: int = 0
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+
+    @field_validator("failure_category")
+    @classmethod
+    def failure_category_must_be_known(cls, value: str) -> str:
+        return _check_failure_category(value)
+
+
+class ApplyTaskDetailOut(ApplyTaskOut):
+    items: list[ApplyTaskItemOut] = Field(default_factory=list)
+
+
+# ===== 记录 =====
+
+
+class ApplyRecordOut(BaseModel):
+    """投递记录（已脱敏：只含岗位/简历的展示快照，不含任何完整个人资料）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    job_id: int | None = None
+    job_title: str = ""
+    company: str = ""
+    resume_title: str = ""
+    greeting: str = ""
+    status: TaskItemStatus = "pending"
+    failure_category: str = ""
+    # 失败分类的中文说明（由服务层按 FAILURE_CATEGORY_LABELS 填充）。
+    failure_label: str = ""
+    failure_detail: str = ""
+    attempt: int = 0
+    created_at: datetime
+    finished_at: datetime | None = None
+
+    @field_validator("failure_category")
+    @classmethod
+    def failure_category_must_be_known(cls, value: str) -> str:
+        return _check_failure_category(value)
+
+
+# ===== 招呼语预览 =====
+
+
+class GreetingPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: int = Field(ge=1)
+    # 给了 item_id 就基于队列里该条目当前的简历与招呼语来生成。
+    item_id: int | None = Field(default=None, ge=1)
+
+
+class GreetingPreviewOut(BaseModel):
+    greeting: str = ""
+    # 来源：generated（模型生成）/ queue（队列已有值）/ default（默认招呼语）。
+    source: str = "default"
+
+
+__all__ = [
+    "ApplyConfigIn",
+    "ApplyConfigOut",
+    "ApplyQueueAddItem",
+    "ApplyQueueAddRequest",
+    "ApplyQueueItemOut",
+    "ApplyQueueItemUpdate",
+    "ApplyQueueReorderRequest",
+    "ApplyRecordOut",
+    "ApplyTaskCreate",
+    "ApplyTaskDetailOut",
+    "ApplyTaskItemOut",
+    "ApplyTaskOut",
+    "BrowserChoice",
+    "BrowserState",
+    "BrowserStatusOut",
+    "CollectConfigIn",
+    "CollectConfigOut",
+    "DEFAULT_BROWSER_CHOICE",
+    "DEFAULT_BROWSER_PORT",
+    "DEFAULT_GREETING",
+    "FailureCategory",
+    "GREETING_INPUT_MAX_CHARS",
+    "GREETING_RECORD_MAX_CHARS",
+    "GreetingPreviewOut",
+    "GreetingPreviewRequest",
+    "QueueStatus",
+    "SiteListOut",
+    "SiteOptionOut",
+    "TaskItemStatus",
+    "TaskKind",
+    "TaskStatus",
+    "_check_failure_category",
+    "default_site_key",
+]

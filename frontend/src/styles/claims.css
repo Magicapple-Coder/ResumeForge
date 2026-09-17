@@ -1,0 +1,231 @@
+/* 事实台账：条目卡片、草稿核对列表与表单排版。 */
+
+.claims-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.claims-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.claims-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  padding: 12px 16px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+.claims-filters {
+  /* 筛选行窄屏下换行，不做横向滚动——横向滚动在触控板上很难操作。 */
+  row-gap: 8px;
+}
+
+.claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.claim-card {
+  padding: 14px 16px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+.claim-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.claim-card-verified {
+  font-size: 12px;
+}
+
+/* 原始事实与简历表述并排成两行，方便逐字对照措辞有没有比事实更强。 */
+.claim-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.claim-card-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.claim-card-label {
+  flex: 0 0 auto;
+  min-width: 60px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.claim-card-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 22px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 占位符同时意味着"还没核实"和"导出终稿会被拦下"，要足够醒目。 */
+.claim-placeholder {
+  padding: 0 2px;
+  background: #fff1b8;
+  border-radius: 2px;
+}
+
+.claim-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.claim-card-interview {
+  font-size: 12px;
+}
+
+.claim-card-warnings {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: #d46b08;
+  font-size: 13px;
+}
+
+.claim-draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.claim-draft-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+.claim-draft-fields {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 表单里的并排行：用普通 flex 而不是 antd 的 Space——Space 会再包一层
+   `.ant-space-item`，flex 宽度落在内层就管不到真正的 flex 子项。 */
+.claim-form-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.claim-form-grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.claim-form-fixed {
+  flex: 0 0 160px;
+}
+
+.claim-form-date {
+  flex: 0 0 140px;
+}
+
+.claim-form-section {
+  display: block;
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+
+.claim-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.claim-source-row {
+  display: flex;
+  width: 100%;
+}
+
+.claim-source-type {
+  width: 150px;
+}
+
+.claim-source-location {
+  width: 100%;
+}
+
+/* ===== 面试深挖 ===== */
+
+.drill-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drill-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.drill-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  padding: 12px 16px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+/* 评分契约折叠块：默认收起，但要让用户一眼看到"这里有东西可看"。 */
+.drill-contract,
+.drill-transcript {
+  padding: 8px 10px;
+  background: #fafafa;
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.drill-contract summary,
+.drill-transcript summary {
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+
+.drill-contract-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

@@ -3,6 +3,7 @@ import { DownloadOutlined, PrinterOutlined } from "@ant-design/icons";
 import { App, Button, Dropdown, Space, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
+import { ApiError } from "../api/client";
 import { exportResume, fetchResumeHtml } from "../api/resumes";
 import { downloadBlob, printHtml } from "../utils/download";
 
@@ -13,15 +14,47 @@ interface Props {
 }
 
 export default function ExportButtons({ recordId, pdfDirectAvailable = true }: Props) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [downloading, setDownloading] = useState(false);
+
+  /**
+   * 导出被"正文还有未完成标记"拦下时（409），问一次是否仍要导草稿。
+   *
+   * 拦下不等于堵死：用户确实只想导一份草稿自查时得有出路。写成通用包装是因为
+   * 四种格式和打印都会撞到这条闸门，各写一遍迟早漏掉一个。
+   */
+  const runExport = async <T,>(
+    run: (allowIncomplete: boolean) => Promise<T>,
+  ): Promise<T | null> => {
+    try {
+      return await run(false);
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 409) throw err;
+      const proceed = await new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: "简历里还有未完成标记",
+          content: err.message,
+          okText: "仍要导出草稿",
+          cancelText: "我去改简历",
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!proceed) return null;
+      return await run(true);
+    }
+  };
 
   /** 直接下载 PDF：服务端用 fpdf2 + 系统中文字体排版，不需要打开打印窗口。 */
   const downloadPdf = async () => {
     if (downloading) return;
     setDownloading(true);
     try {
-      const { blob, filename, pages, pageLimit } = await exportResume(recordId, "pdf");
+      const result = await runExport((allowIncomplete) =>
+        exportResume(recordId, "pdf", allowIncomplete),
+      );
+      if (result === null) return; // 用户选择先去改简历
+      const { blob, filename, pages, pageLimit } = result;
       downloadBlob(blob, filename);
       if (pages && pageLimit && pages > pageLimit) {
         // 内容放不下时服务端宁可多出一页也不裁字，所以页数可能多于用户选的上限。
@@ -47,7 +80,9 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
   /** 浏览器打印：版式与预览完全一致，用户在打印对话框里选「另存为 PDF」。 */
   const printPdf = async () => {
     try {
-      printHtml(await fetchResumeHtml(recordId));
+      const html = await runExport((allowIncomplete) => fetchResumeHtml(recordId, allowIncomplete));
+      if (html === null) return;
+      printHtml(html);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "打开打印窗口失败");
     }
@@ -56,8 +91,11 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
   /** 下载文件（HTML / Markdown / JSON） */
   const exportFile = async (format: "html" | "md" | "json") => {
     try {
-      const { blob, filename } = await exportResume(recordId, format);
-      downloadBlob(blob, filename);
+      const result = await runExport((allowIncomplete) =>
+        exportResume(recordId, format, allowIncomplete),
+      );
+      if (result === null) return;
+      downloadBlob(result.blob, result.filename);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "导出失败");
     }

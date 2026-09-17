@@ -1,0 +1,118 @@
+/* 投递台：进度面板、浏览器状态条、采集与队列的排版与响应式。 */
+
+.apply-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.apply-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.apply-browser-bar {
+  padding: 12px 16px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+.apply-browser-hint,
+.apply-browser-path {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.apply-progress-panel {
+  padding: 12px 16px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+}
+
+.apply-progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.apply-progress-alert {
+  margin: 12px 0;
+}
+
+.apply-progress-counts {
+  margin: 12px 0;
+}
+
+.apply-progress-company {
+  font-size: 12px;
+}
+
+.apply-progress-detail {
+  padding: 4px 8px;
+}
+
+.apply-progress-empty {
+  margin-bottom: 0;
+}
+
+.apply-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.apply-collect-unmapped {
+  margin-top: 12px;
+}
+
+/* 岗位匹配度分析 */
+.job-match-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.job-match-conditions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.job-match-condition {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rf-border, #f0f0f0);
+}
+
+.job-match-condition:last-child {
+  border-bottom: none;
+}
+
+.job-match-quote,
+.job-match-evidence {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.job-match-notes {
+  margin: 0;
+  padding-left: 20px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+@media (max-width: 768px) {
+  .apply-page-head,
+  .apply-progress-head,
+  .apply-queue-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

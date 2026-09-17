@@ -7,7 +7,8 @@ import {
   ZoomOutOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Segmented, Space, Tooltip, Typography } from "antd";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { measureResumeLayout, type LayoutMeasure } from "../utils/resumeLayoutMeasure";
 
 interface Props {
   html: string;
@@ -20,6 +21,8 @@ interface Props {
   onEditTarget?: (path: string) => void;
   /** 渲染完成后的版式状态：当前页数、自动缩放比例与是否溢出。 */
   onLayoutStatus?: (status: { pages: number; scale: number; overflow: boolean }) => void;
+  /** 实测高度，交给「版面诊断」用。只有浏览器能量准，所以由预览负责量、上报。 */
+  onMeasure?: (measure: LayoutMeasure) => void;
 }
 
 const A4_WIDTH_PX = 794;
@@ -42,14 +45,23 @@ interface PanStart {
 
 type InteractionMode = "pan" | "edit";
 
-export default function ResumePreview({
-  html,
-  warnings,
-  pages = 1,
-  height,
-  onEditTarget,
-  onLayoutStatus,
-}: Props) {
+/** 预览暴露给外部的命令式接口，只给「自动一页」用。 */
+export interface ResumePreviewHandle {
+  /**
+   * 临时注入一段 CSS 后量一次，量完立刻还原。
+   *
+   * 「自动一页」靠它逐档试版式：不需要重新渲染（没有网络往返），量到的就是这份内容
+   * 在那一档版式下的真实高度。传空串等于"先撤掉探针"。
+   */
+  measureWithProbe(css: string): LayoutMeasure | null;
+}
+
+const PROBE_STYLE_ID = "resume-fit-probe";
+
+const ResumePreview = forwardRef<ResumePreviewHandle, Props>(function ResumePreview(
+  { html, warnings, pages = 1, height, onEditTarget, onLayoutStatus, onMeasure },
+  ref,
+) {
   const pageCount = Math.max(1, Math.round(pages));
   const paperHeight = A4_HEIGHT_PX * pageCount;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,6 +105,12 @@ export default function ResumePreview({
     body.style.transformOrigin = "top left";
     body.style.width = "";
     body.style.height = "";
+
+    // 量真实高度必须**在压缩之前**做：一旦加了 scale，getBoundingClientRect 返回的是
+    // 变换后的坐标，而 padding 是未变换的值，两者混用会算出离谱的填充度。
+    const measure = measureResumeLayout(document, pageCount);
+    if (measure) onMeasure?.(measure);
+
     const contentWidth = Math.max(body.scrollWidth, root.scrollWidth, A4_WIDTH_PX);
     const contentHeight = Math.max(body.scrollHeight, root.scrollHeight, paperHeight);
     const contentScale = Math.min(1, A4_WIDTH_PX / contentWidth, paperHeight / contentHeight);
@@ -111,7 +129,33 @@ export default function ResumePreview({
       scale: Number.isFinite(reportedScale) && reportedScale > 0 ? reportedScale : contentScale,
       overflow: body.dataset.overflow === "1" || contentHeight > paperHeight + 1,
     });
-  }, [onLayoutStatus, pageCount, paperHeight]);
+  }, [onLayoutStatus, onMeasure, pageCount, paperHeight]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      measureWithProbe(css: string) {
+        const document = iframeRef.current?.contentDocument;
+        if (!document?.body) return null;
+        document.getElementById(PROBE_STYLE_ID)?.remove();
+        if (css) {
+          const style = document.createElement("style");
+          style.id = PROBE_STYLE_ID;
+          style.textContent = css;
+          document.head.appendChild(style);
+        }
+        try {
+          // 量之前必须把压缩用的 transform 摘掉（measureResumeLayout 自己会处理），
+          // 并且强制一次重排，否则拿到的是应用新 CSS 之前的旧布局。
+          void document.body.offsetHeight;
+          return measureResumeLayout(document, pageCount);
+        } finally {
+          if (css) document.getElementById(PROBE_STYLE_ID)?.remove();
+        }
+      },
+    }),
+    [pageCount],
+  );
 
   useEffect(() => {
     setZoom(1);
@@ -391,4 +435,6 @@ export default function ResumePreview({
       </div>
     </div>
   );
-}
+});
+
+export default ResumePreview;

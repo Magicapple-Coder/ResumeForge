@@ -13,6 +13,7 @@ import type { TableRowSelection } from "antd/es/table/interface";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { markCandidateJobImported } from "../api/candidateJob";
+import { addToQueue, QueueConflictError } from "../api/apply";
 import {
   batchDeleteJobs,
   batchUpdateJobStatus,
@@ -25,6 +26,7 @@ import GenerateResumeModal from "../components/GenerateResumeModal";
 import JobAnalysisModal from "../components/JobAnalysisModal";
 import JobDetailDrawer from "../components/JobDetailDrawer";
 import JobFormModal from "../components/JobFormModal";
+import JobMatchModal from "../components/JobMatchModal";
 import ManualResumeModal from "../components/ManualResumeModal";
 import CandidateJobsDrawer from "../components/jobs/CandidateJobsDrawer";
 import JobTable from "../components/jobs/JobTable";
@@ -38,7 +40,7 @@ type BatchAction = "status" | "delete" | null;
 export default function JobsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const [keyword, setKeyword] = useState(searchParams.get("keyword") ?? "");
   const [jobType, setJobType] = useState("");
@@ -52,6 +54,8 @@ export default function JobsPage() {
   const [generateJob, setGenerateJob] = useState<Job | null>(null);
   const [manualResumeJob, setManualResumeJob] = useState<Job | null>(null);
   const [analysisJob, setAnalysisJob] = useState<Job | null>(null);
+  const [matchJob, setMatchJob] = useState<Job | null>(null);
+  const [queueJobId, setQueueJobId] = useState<number | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
   const [batchStatus, setBatchStatus] = useState<string>();
   const [batchAction, setBatchAction] = useState<BatchAction>(null);
@@ -121,6 +125,51 @@ export default function JobsPage() {
       }
     },
     [batchAction, favoriteJobId, message, reload],
+  );
+
+  const addJobToQueue = useCallback(
+    async (job: Job, confirm: { unanalyzed?: boolean; realGap?: boolean } = {}) => {
+      setQueueJobId(job.id);
+      try {
+        await addToQueue([
+          {
+            job_id: job.id,
+            confirm_unanalyzed: confirm.unanalyzed,
+            confirm_real_gap: confirm.realGap,
+          },
+        ]);
+        message.success("已加入投递台队列");
+      } catch (err) {
+        if (err instanceof QueueConflictError) {
+          const detail = err.detail;
+          if (detail.unanalyzed) {
+            modal.confirm({
+              title: "该岗位还没做过匹配分析",
+              content: "建议先做「匹配度分析」。也可以直接加入队列，投递前仍会再核对一次。",
+              okText: "仍然加入队列",
+              cancelText: "取消",
+              onOk: () => addJobToQueue(job, { unanalyzed: true }),
+            });
+          } else if (detail.gaps && detail.gaps.length > 0) {
+            modal.confirm({
+              title: "该岗位存在真实缺口，默认不投",
+              content: `匹配分析判定你确实不具备这些要求：${detail.gaps.join("、")}。确认仍要投递该岗位吗？`,
+              okText: "确认仍然投递",
+              okButtonProps: { danger: true },
+              cancelText: "取消",
+              onOk: () => addJobToQueue(job, { realGap: true }),
+            });
+          } else {
+            message.warning(detail.message);
+          }
+        } else {
+          message.error(err instanceof Error ? err.message : "加入投递台失败");
+        }
+      } finally {
+        setQueueJobId(null);
+      }
+    },
+    [message, modal],
   );
 
   const applyBatchStatus = async () => {
@@ -352,9 +401,12 @@ export default function JobsPage() {
         onWrite={(job) => setManualResumeJob(job)}
         onViewResumes={(job) => navigate(`/resumes?job_id=${job.id}`)}
         onAnalyze={setAnalysisJob}
+        onMatch={setMatchJob}
+        onAddToQueue={(job) => void addJobToQueue(job)}
         onAskAssistant={(job) => navigate(`/assistant?job_id=${job.id}`)}
         onFavorite={(job) => void toggleFavorite(job)}
         favoriteLoading={favoriteJobId === detailJob?.id}
+        queueLoading={queueJobId === detailJob?.id}
       />
       <JobFormModal
         open={formOpen}
@@ -400,6 +452,7 @@ export default function JobsPage() {
         onClose={() => setManualResumeJob(null)}
       />
       <JobAnalysisModal job={analysisJob} onClose={() => setAnalysisJob(null)} />
+      <JobMatchModal job={matchJob} onClose={() => setMatchJob(null)} />
     </div>
   );
 }

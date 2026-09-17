@@ -11,6 +11,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from ..schemas.claim import ClaimDigestOut
 from ..schemas.job import JobOut
 from ..schemas.profile import ProfileOut
 from ..schemas.resume import GenerateOptions, ResumeContent
@@ -125,13 +126,21 @@ class ResumeGenerator:
         )
 
     async def generate(
-        self, profile: ProfileOut, job: JobOut | None, options: GenerateOptions
+        self,
+        profile: ProfileOut,
+        job: JobOut | None,
+        options: GenerateOptions,
+        *,
+        baseline: ClaimDigestOut | None = None,
     ) -> AsyncIterator[dict]:
         """执行生成流程，依次产出进度、增量、完成或错误事件。
 
         ``job is None`` 表示**通用简历**：不针对任何岗位，候选资料是完整资料库，
         筛选层换成 ``build_general_profile_context``（见那里的说明——不能靠"传空岗位"
         让岗位路径自己退化，那条路径会丢掉校园经历、奖项、技能与总结）。
+
+        ``baseline`` 是事实台账已确认的条目。**不传、或台账为空时渲染出的提示词与
+        以前逐字节相同**——没启用台账的用户不该因为这次改动而拿到不一样的简历。
         """
         general = job is None
         enhancement_guide = (
@@ -206,6 +215,9 @@ class ResumeGenerator:
             omitted_count=sum(selection.omitted_counts.values()),
             layout_guide=build_layout_guide(options.page_limit, options.font_scale),
             custom_instruction=options.custom_instruction.strip(),
+            # 台账为空时传空串，模板里的 {% if claim_baseline %} 整块不渲染。
+            claim_baseline=baseline.baseline_text if baseline else "",
+            blocked_wording=baseline.blocked_wording if baseline else [],
         )
         messages = [
             {"role": "system", "content": system_prompt},

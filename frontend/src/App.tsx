@@ -1,11 +1,14 @@
 import {
+  AuditOutlined,
   FileTextOutlined,
+  FunnelPlotOutlined,
   HomeOutlined,
   InboxOutlined,
   MessageOutlined,
   ProfileOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
+  SendOutlined,
   SettingOutlined,
   SolutionOutlined,
   StarOutlined,
@@ -21,7 +24,11 @@ import { consumeFirstVisitGuide } from "./utils/userGuide";
 const HomePage = lazy(() => import("./pages/HomePage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const ClaimsPage = lazy(() => import("./pages/ClaimsPage"));
+const DrillPage = lazy(() => import("./pages/DrillPage"));
 const ResumesPage = lazy(() => import("./pages/ResumesPage"));
+const ApplyPage = lazy(() => import("./pages/ApplyPage"));
+const TrackerPage = lazy(() => import("./pages/TrackerPage"));
 const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
@@ -36,12 +43,15 @@ const MENU_ITEMS = [
   { key: "/", icon: <HomeOutlined />, label: "首页" },
   { key: "/jobs", icon: <SearchOutlined />, label: "岗位广场" },
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
+  { key: "/apply", icon: <SendOutlined />, label: "投递台" },
+  { key: "/tracker", icon: <FunnelPlotOutlined />, label: "求职进度" },
   { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
   { key: "/assistant", icon: <MessageOutlined />, label: "求职助手" },
   { key: "/interview", icon: <SolutionOutlined />, label: "模拟面试" },
   { key: "/materials", icon: <InboxOutlined />, label: "资料箱" },
   { key: "/skills", icon: <ToolOutlined />, label: "工作台" },
   { key: "/profile", icon: <ProfileOutlined />, label: "我的资料" },
+  { key: "/claims", icon: <AuditOutlined />, label: "事实台账" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
 
@@ -138,12 +148,16 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/resumes" element={<ResumesPage />} />
+        <Route path="/apply" element={<ApplyPage />} />
+        <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/materials" element={<MaterialsPage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/interview" element={<InterviewPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/claims" element={<ClaimsPage />} />
+        <Route path="/claims/drill" element={<DrillPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

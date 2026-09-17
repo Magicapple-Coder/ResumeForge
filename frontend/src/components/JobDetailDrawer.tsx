@@ -10,6 +10,8 @@ import {
   MessageOutlined,
   PictureOutlined,
   PushpinOutlined,
+  RobotOutlined,
+  SendOutlined,
   StarFilled,
   StarOutlined,
 } from "@ant-design/icons";
@@ -25,9 +27,12 @@ interface Props {
   onWrite: (job: Job) => void;
   onViewResumes: (job: Job) => void;
   onAnalyze: (job: Job) => void;
+  onMatch: (job: Job) => void;
+  onAddToQueue: (job: Job) => void;
   onAskAssistant: (job: Job) => void;
   onFavorite: (job: Job) => void;
   favoriteLoading?: boolean;
+  queueLoading?: boolean;
 }
 
 interface TextSectionProps {
@@ -59,9 +64,12 @@ export default function JobDetailDrawer({
   onWrite,
   onViewResumes,
   onAnalyze,
+  onMatch,
+  onAddToQueue,
   onAskAssistant,
   onFavorite,
   favoriteLoading = false,
+  queueLoading = false,
 }: Props) {
   return (
     <Drawer
@@ -74,7 +82,7 @@ export default function JobDetailDrawer({
       styles={{ footer: { padding: "12px 24px" } }}
       footer={
         job && (
-          <Space className="job-detail-actions">
+          <Space className="job-detail-actions" wrap>
             <Button type="primary" icon={<FileTextOutlined />} onClick={() => onGenerate(job)}>
               用 AI 生成简历
             </Button>
@@ -84,9 +92,28 @@ export default function JobDetailDrawer({
             <Button icon={<FolderOpenOutlined />} onClick={() => onViewResumes(job)}>
               查看生成的简历
             </Button>
-            <Button icon={<BulbOutlined />} onClick={() => onAnalyze(job)}>
-              岗位需求解读
-            </Button>
+            {/* 两个"解读"性质不同，按钮相邻但用 Tooltip 讲清区别：需求解读只读 JD，
+                匹配分析会读取你的资料与简历。 */}
+            <Tooltip title="只读招聘原文，总结岗位要什么">
+              <Button icon={<BulbOutlined />} onClick={() => onAnalyze(job)}>
+                岗位需求解读
+              </Button>
+            </Tooltip>
+            <Tooltip title="读取你的资料与简历，判断你够不够">
+              <Button icon={<RobotOutlined />} onClick={() => onMatch(job)}>
+                匹配度分析
+              </Button>
+            </Tooltip>
+            <Tooltip title="加入投递台队列；命中真实缺口或未分析时会先请你确认">
+              <Button
+                icon={<SendOutlined />}
+                loading={queueLoading}
+                disabled={queueLoading}
+                onClick={() => onAddToQueue(job)}
+              >
+                加入投递台
+              </Button>
+            </Tooltip>
             <Button icon={<MessageOutlined />} onClick={() => onAskAssistant(job)}>
               咨询求职助手
             </Button>

@@ -31,25 +31,63 @@ describe("UserGuideModal", () => {
     expect(screen.getByText("选择预设或自定义模型")).toBeInTheDocument();
     expect(screen.getByText(/纯手动配置/)).toBeInTheDocument();
 
-    goToStep("完善资料");
+    goToStep("完善资料与事实台账");
     expect(screen.getByText("建立你的事实资料库")).toBeInTheDocument();
     // 文档识别是用户看得见的能力，指南必须提到，否则用户不会想到可以传 PDF。
     expect(screen.getByText(/pdf\/docx 简历文档/)).toBeInTheDocument();
+    // 事实台账是这一轮新增的用户可见能力：不说清楚，用户不会知道"哪些话能说"
+    // 是在这里维护的，也就用不上"导出被拦下"那条保护。
+    expect(screen.getAllByText(/事实台账/).length).toBeGreaterThan(0);
+    // 用户得知道它在侧栏的哪儿，否则这一条等于没说。
+    expect(screen.getByText(/侧栏「我的资料」之后/)).toBeInTheDocument();
+    expect(screen.getByText(/只有标成「已确认」的条目/)).toBeInTheDocument();
+    // 深挖是台账的延伸，入口在台账页里——不写清用户找不到。
+    expect(screen.getByText(/拿去深挖/)).toBeInTheDocument();
+    expect(screen.getByText(/在你看到问题\*\*之前\*\*就定下来/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /前往我的资料/ }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onNavigate).toHaveBeenCalledWith("/profile");
   });
 
-  it("explains manual, pasted-text, screenshot and document job entry", () => {
+  it("explains manual entry, auto collection and the apply board on the job step", () => {
     render(<UserGuideModal open onClose={vi.fn()} onNavigate={vi.fn()} />);
 
-    goToStep("导入岗位");
+    goToStep("导入岗位与投递");
 
-    expect(screen.getByText("手动填写或粘贴招聘信息")).toBeInTheDocument();
-    expect(screen.getByText(/粘贴完整招聘信息/)).toBeInTheDocument();
+    expect(screen.getByText("手动录入、自动采集，再到投递台投出去")).toBeInTheDocument();
     expect(screen.getByText(/识别结果不会自动保存/)).toBeInTheDocument();
     expect(screen.getByText(/pdf\/docx 招聘文档都能识别/)).toBeInTheDocument();
+    // 新增能力必须在指南里说出来，否则用户不知道可以用——这是本轮扩写这一步的全部理由。
+    expect(screen.getByText(/匹配度分析/)).toBeInTheDocument();
+    expect(screen.getByText(/投递专用浏览器/)).toBeInTheDocument();
+    expect(screen.getByText(/未生效/)).toBeInTheDocument();
+  });
+
+  it("explains how to track progress after applying", () => {
+    render(<UserGuideModal open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    goToStep("跟进求职进度");
+
+    expect(screen.getByText("投出去之后，对方走到哪一步了")).toBeInTheDocument();
+    // 用户最需要知道的是"自动回执不会被当成面试"和"状态只会前进"——
+    // 这两条不知道，就会误信一个错的进度。
+    expect(screen.getByText(/不会被读成面试或 Offer/)).toBeInTheDocument();
+    expect(screen.getByText(/状态只会前进/)).toBeInTheDocument();
+    // 预览这一步是这个功能的信任基础，必须说出来。
+    expect(screen.getByText(/先给你看会发生什么/)).toBeInTheDocument();
+  });
+
+  it("explains the layout diagnosis and auto-fit on the resume step", () => {
+    render(<UserGuideModal open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    goToStep("制作简历");
+
+    // 版式这块最容易被误以为是"猜的"，所以要说明它有明确的判断依据与顺序。
+    expect(screen.getByText(/版面诊断/)).toBeInTheDocument();
+    expect(screen.getByText(/占了多少|占了页面/)).toBeInTheDocument();
+    expect(screen.getByText(/够放下就停/)).toBeInTheDocument();
+    expect(screen.getByText(/12px/)).toBeInTheDocument();
   });
 
   it("says the assistant can change data but never delete it", () => {

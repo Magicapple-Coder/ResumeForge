@@ -241,12 +241,20 @@ const TOOL_LABELS: Record<string, string> = {
   get_material: "查看资料详情",
   create_material: "新增资料",
   update_material: "修改资料",
+  // 事实台账
+  list_claims: "查询事实台账",
+  get_claim: "查看台账条目",
+  create_claim: "新增台账条目",
+  update_claim: "修改台账条目",
   // 备选岗位
   list_candidate_jobs: "查询备选岗位",
   get_candidate_job: "查看备选岗位详情",
   create_candidate_job: "新增备选岗位",
   update_candidate_job: "修改备选岗位",
   import_candidate_job: "把备选岗位导入岗位广场",
+  // 面试深挖
+  list_drill_sessions: "查询面试深挖记录",
+  get_drill_report: "查看深挖复盘",
   // 模拟面试
   list_interview_sessions: "查询模拟面试",
   get_interview_report: "查看面试记录与报告",

@@ -13,6 +13,7 @@ export const JOB_RECOGNITION_SOURCES = [
   "文档识别",
   "备选岗位导入",
   "AI 助手录入",
+  "岗位采集",
 ] as const;
 
 export type JobRecognitionSource = "" | (typeof JOB_RECOGNITION_SOURCES)[number];

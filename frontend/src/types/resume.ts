@@ -139,6 +139,13 @@ export interface ResumeLayout {
   format_name: string;
   page_limit: ResumePageLimit | number;
   font_scale: ResumeFontScale;
+  /**
+   * 按简历的版式覆盖。
+   *
+   * 三态语义，必须区分开：**不传**（undefined）= 这次不涉及、保持原样；
+   * **空对象** = 明确清掉覆盖；**有值** = 写入。
+   */
+  format_config?: ResumeFormatConfig;
 }
 
 export interface ResumeBrief {
@@ -155,9 +162,74 @@ export interface ResumeBrief {
   template: string;
   /** 格式模板（版式覆盖）名；空串表示用样式模板自带的版式。 */
   format_name: string;
+  /**
+   * 只属于这份简历的版式覆盖（叠加在 format_name 之上）。
+   *
+   * 「自动一页」试出来的方案写在这里，而不是去改具名格式模板——那会让所有引用它的
+   * 简历一起变，而自动一页的结果只对当前这份内容成立。
+   */
+  format_config: ResumeFormatConfig;
   page_limit: number;
   font_scale: ResumeFontScale;
   created_at: string;
+}
+
+/** 版式覆盖：键取自 `ResumeFormatField.key`，值都是数值（颜色也是十六进制字符串）。 */
+export type ResumeFormatConfig = Record<string, number | string>;
+
+/** 「自动一页」用的实测高度，单位随意、只要两者同单位（前端传的是 CSS 像素）。 */
+export interface ResumeLayoutMeasure {
+  used_height: number;
+  page_content_height: number;
+  page_limit: number;
+}
+
+export type ResumeLayoutStatus =
+  "overflow" | "dense" | "healthy" | "sparse" | "too_sparse" | "unknown";
+
+export interface ResumeLayoutSuggestion {
+  kind: string;
+  title: string;
+  detail: string;
+}
+
+export interface ResumeLayoutPageFill {
+  page: number;
+  fill: number;
+}
+
+export interface ResumeLayoutDiagnosis {
+  status: ResumeLayoutStatus;
+  status_label: string;
+  summary: string;
+  /** 整体填充度（0~1 的小数，可能大于 1 表示溢出）。 */
+  fill: number;
+  pages_needed: number;
+  page_limit: number;
+  pages: ResumeLayoutPageFill[];
+  suggestions: ResumeLayoutSuggestion[];
+}
+
+/** 一档候选版式：把 `css` 注入预览、量一次，够放下就用它。 */
+export interface ResumeFitCandidate {
+  key: string;
+  label: string;
+  config: ResumeFormatConfig;
+  css: string;
+}
+
+export interface ResumeFitRoom {
+  has_room: boolean;
+  steps: number;
+  font_floor_px: number;
+  font_adjust_floor: number;
+  font_floor_note: string;
+}
+
+export interface ResumeLayoutAnalysis {
+  diagnosis: ResumeLayoutDiagnosis;
+  fit_ladder: ResumeFitCandidate[];
+  fit_room: ResumeFitRoom;
 }
 
 export interface ResumeDetail extends ResumeBrief {

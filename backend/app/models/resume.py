@@ -36,6 +36,14 @@ class ResumeRecord(Base):
     # 格式模板：一组版式覆盖的名字（内置预设名或用户自制格式模板名）；空串表示用样式
     # 模板自带的版式。
     format_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    # 只属于这份简历的版式覆盖，叠加在 format_name 解析出来的配置之上。
+    #
+    # 存在的理由：`format_name` 指向的是**具名**格式模板，改了它所有引用它的简历一起变。
+    # 而「自动一页」试出来的方案只对当前这份内容成立（换一份内容就不一样了），不该
+    # 反过来去污染用户的模板清单，所以按简历单独存一份。
+    format_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     page_limit: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     font_scale: Mapped[str] = mapped_column(
         String(16), default="standard", server_default="standard"

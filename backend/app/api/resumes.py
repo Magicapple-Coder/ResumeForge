@@ -16,6 +16,13 @@ from ..schemas.common import Page
 from ..schemas.job import JobOut
 from ..schemas.resume import (
     GenerateRequest,
+    LayoutAnalyzeOut,
+    LayoutAnalyzeRequest,
+    LayoutDiagnosisOut,
+    LayoutFitCandidateOut,
+    LayoutFitRoomOut,
+    LayoutPageOut,
+    LayoutSuggestionOut,
     ManualResumeRequest,
     ResumeBrief,
     ResumeContent,
@@ -26,6 +33,7 @@ from ..schemas.resume import (
     ResumeSuggestionsOut,
     ResumeTitleUpdate,
 )
+from ..services.claims import build_baseline
 from ..services.exporter import (
     build_filename,
     export_json,
@@ -37,7 +45,14 @@ from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.pdf_exporter import ResumePDFError, build_resume_pdf, font_available
 from ..services.profile_service import get_profile_detail, to_profile_out
+from ..services.resume_completeness import find_incomplete, incomplete_detail
 from ..services.resume_generator import ResumeGenerator
+from ..services.resume_layout import (
+    STATUS_OVERFLOW,
+    build_fit_ladder,
+    diagnose,
+    fit_room_report,
+)
 from ..services.resume_suggestions import generate_suggestions
 from ..services.resume_template_store import (
     custom_format_options,
@@ -53,6 +68,7 @@ from ..services.resume_templates import (
     font_scale_options,
     font_scale_spec,
     format_field_options,
+    validated_format_config,
     template_options_with_custom,
 )
 from ..services.settings_service import get_llm_config
@@ -123,6 +139,17 @@ def _format_sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def _record_format_config(db: Session, record: ResumeRecord) -> dict:
+    """这份简历实际生效的版式配置：具名格式模板 + 只属于它的覆盖。
+
+    预览、导出、PDF 都必须走这一个函数——三处各解析一次的话，很容易出现
+    "预览里字号收紧了、导出的 PDF 没有"，而用户只有在下载之后才会发现。
+    """
+    config = dict(resolve_format_config(db, record.format_name))
+    config.update(validated_format_config(record.format_config))
+    return config
+
+
 def _resolved_format_name(db: Session, name: str) -> str:
     """格式模板名只有在能解析出配置时才存进记录；否则存空串（用模板自带版式）。"""
     key = (name or "").strip()
@@ -173,6 +200,9 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
     generator = ResumeGenerator(create_provider(config))
     job_out = JobOut.model_validate(job) if job is not None else None
     profile_out = to_profile_out(profile)
+    # 事实台账里已确认的条目作为事实基线交给模型；台账为空时它就是空基线，
+    # 生成行为与没有这个功能时完全一致。
+    baseline = build_baseline(db)
     # 流式模型调用可能持续数分钟；快照完成后立即释放请求 Session，避免占满连接池。
     db.close()
 
@@ -182,7 +212,9 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
         warnings: list[str] = []
         done_event: dict | None = None
         try:
-            async for event in generator.generate(profile_out, job_out, payload.options):
+            async for event in generator.generate(
+                profile_out, job_out, payload.options, baseline=baseline
+            ):
                 if event["type"] == "delta":
                     raw_parts.append(event["text"])
                 if event["type"] == "done":
@@ -348,6 +380,8 @@ def _to_resume_out(record: ResumeRecord) -> ResumeOut:
         enhancement_level=record.enhancement_level,
         template=record.template or DEFAULT_TEMPLATE,
         format_name=record.format_name or "",
+        # 这个字段漏了不会报错，只会让保存成功却读不回来——界面上表现为"按了没反应"。
+        format_config=record.format_config or {},
         page_limit=record.page_limit or 1,
         font_scale=record.font_scale or DEFAULT_FONT_SCALE,
         created_at=record.created_at,
@@ -502,7 +536,7 @@ def delete_resume(resume_id: int, db: Session = Depends(get_db)):
 def update_resume_layout(
     resume_id: int, payload: ResumeLayoutUpdate, db: Session = Depends(get_db)
 ):
-    """只调整版式参数（模板/页数/字号），不重新生成内容。
+    """只调整版式参数（模板/页数/字号/按简历的覆盖），不重新生成内容。
 
     生成后内容偏多时，用户可以先增大页数或缩小字号再渲染，不必重跑模型。
     """
@@ -513,6 +547,9 @@ def update_resume_layout(
     # 具体的覆盖配置——这样用户改了格式模板，引用它的简历跟着变。
     record.template = _resolved_style_name(db, payload.template)
     record.format_name = _resolved_format_name(db, payload.format_name)
+    # None = 这次不涉及这一项，保持原样；空字典 = 明确清掉覆盖。
+    if payload.format_config is not None:
+        record.format_config = validated_format_config(payload.format_config)
     record.page_limit = normalize_page_limit(payload.page_limit)
     record.font_scale = font_scale_spec(payload.font_scale)["name"]
     db.commit()
@@ -520,20 +557,76 @@ def update_resume_layout(
     return _to_resume_out(record)
 
 
+@router.post("/{resume_id}/layout/analyze", response_model=LayoutAnalyzeOut)
+def analyze_resume_layout(
+    resume_id: int, payload: LayoutAnalyzeRequest, db: Session = Depends(get_db)
+):
+    """根据浏览器量到的实际高度给出版面诊断与逐档收紧方案。
+
+    **高度必须由浏览器提供**：版面只有真正排版之后才存在，后端没有浏览器，也不该为了
+    量一个高度去引一个无头浏览器依赖。所以这里的分工是——客户端负责量，规则全在这边。
+    """
+    record = db.get(ResumeRecord, resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+
+    measure = payload.measure
+    current_config = _record_format_config(db, record)
+    room = fit_room_report(record.template, record.font_scale, current_config)
+    diagnosis = diagnose(
+        used_height=measure.used_height,
+        page_content_height=measure.page_content_height,
+        page_limit=measure.page_limit,
+        has_fit_room=room["has_room"],
+    )
+    # 只有真的塞不下才需要给收紧方案：放得下时给一堆"再收紧一点"只会让人白改。
+    ladder = (
+        build_fit_ladder(record.template, record.font_scale, current_config)
+        if diagnosis.status == STATUS_OVERFLOW
+        else []
+    )
+    return LayoutAnalyzeOut(
+        diagnosis=LayoutDiagnosisOut(
+            status=diagnosis.status,
+            status_label=diagnosis.status_label,
+            summary=diagnosis.summary,
+            fill=diagnosis.fill,
+            pages_needed=diagnosis.pages_needed,
+            page_limit=diagnosis.page_limit,
+            pages=[LayoutPageOut(page=item.page, fill=item.fill) for item in diagnosis.pages],
+            suggestions=[
+                LayoutSuggestionOut(kind=item.kind, title=item.title, detail=item.detail)
+                for item in diagnosis.suggestions
+            ],
+        ),
+        fit_ladder=[
+            LayoutFitCandidateOut(
+                key=item.key, label=item.label, config=item.config, css=item.css
+            )
+            for item in ladder
+        ],
+        fit_room=LayoutFitRoomOut(**room),
+    )
+
+
 @router.post("/render")
 def render_resume(payload: ResumeRenderRequest, db: Session = Depends(get_db)):
     """渲染为 HTML（生成完成后、未落库前的即时预览也走这里）。
 
     传入的模板名既可以是内置模板，也可以是用户自制的样式模板；格式模板同理。
+    ``format_config`` 是这次渲染的临时覆盖（叠加在 format_name 之上），
+    「自动一页」逐档试版式时用它，试出结果之前不落库。
     """
     template_name, template_html = resolve_style_template(db, payload.template)
+    config = dict(resolve_format_config(db, payload.format_name))
+    config.update(validated_format_config(payload.format_config))
     return Response(
         render_html(
             payload.content,
             template=template_name,
             page_limit=payload.page_limit,
             font_scale=payload.font_scale,
-            format_config=resolve_format_config(db, payload.format_name),
+            format_config=config,
             template_html=template_html,
         ),
         media_type="text/html; charset=utf-8",
@@ -544,12 +637,22 @@ def render_resume(payload: ResumeRenderRequest, db: Session = Depends(get_db)):
 def export_resume(
     resume_id: int,
     format: str = Query(..., pattern="^(json|md|html|pdf)$"),
+    allow_incomplete: bool = Query(
+        default=False,
+        description="为真时允许导出仍含未完成标记的草稿；默认拦下并说明是哪几处",
+    ),
     db: Session = Depends(get_db),
 ):
     record = db.get(ResumeRecord, resume_id)
     if record is None:
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     resume = ResumeContent.model_validate(record.content)
+    # 导出闸门：正文里还留着【待补】之类的标记时拦下来。带占位符的 PDF 投出去，
+    # 用户往往直到面试被问起才发现——这道检查的价值全在"导出那一刻"。
+    if not allow_incomplete:
+        incomplete = find_incomplete(resume)
+        if incomplete:
+            raise HTTPException(status_code=409, detail=incomplete_detail(incomplete))
     headers: dict[str, str] = {}
     if format == "json":
         content, media_type = export_json(resume), _EXPORT_FORMATS["json"]
@@ -563,7 +666,7 @@ def export_resume(
                 template=export_template,
                 page_limit=record.page_limit,
                 font_scale=record.font_scale,
-                format_config=resolve_format_config(db, record.format_name),
+                format_config=_record_format_config(db, record),
                 template_html=export_html,
             ),
             _EXPORT_FORMATS["html"],
@@ -575,7 +678,7 @@ def export_resume(
                 template=resolve_style_template(db, record.template)[0],
                 page_limit=record.page_limit,
                 font_scale=record.font_scale,
-                format_config=resolve_format_config(db, record.format_name),
+                format_config=_record_format_config(db, record),
             )
         except ResumePDFError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

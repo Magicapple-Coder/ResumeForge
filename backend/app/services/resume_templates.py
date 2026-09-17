@@ -19,6 +19,23 @@ DEFAULT_FONT_SCALE = "standard"
 # 前端自己写死 1 的话，后端改默认值就成了两处不一致。
 DEFAULT_PAGE_LIMIT = 1
 
+# 每个样式模板在 CSS 里的版式默认值。**这些数字必须与模板文件一致**——
+# 自动一页要靠它们判断"当前值是多少、还能往紧收多少"，抄错会让它收紧一个
+# 用户根本没设置过的值（或反过来该收没收）。`test_resume_templates.py` 会
+# 逐个模板读文件核对，所以这里改了模板不更新会直接测试失败。
+#   padding_mm    ：body 的页边距
+#   line_height   ：body 的 line-height
+#   section_gap   ：`.section` 的 margin-bottom 系数（× 字号）
+TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float]] = {
+    "classic": {"padding_mm": 14.0, "line_height": 1.7, "section_gap": 1.3},
+    "modern": {"padding_mm": 14.0, "line_height": 1.72, "section_gap": 1.2},
+    "compact": {"padding_mm": 12.0, "line_height": 1.55, "section_gap": 0.85},
+    "elegant": {"padding_mm": 16.0, "line_height": 1.76, "section_gap": 1.35},
+    "technical": {"padding_mm": 12.0, "line_height": 1.6, "section_gap": 1.0},
+    "minimal": {"padding_mm": 18.0, "line_height": 1.8, "section_gap": 1.45},
+}
+
+# 模板文件里版式默认值所在的样式模板名（`classic` 对应 `resume.html.j2`）。
 RESUME_TEMPLATES: dict[str, dict] = {
     "classic": {
         "name": "classic",
@@ -58,6 +75,13 @@ RESUME_TEMPLATES: dict[str, dict] = {
     },
 }
 
+
+def template_layout_defaults(name: str) -> dict[str, float]:
+    """某个样式模板的版式默认值；未知模板退回经典模板的那一组。"""
+    return TEMPLATE_LAYOUT_DEFAULTS.get(
+        (name or "").strip(), TEMPLATE_LAYOUT_DEFAULTS[DEFAULT_TEMPLATE]
+    )
+
 # 格式模板：一组 CSS 变量与版式覆盖，叠加在任意样式模板之上。
 #
 # 实现方式是在 `</head>` 前追加一段受校验的 `<style>`：CSS 后写的同优先级规则生效，
@@ -74,6 +98,10 @@ FORMAT_FIELDS: tuple[dict, ...] = (
         "min": 0.88,
         "max": 1.16,
         "step": 0.02,
+        # 这一项**刻意没有 css 映射**：它在渲染时就把档位基准字号乘好再交给模板
+        # （见 `services/exporter.py` 的 `base_px`），是唯一对内置模板与用户自制模板
+        # 都生效的路径。如果这里再给一条 `--fs-adjust` 的 CSS 覆盖，两者会叠乘——
+        # 界面上调 1.1 会实得 1.21 倍，而这种偏差只有拿尺子量才看得出来。
         "description": "在所选字号档位上再乘一个系数",
     },
     {

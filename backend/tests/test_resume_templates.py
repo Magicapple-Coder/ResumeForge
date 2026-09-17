@@ -69,6 +69,24 @@ def test_format_config_scales_font_and_accent():
     assert "--accent: #abcdef" in html
 
 
+def test_font_scale_adjust_has_no_css_mapping():
+    """字号系数**只**通过 `base_px` 生效，不能再给一条 CSS 覆盖。
+
+    给两条路会叠乘：界面上调 1.1 会实得 1.21 倍。而这种偏差只有拿尺子量才看得出来，
+    所以在这里钉死——`format_css` 对它必须什么都不产出。
+    """
+    css = format_css({"font_scale_adjust": 0.9})
+    assert css == ""
+    # 但 base_px 那条路要照常生效（它是对内置模板与用户自制模板都有效的唯一路径）。
+    html = render_html(
+        sample_resume_content(),
+        template="classic",
+        font_scale="standard",
+        format_config={"font_scale_adjust": 0.9},
+    )
+    assert "--fs: 12.6px" in html
+
+
 def test_sanitize_removes_scripts_and_adds_csp():
     cleaned = sanitize_template_html(CUSTOM_STYLE)
     assert "alert(" not in cleaned

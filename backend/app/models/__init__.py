@@ -1,6 +1,38 @@
 """集中导入全部模型，保证 Base.metadata 注册完整（create_all 依赖此注册）。"""
 
+from .apply import (
+    ADMISSIONS,
+    FAILURE_CATEGORIES,
+    FAILURE_CATEGORY_LABELS,
+    HARD_GATES,
+    ITEM_STATUSES,
+    MATCH_STATUSES,
+    QUEUE_STATUSES,
+    STOP_REASONS,
+    TASK_KINDS,
+    TASK_STEPS,
+    TASK_STATUSES,
+    ApplyQueueItem,
+    ApplyTask,
+    ApplyTaskItem,
+    JobMatchAnalysis,
+)
 from .assistant import AssistantSkill, AssistantSkillFile, ChatConversation, ChatMessage
+from .drill import (
+    DRILL_STATUS_ACTIVE,
+    DRILL_STATUS_FINISHED,
+    EVIDENCE_STATUSES,
+    REHEARSE_KINDS,
+    DrillContract,
+    DrillSession,
+    DrillTurn,
+)
+from .claim import (
+    CLAIM_CATEGORIES,
+    RESPONSIBILITY_LEVELS,
+    VERIFICATION_STATUSES,
+    ClaimRecord,
+)
 from .interview import (
     INTERVIEW_DIFFICULTIES,
     INTERVIEW_STATUS_ACTIVE,
@@ -23,6 +55,11 @@ from .profile import (
     UserProfile,
 )
 from .resume import ResumeRecord
+from .tracker import (
+    SOURCES,
+    STATUSES,
+    ApplicationTrack,
+)
 from .resume_template import TEMPLATE_KIND_FORMAT, TEMPLATE_KIND_STYLE, TEMPLATE_KINDS, ResumeTemplate
 from .setting import AppSetting, LLMConfigRecord
 
@@ -57,4 +94,33 @@ __all__ = [
     "INTERVIEWER_STYLES",
     "INTERVIEW_STATUS_ACTIVE",
     "INTERVIEW_STATUS_FINISHED",
+    "JobMatchAnalysis",
+    "ApplyQueueItem",
+    "ApplyTask",
+    "ApplyTaskItem",
+    "MATCH_STATUSES",
+    "ADMISSIONS",
+    "HARD_GATES",
+    "QUEUE_STATUSES",
+    "TASK_KINDS",
+    "TASK_STATUSES",
+    "ITEM_STATUSES",
+    "FAILURE_CATEGORIES",
+    "FAILURE_CATEGORY_LABELS",
+    "TASK_STEPS",
+    "STOP_REASONS",
+    "ClaimRecord",
+    "CLAIM_CATEGORIES",
+    "RESPONSIBILITY_LEVELS",
+    "VERIFICATION_STATUSES",
+    "ApplicationTrack",
+    "STATUSES",
+    "SOURCES",
+    "DrillSession",
+    "DrillContract",
+    "DrillTurn",
+    "EVIDENCE_STATUSES",
+    "REHEARSE_KINDS",
+    "DRILL_STATUS_ACTIVE",
+    "DRILL_STATUS_FINISHED",
 ]

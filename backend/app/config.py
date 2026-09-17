@@ -13,6 +13,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATABASE_URL = f"sqlite:///{(BACKEND_DIR / 'data' / 'resume_forge.db').as_posix()}"
 
+# 投递专用浏览器的 CDP 调试端口默认值。这是**唯一**的常量来源：
+# schemas 的配置出厂默认与 browser_manager 的兜底默认都从这里取，避免两处各写一个 9333
+# 而在改端口时漏改一处。运行期真正生效的端口由 ApplyConfig.browser_port 驱动。
+DEFAULT_BROWSER_PORT = 9333
+
 
 class Settings(BaseSettings):
     app_name: str = "ResumeForge"

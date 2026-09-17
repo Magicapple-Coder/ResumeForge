@@ -34,6 +34,7 @@ SQLITE_REQUIRED_COLUMNS = {
         "enhancement_level": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
         "template": "VARCHAR(32) NOT NULL DEFAULT 'classic'",
         "format_name": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "format_config": "JSON NOT NULL DEFAULT '{}'",
         "page_limit": "INTEGER NOT NULL DEFAULT 1",
         "font_scale": "VARCHAR(16) NOT NULL DEFAULT 'standard'",
         "custom_instruction": "TEXT NOT NULL DEFAULT ''",

@@ -541,6 +541,239 @@ def _tool_update_material(db: Session, arguments: dict) -> ToolResult:
     )
 
 
+# ===== 事实台账 =====
+#
+# 台账是"用户自己核对过的事实"，所以助手在这里的权限是**可以补内容、不能替用户确认**：
+# 所有写入路径都不接受 `verification_status`，新建的条目一律是「待确认」。让模型把某条
+# 主张标成「已确认」，等于让它可以自己给自己发通行证——那正是台账要防的事。
+
+
+def _claim_or_error(db: Session, arguments: dict):
+    from .claims import claim_or_none
+
+    try:
+        claim_id = int(arguments.get("claim_id"))
+    except (TypeError, ValueError):
+        raise ValueError("需要提供台账条目 id（可以先用 list_claims 查）") from None
+    record = claim_or_none(db, claim_id)
+    if record is None:
+        raise ValueError(f"台账条目 {claim_id} 不存在")
+    return record
+
+
+def _tool_list_claims(db: Session, arguments: dict) -> ToolResult:
+    from .claims import claim_brief, list_claims
+
+    limit = min(int(arguments.get("limit") or DEFAULT_LIST_LIMIT), MAX_LIST_LIMIT)
+    records = list_claims(
+        db,
+        keyword=str(arguments.get("keyword") or ""),
+        category=str(arguments.get("category") or ""),
+        status=str(arguments.get("status") or ""),
+    )
+    shown = records[:limit]
+    payload = {
+        "总数": len(records),
+        "返回": len(shown),
+        "条目": [claim_brief(item) for item in shown],
+    }
+    return ToolResult(
+        text=json.dumps(payload, ensure_ascii=False),
+        summary=f"查看了事实台账里的 {len(shown)} 条记录",
+        link="/claims",
+    )
+
+
+def _tool_get_claim(db: Session, arguments: dict) -> ToolResult:
+    from .claims import claim_detail_text
+
+    record = _claim_or_error(db, arguments)
+    return ToolResult(
+        text=claim_detail_text(record),
+        summary=f"读取了台账条目「{record.title or record.subject}」",
+        link="/claims",
+    )
+
+
+def _tool_create_claim(db: Session, arguments: dict) -> ToolResult:
+    from ..schemas.claim import ClaimCreate
+    from .claims import create_claim
+
+    # 只放行工具声明过的字段；`verification_status` 不在其中，新建的一律是「待确认」。
+    payload = ClaimCreate.model_validate(
+        {
+            key: value
+            for key, value in arguments.items()
+            if key
+            in {
+                "title",
+                "category",
+                "subject",
+                "source_fact",
+                "candidate_wording",
+                "responsibility_level",
+                "boundary",
+                "risk_notes",
+                "sources",
+                "allowed_uses",
+                "interview_details",
+                "last_verified",
+            }
+        }
+    )
+    record = create_claim(db, payload)
+    return ToolResult(
+        text=json.dumps(
+            {"id": record.id, "核实状态": record.verification_status}, ensure_ascii=False
+        ),
+        summary=f"把「{record.title or record.subject}」记进了事实台账（待你确认）",
+        link="/claims",
+        changed=True,
+    )
+
+
+def _tool_update_claim(db: Session, arguments: dict) -> ToolResult:
+    from ..schemas.claim import ClaimUpdate
+    from .claims import update_claim
+
+    record = _claim_or_error(db, arguments)
+    mutable = {
+        key: value
+        for key, value in arguments.items()
+        if key
+        in {
+            "title",
+            "category",
+            "subject",
+            "source_fact",
+            "candidate_wording",
+            "responsibility_level",
+            "boundary",
+            "risk_notes",
+            "sources",
+            "allowed_uses",
+            "interview_details",
+            "last_verified",
+        }
+    }
+    if not mutable:
+        # 区分"什么都没给"和"只给了不能改的字段"：后者最常见的就是想改核实状态。
+        # 只说"没有给出要修改的字段"会让模型以为参数格式错了，于是反复重试同一个调用。
+        if "verification_status" in arguments:
+            raise ValueError(
+                "核实状态不能由助手修改——一条主张能不能进正式简历要由用户自己判断，"
+                "请让他在「事实台账」页上确认"
+            )
+        raise ValueError("没有给出要修改的字段")
+    payload = ClaimUpdate.model_validate(
+        {
+            "title": record.title,
+            "category": record.category,
+            "subject": record.subject,
+            "source_fact": record.source_fact,
+            "candidate_wording": record.candidate_wording,
+            "sources": record.sources or [],
+            "responsibility_level": record.responsibility_level,
+            # 核实状态保持不变：助手不能替用户确认或作废一条主张。
+            "verification_status": record.verification_status,
+            "allowed_uses": record.allowed_uses or [],
+            "interview_details": record.interview_details or {},
+            "boundary": record.boundary,
+            "risk_notes": record.risk_notes or [],
+            "last_verified": record.last_verified,
+            **mutable,
+        }
+    )
+    updated = update_claim(db, record, payload)
+    return ToolResult(
+        text=json.dumps(
+            {"id": updated.id, "updated": sorted(mutable), "核实状态": updated.verification_status},
+            ensure_ascii=False,
+        ),
+        summary=f"更新了台账条目「{updated.title or updated.subject}」",
+        link="/claims",
+        changed=True,
+    )
+
+
+# ===== 面试深挖 =====
+
+
+def _tool_list_drill_sessions(db: Session, arguments: dict) -> ToolResult:
+    from ..models.drill import DrillSession
+
+    limit = min(int(arguments.get("limit") or DEFAULT_LIST_LIMIT), MAX_LIST_LIMIT)
+    status = str(arguments.get("status") or "").strip()
+    query = db.query(DrillSession)
+    if status:
+        query = query.filter(DrillSession.status == status)
+    records = query.order_by(DrillSession.created_at.desc()).limit(limit).all()
+    payload = {
+        "返回": len(records),
+        "记录": [
+            {
+                "id": item.id,
+                "标题": item.title,
+                "岗位": item.job_title,
+                "状态": "进行中" if item.status == "active" else "已结束",
+                "已问": item.current_index,
+                "最多": item.max_questions,
+                "创建时间": item.created_at.isoformat() if item.created_at else None,
+            }
+            for item in records
+        ],
+    }
+    return ToolResult(
+        text=json.dumps(payload, ensure_ascii=False),
+        summary=f"查看了 {len(records)} 场面试深挖",
+        link="/claims/drill",
+    )
+
+
+def _tool_get_drill_report(db: Session, arguments: dict) -> ToolResult:
+    from ..models.drill import DrillSession
+    from .drill import session_summary
+
+    try:
+        session_id = int(arguments.get("session_id"))
+    except (TypeError, ValueError):
+        raise ValueError("需要提供深挖记录 id（可以先用 list_drill_sessions 查）") from None
+    record = db.get(DrillSession, session_id)
+    if record is None:
+        raise ValueError(f"深挖记录 {session_id} 不存在")
+
+    review = record.review or {}
+    payload = {
+        "标题": record.title,
+        "岗位": record.job_title,
+        "状态": "进行中" if record.status == "active" else "已结束",
+        "计数": session_summary(record),
+        "复盘": {
+            "覆盖": review.get("covered", ""),
+            "讲得清的": review.get("verified_summary", ""),
+            "还站不住的": review.get("gaps_summary", ""),
+            "行动清单": review.get("actions", []),
+            "复练队列": review.get("rehearsal", []),
+        },
+        "逐题判定": [
+            {
+                "主张": item.claim_title,
+                "问题": item.question,
+                "判定": item.status,
+                "已经讲到的": item.evidence_found,
+                "仍然缺的": item.missing,
+                "发现的矛盾": item.contradictions,
+            }
+            for item in record.contracts
+        ],
+    }
+    return ToolResult(
+        text=json.dumps(payload, ensure_ascii=False)[:MAX_PROFILE_RESULT_CHARS],
+        summary=f"读取了深挖记录「{record.title}」",
+        link="/claims/drill",
+    )
+
+
 # ===== 备选岗位 =====
 
 
@@ -1181,6 +1414,103 @@ _TOOLS: tuple[Tool, ...] = (
         handler=_tool_update_material,
     ),
     Tool(
+        name="list_claims",
+        description=(
+            "列出事实台账里的条目（用户逐条核对过的、可以写进简历的事实，含核实状态与"
+            "承担程度）。用户提到「台账」「那条经历有没有核对过」「哪些还没确认」时用它。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "可选，标题/主体/事实/表述里的关键词"},
+                "category": {
+                    "type": "string",
+                    "description": "可选，分类：教育经历、实习/工作、项目经历、校园经历、专业技能、荣誉奖项、其他",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["已确认", "待确认", "已过期", "不采用"],
+                    "description": "可选，按核实状态筛选",
+                },
+                "limit": {"type": "integer", "description": "可选，最多返回多少条，默认 20"},
+            },
+            "required": [],
+        },
+        handler=_tool_list_claims,
+    ),
+    Tool(
+        name="get_claim",
+        description=(
+            "按 id 读取一条台账条目的完整内容：原始事实、简历表述、个人边界、证据来源、"
+            "面试细节（决策/难点/验证/结果）与待改进项。准备面试追问或核对表述时用它。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"claim_id": {"type": "integer", "description": "台账条目 id"}},
+            "required": ["claim_id"],
+        },
+        handler=_tool_get_claim,
+    ),
+    Tool(
+        name="create_claim",
+        description=(
+            "把一条经历整理成台账条目记下来。只在用户明确要求记录时调用。"
+            "新条目一律是「待确认」——是否确认由用户自己判断，你不能替他确认。"
+            "原始事实要照实写、不加包装；信息不全时写【待补：缺什么】而不是猜测。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "便于检索的标题"},
+                "category": {
+                    "type": "string",
+                    "description": "分类：教育经历、实习/工作、项目经历、校园经历、专业技能、荣誉奖项、其他",
+                },
+                "subject": {"type": "string", "description": "这条主张关于谁：公司/项目/学校/技能名"},
+                "source_fact": {"type": "string", "description": "原始事实，忠实复述，不包装"},
+                "candidate_wording": {"type": "string", "description": "准备写进简历的版本，不得比原始事实更强"},
+                "responsibility_level": {
+                    "type": "string",
+                    "enum": ["参与", "负责模块", "主导方案或交付", "项目负责人"],
+                    "description": "本人在其中的承担程度，判断不了就用「参与」",
+                },
+                "boundary": {"type": "string", "description": "团队做了什么、本人做了什么的分界"},
+                "risk_notes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "面试可能被追问但还站不住的地方",
+                },
+            },
+            "required": ["source_fact"],
+        },
+        handler=_tool_create_claim,
+    ),
+    Tool(
+        name="update_claim",
+        description=(
+            "修改一条已有的台账条目（只传要改的字段）。**核实状态改不了**——"
+            "已确认、待确认这类判断必须由用户自己下。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "claim_id": {"type": "integer", "description": "台账条目 id"},
+                "title": {"type": "string"},
+                "subject": {"type": "string"},
+                "source_fact": {"type": "string"},
+                "candidate_wording": {"type": "string"},
+                "responsibility_level": {
+                    "type": "string",
+                    "enum": ["参与", "负责模块", "主导方案或交付", "项目负责人"],
+                },
+                "boundary": {"type": "string"},
+                "risk_notes": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["claim_id"],
+        },
+        handler=_tool_update_claim,
+    ),
+    Tool(
         name="list_candidate_jobs",
         description="列出备选岗位（还没导入正式岗位的招聘信息），可按状态或关键词筛选。",
         parameters={
@@ -1343,6 +1673,42 @@ _TOOLS: tuple[Tool, ...] = (
             "required": ["session_id"],
         },
         handler=_tool_get_interview_report,
+    ),
+    Tool(
+        name="list_drill_sessions",
+        description=(
+            "列出按事实台账做的面试深挖记录（一条主张一道题、用证据状态判定讲不讲得清）。"
+            "用户说「我练过的那些」「上次深挖练了什么」时用它。注意它与「模拟面试」不同："
+            "模拟面试给四维度评分报告，深挖不给分数。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "finished"],
+                    "description": "可选：active 进行中，finished 已结束",
+                },
+                "limit": {"type": "integer", "description": "可选，默认 20"},
+            },
+            "required": [],
+        },
+        handler=_tool_list_drill_sessions,
+    ),
+    Tool(
+        name="get_drill_report",
+        description=(
+            "读取某场面试深挖的逐题判定、行动清单与复练队列（用于复盘薄弱点）。"
+            "用户的某条主张「讲不讲得清」「该补什么」都在这份记录里。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "integer", "description": "深挖记录 id（先用 list_drill_sessions 查）"}
+            },
+            "required": ["session_id"],
+        },
+        handler=_tool_get_drill_report,
     ),
     Tool(
         name="update_resume_layout",

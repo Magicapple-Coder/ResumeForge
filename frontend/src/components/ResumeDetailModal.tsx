@@ -13,10 +13,12 @@ import {
 } from "../api/resumes";
 import { RESUME_ENHANCEMENT_LEVELS } from "../config";
 import type { ResumeContent, ResumeDetail, ResumeLayout } from "../types";
+import type { LayoutMeasure } from "../utils/resumeLayoutMeasure";
 import ExportButtons from "./ExportButtons";
 import ResumeEditorModal from "./ResumeEditorModal";
 import ResumeLayoutControls from "./ResumeLayoutControls";
-import ResumePreview from "./ResumePreview";
+import ResumeLayoutDiagnosisCard from "./resume/ResumeLayoutDiagnosisCard";
+import ResumePreview, { type ResumePreviewHandle } from "./ResumePreview";
 import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
 
 interface Props {
@@ -45,6 +47,9 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   } | null>(null);
   const [pdfDirectAvailable, setPdfDirectAvailable] = useState(true);
   const [relayouting, setRelayouting] = useState(false);
+  // 预览量到的实测高度：只有浏览器能量准，所以由预览上报、这里转交给诊断面板。
+  const [measure, setMeasure] = useState<LayoutMeasure | null>(null);
+  const previewRef = useRef<ResumePreviewHandle>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -78,6 +83,9 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
         setLayout({
           template: data.template || DEFAULT_LAYOUT.template,
           format_name: data.format_name ?? DEFAULT_LAYOUT.format_name,
+          // 必须带上按简历的覆盖：后面每次重渲染都从这份 layout 出发，
+          // 漏了它就会出现"导出用新方案、预览用旧方案"这种最难看的不一致。
+          format_config: data.format_config ?? {},
           page_limit: data.page_limit || DEFAULT_LAYOUT.page_limit,
           font_scale: data.font_scale || DEFAULT_LAYOUT.font_scale,
         });
@@ -140,6 +148,26 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
     }
   };
 
+  /**
+   * 「自动一页」试出方案并保存之后，只需要按新配置重渲染一次。
+   *
+   * 不再走 `applyLayout`：那边会再 PATCH 一遍，而卡片已经把配置存进去了——
+   * 发两次同样的写请求除了浪费一次往返，还会让"到底存了几次"变得难以解释。
+   */
+  const applyFittedFormat = async (formatConfig: Record<string, number | string>) => {
+    if (!detail) return;
+    const next: ResumeLayout = { ...layout, format_config: formatConfig };
+    setLayout(next);
+    setRelayouting(true);
+    try {
+      setHtml(await renderResume(detail.content, next));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "按新版式渲染失败");
+    } finally {
+      setRelayouting(false);
+    }
+  };
+
   return (
     <Modal
       title={detail?.title ?? "简历预览"}
@@ -189,43 +217,23 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
             />
             {relayouting && <Typography.Text type="secondary">正在按新版式渲染…</Typography.Text>}
           </div>
-          {layoutStatus?.overflow && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message={`内容超出了 ${layout.page_limit} 页：已经整体缩小，字会偏小`}
-              action={
-                <Space>
-                  {layout.page_limit < 3 && (
-                    <Button
-                      size="small"
-                      disabled={relayouting}
-                      onClick={() =>
-                        void applyLayout({ ...layout, page_limit: layout.page_limit + 1 })
-                      }
-                    >
-                      增加到 {layout.page_limit + 1} 页
-                    </Button>
-                  )}
-                  {layout.font_scale !== "small" && (
-                    <Button
-                      size="small"
-                      disabled={relayouting}
-                      onClick={() => void applyLayout({ ...layout, font_scale: "small" })}
-                    >
-                      改为小字号
-                    </Button>
-                  )}
-                </Space>
-              }
-            />
-          )}
+          <ResumeLayoutDiagnosisCard
+            resumeId={detail.id}
+            measure={measure}
+            overflow={layoutStatus?.overflow ?? false}
+            previewRef={previewRef}
+            layout={layout}
+            disabled={relayouting}
+            onApplied={(formatConfig) => void applyFittedFormat(formatConfig)}
+            onAddPage={() => void applyLayout({ ...layout, page_limit: layout.page_limit + 1 })}
+          />
           <ResumePreview
+            ref={previewRef}
             html={html}
             pages={layout.page_limit}
             warnings={detail.warnings}
             onLayoutStatus={setLayoutStatus}
+            onMeasure={setMeasure}
             onEditTarget={(path) => {
               setEditorTarget(path);
               setEditorOpen(true);

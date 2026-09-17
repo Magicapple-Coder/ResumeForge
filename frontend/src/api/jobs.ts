@@ -6,6 +6,8 @@ import type {
   JobBatchDeleteResult,
   JobBatchStatusResult,
   JobAnalysisResult,
+  JobMatchOut,
+  JobMatchResult,
   JobPayload,
   Page,
   JobMultiParseResult,
@@ -77,4 +79,22 @@ export function batchDeleteJobs(payload: { job_ids: number[] }): Promise<JobBatc
 
 export function generateJobAnalysis(id: number): Promise<JobAnalysisResult> {
   return request(`/jobs/${id}/analysis`, { method: "POST" });
+}
+
+/**
+ * 岗位匹配度分析：读取个人资料与简历，逐条对照 JD 并落库。
+ *
+ * 与 `generateJobAnalysis`（岗位需求解读，只读 JD）是两条不同的链路——这里会读取用户资料，
+ * 因此生成的是"我够不够"的结论；`force` 为真时忽略已有结论强制重算。
+ */
+export function generateJobMatch(id: number, force = false): Promise<JobMatchResult> {
+  return request(`/jobs/${id}/match-analysis${force ? "?force=true" : ""}`, { method: "POST" });
+}
+
+export function getJobMatch(id: number): Promise<JobMatchOut> {
+  return request(`/jobs/${id}/match-analysis`);
+}
+
+export function deleteJobMatch(id: number): Promise<void> {
+  return request(`/jobs/${id}/match-analysis`, { method: "DELETE" });
 }

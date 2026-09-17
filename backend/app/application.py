@@ -9,10 +9,14 @@ from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401 - 确保全部模型注册到 Base.metadata
 from .api import (
+    apply,
     assistant,
     candidate_jobs,
+    claims,
     datasets,
+    drill,
     interview,
+    job_match,
     jobs,
     materials,
     profile,
@@ -23,6 +27,7 @@ from .api import (
     skills,
     stats,
     system as system_api,
+    tracker,
     update as update_api,
 )
 from . import database
@@ -31,6 +36,7 @@ from .database import Base, ensure_sqlite_columns
 from .database_compat import SQLITE_REQUIRED_COLUMNS
 from .database_migrations import is_unversioned_legacy_database, run_database_migrations
 from .middleware import RequestContextMiddleware, RequestIdFilter, get_request_id
+from .services.apply import apply_service
 from .services.data_backup import cleanup_temp_directories
 
 
@@ -59,6 +65,12 @@ async def lifespan(_app: FastAPI):
     run_database_migrations(bind)
     # 上次运行若中途退出，可能留下未应用的备份包与导出产物，它们不会再用到。
     cleanup_temp_directories(bind)
+    # 应用重启后，把仍停留在"进行中"的投递/采集任务标记为失败，避免出现幽灵进度。
+    with database.SessionLocal() as session:
+        try:
+            apply_service.fail_orphaned_tasks(session)
+        except Exception:  # noqa: BLE001 - 清理失败不应阻断启动
+            logging.getLogger(__name__).warning("清理中断的投递/采集任务失败", exc_info=True)
     yield
 
 
@@ -106,12 +118,18 @@ def create_app() -> FastAPI:
     )
     for router in (
         jobs.router,
+        job_match.router,
         resumes.router,
         resume_templates_api.router,
         profile.router,
         materials.router,
         candidate_jobs.router,
+        claims.router,
+        drill.router,
         interview.router,
+        apply.router,
+        apply.collect_router,
+        tracker.router,
         settings_api.router,
         datasets.router,
         skills.router,
