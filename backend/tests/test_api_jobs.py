@@ -240,3 +240,66 @@ def test_stats(client):
     body = response.json()
     assert body["job_count"] == 1 and body["open_job_count"] == 1
     assert body["resume_count"] == 0
+
+
+def test_stats_reports_the_todos_the_home_page_lists(client):
+    """首页「接下来做什么」只列**待办**，所以这几个数必须真的是待办的数量。
+
+    这里钉住的是"数据库里有什么，首页就报什么"——不是"报了个数"。这几项此前首页拿不到，
+    于是概览页只能显示四个计数卡，看不出"我现在该做什么"。
+    """
+    client.post("/api/jobs", json={"title": "算法工程师", "company": "C公司", "favorite": True})
+    client.post("/api/jobs", json={"title": "后端开发", "company": "D公司"})
+
+    body = client.get("/api/stats").json()
+
+    # 收藏是"你自己标的"，所以它是首页能报的一个数；没收藏的那个不该被算进去。
+    assert body["favorite_job_count"] == 1
+    # 一个空项目里，这几项都是 0 而不是缺字段——前端按数字直接渲染。
+    assert body["pending_claim_count"] == 0
+    assert body["pending_claims"] == []
+    assert body["apply_queue_count"] == 0
+    assert body["stalled_application_count"] == 0
+    assert body["latest_applications"] == []
+
+
+def test_stats_counts_a_pending_claim_and_names_it(client):
+    """首页会**点名**待确认的台账条目，所以除了数量还要能拿到标题。"""
+    created = client.post(
+        "/api/claims",
+        json={
+            "title": "检索平台召回率提升",
+            "subject": "检索平台",
+            # 台账要求"原始事实"与"简历表述"至少有一条，否则这条主张无从核对。
+            "source_fact": "把关键词召回的召回率从 71% 提到 89%",
+            "verification_status": "待确认",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    body = client.get("/api/stats").json()
+    assert body["pending_claim_count"] == 1
+    assert [item["title"] for item in body["pending_claims"]] == ["检索平台召回率提升"]
+
+
+def test_a_confirmed_claim_is_no_longer_a_todo(client):
+    """核实完就不该再出现在"接下来做什么"里——否则待办永远清不掉，用户会开始忽略它。"""
+    payload = {
+        "title": "换一种说法",
+        "subject": "检索平台",
+        "source_fact": "用混合召回替换了纯关键词召回",
+        "verification_status": "待确认",
+    }
+    created = client.post("/api/claims", json=payload)
+    assert created.status_code == 201, created.text
+    claim_id = created.json()["id"]
+    # 这个接口是 PUT（**整体替换**语义）：只发 verification_status 会把 source_fact 清空，
+    # 而"至少要有原始事实或简历表述"是硬校验，于是整条更新被拒。前端编辑弹窗发的也是整份。
+    updated = client.put(
+        f"/api/claims/{claim_id}", json={**payload, "verification_status": "已确认"}
+    )
+    assert updated.status_code == 200, updated.text
+
+    body = client.get("/api/stats").json()
+    assert body["pending_claim_count"] == 0
+    assert body["pending_claims"] == []

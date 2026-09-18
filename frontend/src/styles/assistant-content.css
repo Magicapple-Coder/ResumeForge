@@ -45,16 +45,19 @@
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
 }
 
+/* 多选操作条：**贴着一行消息**，不占一整块版面。
+   此前它是独立的一整条浅蓝卡片，下面还没有任何内容时就先支起一个大框（截图反馈），
+   看上去像页面坏了。改成与消息列表同宽的一行轻量工具条：左边报数、右边动作。 */
 .assistant-select-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  border: 1px solid #d6e4ff;
-  border-radius: 8px;
-  background: #f3f7ff;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 6px 2px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #eef1f5;
+  background: none;
 }
 
 .assistant-message-content {

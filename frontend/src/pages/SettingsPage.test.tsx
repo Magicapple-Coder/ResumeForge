@@ -617,6 +617,9 @@ describe("SettingsPage datasets", () => {
       </AntdApp>,
     );
     await waitFor(() => expect(apiMocks.listDatasets).toHaveBeenCalled());
+    // 数据集在「数据」页里，而设置默认停在「AI 模型」页——先切过去，
+    // 与真实用户的操作一致（不切换就看不到这份卡片）。
+    fireEvent.click(screen.getByRole("tab", { name: "数据" }));
     return view;
   }
 

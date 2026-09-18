@@ -49,6 +49,29 @@
 }
 
 @media (max-width: 991px) {
+  /* 使用指南在窄屏放不下"左导航 + 右内容"两栏：步骤列会把内容挤到每行两三个字。
+     改成上下堆叠时**必须同时重置 grid-template-areas**——只改列数而留着三列的
+     区域定义，浏览器会按区域自动生成隐式列，反而把布局撑得更宽。 */
+  .user-guide-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "steps" "content";
+    gap: 12px;
+  }
+
+  .user-guide-steps {
+    padding-top: 0;
+  }
+
+  .user-guide-steps .ant-steps-item-title {
+    font-size: 12px;
+  }
+
+  .user-guide-divider {
+    display: none;
+  }
+}
+
+@media (max-width: 991px) {
   .assistant-page {
     grid-template-columns: 1fr;
     min-height: auto;

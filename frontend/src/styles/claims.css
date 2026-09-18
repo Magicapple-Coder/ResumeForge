@@ -199,6 +199,18 @@
   justify-content: space-between;
 }
 
+/* 返回台账：深挖是独立路由，浏览器后退之外界面上没有别的出口。 */
+.drill-back {
+  height: auto !important;
+  padding: 0 !important;
+  color: #5f6b7a;
+  font-size: 13px;
+}
+
+.drill-back:hover {
+  color: #16365c !important;
+}
+
 .drill-summary {
   display: flex;
   flex-wrap: wrap;

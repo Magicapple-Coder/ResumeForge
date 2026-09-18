@@ -1,6 +1,28 @@
 /* 新增模块的样式：行操作菜单、资料箱、技能工作台、助手补充信息、照片面板、版式控件。
    与既有文件的分工：这里只放"这次新增的界面"的规则，老模块的样式仍留在各自文件里。 */
 
+/* ===== 弹窗滚动 =====
+   内容高的弹窗（投递设置、生成简历…）在卡片内部滚动，而不是把整页撑高。
+   两件事配合才成立：ConfigProvider 把弹窗挂到 body（见 main.tsx，卡片因此脱离文档流、
+   不再撑大 <body>），这里再给卡片一个高度上限，超出部分由卡片自己的内容区滚动。
+   只给上限不给固定高度：内容少时卡片仍然按内容收缩，不会留一大片空白。 */
+.ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+}
+
+.ant-modal-content > .ant-modal-header,
+.ant-modal-content > .ant-modal-footer {
+  flex: 0 0 auto;
+}
+
+.ant-modal-content > .ant-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* ===== 列表行操作 ===== */
 
 /* 主操作 + 「更多」下拉：让操作区高度固定，不会因为按钮数量不同而参差。 */
@@ -632,20 +654,20 @@
   row-gap: 8px;
 }
 
-/* 侧栏底部的退出入口：低调但可点，和"使用指南"并排。 */
-.app-sider-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-}
-
+/* 顶栏右侧的退出入口：低调但可点，和仓库链接并排。 */
 .app-exit-button {
   color: rgba(0, 0, 0, 0.45);
 }
 
 .app-exit-button:hover {
   color: #b42318 !important;
+}
+
+/* 窄屏放不下"退出"两个字时只留图标，避免顶栏被挤到换行。 */
+@media (max-width: 575px) {
+  .app-exit-label {
+    display: none;
+  }
 }
 
 /* 退出后盖住整个界面：此时所有接口都不可用，继续操作只会到处报错。 */
@@ -676,16 +698,12 @@
 
 /* ===== 个人照片面板 ===== */
 
-/* 照片一行横排、可左右滑动：竖着堆成两行会把「我的资料」右栏撑得很长（截图反馈）。 */
-.profile-photo-thumbs {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  margin-top: 8px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
+/* 照片库弹窗里一行横排、放不下就换行：竖着堆成两行会把弹窗撑得很长。 */
+.profile-photo-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .profile-photo-thumb {
@@ -737,4 +755,90 @@
 
 .llm-advanced-toggle {
   padding-inline: 0;
+}
+
+/* ===== 首页 =====
+
+   首页此前只有四个计数卡加两个列表，功能变多之后它没跟上：进了首页看不出"我现在该做什么"。
+   这里补两块——「接下来做什么」（只列待办，带数字和去处）与「快捷入口」（按"要做的事"而不是
+   按菜单名组织）。两块都是纯展示，没有额外交互状态。 */
+
+.home-todo-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.home-todo-item + .home-todo-item {
+  border-top: 1px solid var(--rf-border, #f0f0f0);
+}
+
+.home-todo-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #eaf1f8;
+  color: #16365c;
+  font-size: 16px;
+}
+
+.home-todo-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-todo-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.home-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+}
+
+.home-shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--rf-border, #e7ebf0);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+}
+
+.home-shortcut:hover {
+  border-color: #16365c;
+  background: #f8fbfe;
+}
+
+.home-shortcut-icon {
+  color: #16365c;
+  font-size: 18px;
+}
+
+.home-shortcut-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.home-shortcut-hint {
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 1.5;
 }

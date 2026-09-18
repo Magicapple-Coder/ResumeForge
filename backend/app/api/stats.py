@@ -1,25 +1,73 @@
-"""首页统计：数量概览与最近动态。"""
+"""首页统计：数量概览、最近动态与"接下来做什么"。"""
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..models.apply import (
+    ITEM_STATUS_SUCCESS,
+    QUEUE_STATUS_PENDING,
+    ApplyQueueItem,
+    ApplyTaskItem,
+)
+from ..models.claim import VERIFICATION_PENDING, ClaimRecord
 from ..models.job import JOB_STATUS_OPEN, Job
 from ..models.profile import utcnow
 from ..models.resume import ResumeRecord
+from ..models.tracker import ACTIVE_STATUSES, ApplicationTrack
 from ..schemas.job import JobOut
 from ..schemas.resume import ResumeBrief
-from ..schemas.search import Stats
+from ..schemas.search import PendingClaimBrief, Stats
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
+
+# 首页各列表的条数。够看清"最近发生了什么"即可，看全在各自的页面里。
+_LATEST_LIMIT = 5
+# "有段时间没动静"的判定：超过这么多天没有任何更新的进行中记录会被点名。
+_STALLED_DAYS = 7
 
 
 @router.get("", response_model=Stats)
 def get_stats(db: Session = Depends(get_db)):
     week_ago = utcnow() - timedelta(days=7)
-    latest_jobs = db.query(Job).order_by(Job.created_at.desc()).limit(5).all()
-    latest_resumes = db.query(ResumeRecord).order_by(ResumeRecord.created_at.desc()).limit(5).all()
+    latest_jobs = db.query(Job).order_by(Job.created_at.desc()).limit(_LATEST_LIMIT).all()
+    latest_resumes = (
+        db.query(ResumeRecord).order_by(ResumeRecord.created_at.desc()).limit(_LATEST_LIMIT).all()
+    )
+
+    # 待确认的台账条目：首页点名它们，因为"这条还没核实"是用户自己能推进的事。
+    pending_claims = (
+        db.query(ClaimRecord)
+        .filter(ClaimRecord.verification_status == VERIFICATION_PENDING)
+        .order_by(ClaimRecord.updated_at.desc())
+        .limit(_LATEST_LIMIT)
+        .all()
+    )
+    pending_claim_count = (
+        db.query(ClaimRecord)
+        .filter(ClaimRecord.verification_status == VERIFICATION_PENDING)
+        .count()
+    )
+
+    # 进行中的投递：ACTIVE_STATUSES 是"还没走到终态"的那几个；其中久未更新的单独计数，
+    # 因为"卡住了"比"在推进"更需要用户去看一眼。
+    active_tracks = (
+        db.query(ApplicationTrack).filter(ApplicationTrack.status.in_(tuple(ACTIVE_STATUSES)))
+    )
+    stalled_cutoff = utcnow() - timedelta(days=_STALLED_DAYS)
+    stalled_application_count = active_tracks.filter(ApplicationTrack.updated_at < stalled_cutoff).count()
+
+    # 最近投递结果：只取成功条目，失败在看板上有专门的地方看。
+    # 按 finished_at 排序——"最近投出去的那个"是投递**结束**的时刻，不是入队的时刻。
+    latest_application_rows = (
+        db.query(ApplyTaskItem)
+        .filter(ApplyTaskItem.status == ITEM_STATUS_SUCCESS)
+        .order_by(ApplyTaskItem.finished_at.desc())
+        .limit(_LATEST_LIMIT)
+        .all()
+    )
+
     return Stats(
         job_count=db.query(Job).count(),
         open_job_count=db.query(Job).filter(Job.status == JOB_STATUS_OPEN).count(),
@@ -27,4 +75,29 @@ def get_stats(db: Session = Depends(get_db)):
         week_resume_count=db.query(ResumeRecord).filter(ResumeRecord.created_at >= week_ago).count(),
         latest_jobs=[JobOut.model_validate(row) for row in latest_jobs],
         latest_resumes=[ResumeBrief.model_validate(row) for row in latest_resumes],
+        favorite_job_count=db.query(Job).filter(Job.favorite.is_(True)).count(),
+        pending_claim_count=pending_claim_count,
+        pending_claims=[
+            PendingClaimBrief(id=row.id, title=row.title or row.subject or "未命名主张")
+            for row in pending_claims
+        ],
+        stalled_application_count=stalled_application_count,
+        apply_queue_count=db.query(ApplyQueueItem)
+        .filter(ApplyQueueItem.status == QUEUE_STATUS_PENDING)
+        .count(),
+        latest_applications=[
+            {
+                "id": row.id,
+                "job_title": row.job_title,
+                "company": row.company,
+                # 状态与快照字段二选一：条目可能来自已被删除的岗位。
+                "status": row.status,
+                "updated_at": (
+                    (row.finished_at or row.created_at).isoformat()
+                    if (row.finished_at or row.created_at)
+                    else ""
+                ),
+            }
+            for row in latest_application_rows
+        ],
     )

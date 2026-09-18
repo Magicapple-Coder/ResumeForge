@@ -93,20 +93,17 @@ function MainLayout() {
             onClick={({ key }) => navigate(key)}
           />
           <div className="app-sider-footer">
-            <div className="app-sider-footer-actions">
-              <Tooltip title="使用指南" placement="right">
-                <Button
-                  className="app-guide-button"
-                  type="text"
-                  icon={<QuestionCircleOutlined />}
-                  onClick={() => setGuideOpen(true)}
-                  aria-label="使用指南"
-                >
-                  <span className="app-guide-label">使用指南</span>
-                </Button>
-              </Tooltip>
-              <ExitAppButton />
-            </div>
+            <Tooltip title="使用指南" placement="right">
+              <Button
+                className="app-guide-button"
+                type="text"
+                icon={<QuestionCircleOutlined />}
+                onClick={() => setGuideOpen(true)}
+                aria-label="使用指南"
+              >
+                <span className="app-guide-label">使用指南</span>
+              </Button>
+            </Tooltip>
           </div>
         </Sider>
         <Layout className="app-main">
@@ -114,16 +111,19 @@ function MainLayout() {
             <Typography.Text strong className="app-header-title">
               AI 定制化简历生成平台
             </Typography.Text>
-            {GITHUB_REPO && (
-              <Typography.Link
-                className="app-header-repo"
-                href={GITHUB_REPO}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {APP_NAME_EN} · 开源项目
-              </Typography.Link>
-            )}
+            <div className="app-header-actions">
+              {GITHUB_REPO && (
+                <Typography.Link
+                  className="app-header-repo"
+                  href={GITHUB_REPO}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {APP_NAME_EN} · 开源项目
+                </Typography.Link>
+              )}
+              <ExitAppButton />
+            </div>
           </Header>
           <Content className="app-content">
             <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}>

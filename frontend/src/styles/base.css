@@ -155,15 +155,21 @@ body {
   border-radius: 6px;
 }
 
-/* 使用指南：左侧步骤导航 + 右侧内容。 */
+/* 使用指南：左侧步骤导航 + 右侧内容。
+   **列数必须与子元素个数对上**：这里曾是 `172px 1fr` 两列，而 DOM 里是三个孩子
+   （步骤条、竖分隔线、内容区），于是分隔线占了第二列、内容被挤到**下一行的第一列**——
+   正文只有 196px 宽，中文每行两三个字就折行，整页被拉到 3000px 高（截图反馈）。
+   现在用命名区域显式指定每个孩子的位置，孩子个数变了也不会再悄悄错位。 */
 .user-guide-body {
   display: grid;
-  grid-template-columns: 172px minmax(0, 1fr);
-  gap: 4px;
+  grid-template-columns: minmax(132px, 168px) 1px minmax(0, 1fr);
+  grid-template-areas: "steps divider content";
+  gap: 0 12px;
   align-items: start;
 }
 
 .user-guide-steps {
+  grid-area: steps;
   padding-top: 4px;
 }
 
@@ -180,15 +186,19 @@ body {
 }
 
 .user-guide-divider {
-  height: auto;
+  grid-area: divider;
   align-self: stretch;
+  height: auto;
+  min-height: 100%;
+  margin: 0;
 }
 
 .user-guide-step-content {
   display: flex;
+  grid-area: content;
   gap: 20px;
-  min-height: 220px;
-  padding: 8px 8px 18px;
+  min-width: 0;
+  padding: 0 0 12px;
 }
 
 .user-guide-step-icon {
@@ -206,17 +216,24 @@ body {
 
 .user-guide-step-copy {
   min-width: 0;
+  /* 正文自己占满剩下的宽度：不设 max-width，否则在宽弹窗里会留一大片空白。 */
+  flex: 1 1 auto;
 }
 
 .user-guide-step-copy .ant-typography {
-  max-width: 560px;
+  max-width: 100%;
+  margin-bottom: 8px;
 }
 
 .user-guide-points {
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   padding-left: 20px;
   color: #4b5563;
-  line-height: 1.9;
+  line-height: 1.85;
+  /* 列表项之间留一点缝：长条目连在一起时很难扫读。 */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .user-guide-footer {
@@ -247,6 +264,14 @@ body {
   font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 标题靠左，仓库链接与退出按钮一起靠右。 */
+.app-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
 }
 
 .app-header-repo {

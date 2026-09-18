@@ -1,7 +1,12 @@
-/** 简历照片面板：保存多张照片，选择其中一张用于简历。 */
+/** 简历照片面板：保存多张照片，选择其中一张用于简历。
+ *
+ * **界面上只显示"正在使用"的那一张**：此前大图 + 下方缩略图并列，同一张脸在同一个卡片里
+ * 出现两次，看起来像存了两张照片（截图反馈）。备选照片因此移到一个「照片库」弹窗里，
+ * 那里本来就该承担"挑一张"的动作——卡片本身只回答"简历上用的是哪张"。
+ */
 
-import { CameraOutlined, DeleteOutlined, UserOutlined } from "@ant-design/icons";
-import { App, Button, Image, Space, Spin, Tag, Tooltip, Typography, Upload } from "antd";
+import { CameraOutlined, DeleteOutlined, PictureOutlined, UserOutlined } from "@ant-design/icons";
+import { App, Button, Image, Modal, Space, Tag, Tooltip, Typography, Upload } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import {
   createProfilePhoto,
@@ -29,6 +34,7 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
   const [photos, setPhotos] = useState<ProfilePhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -99,6 +105,8 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
       if (photo.is_primary || next.every((item) => !item.is_primary)) {
         onSelect(next.find((item) => item.is_primary)?.image ?? "");
       }
+      // 删到只剩一张时照片库自动关上：里面已经没得挑了，留着反而是个空弹窗。
+      if (next.length <= 1) setLibraryOpen(false);
       message.success("已删除这张照片");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "删除照片失败");
@@ -106,6 +114,9 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
       setBusy(false);
     }
   };
+
+  /** 除当前照片外还有几张备选——决定「照片库」按钮上要不要带数字。 */
+  const alternateCount = photos.filter((photo) => photo.image !== activePhoto).length;
 
   return (
     <FileDropZone
@@ -137,14 +148,30 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
               {activePhoto ? "上传新照片" : "选择照片"}
             </Button>
           </Upload>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            JPG、PNG 或 WebP，最大 2 MB，最多保存 {MAX_PROFILE_PHOTOS} 张
-          </Typography.Text>
+          {alternateCount > 0 && (
+            <Button icon={<PictureOutlined />} onClick={() => setLibraryOpen(true)}>
+              照片库（{photos.length}）
+            </Button>
+          )}
         </Space>
-        {loading ? (
-          <Spin size="small" />
-        ) : photos.length > 0 ? (
-          <div className="profile-photo-thumbs">
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {loading
+            ? "正在读取照片…"
+            : `JPG、PNG 或 WebP，最大 2 MB，最多保存 ${MAX_PROFILE_PHOTOS} 张`}
+        </Typography.Text>
+
+        <Modal
+          title="照片库"
+          open={libraryOpen}
+          onCancel={() => setLibraryOpen(false)}
+          footer={null}
+          width={420}
+          destroyOnHidden
+        >
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            点一张设为简历照片；简历上只会用你选中的这一张。
+          </Typography.Paragraph>
+          <div className="profile-photo-library">
             {photos.map((photo) => {
               const isActive = photo.image === activePhoto || photo.is_primary;
               return (
@@ -152,11 +179,11 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
                   key={photo.id}
                   className={`profile-photo-thumb${isActive ? " is-active" : ""}`}
                 >
-                  <Tooltip title="设为简历照片">
+                  <Tooltip title={isActive ? "当前使用中" : "设为简历照片"}>
                     <button
                       type="button"
                       className="profile-photo-thumb-button"
-                      disabled={disabled || busy}
+                      disabled={disabled || busy || isActive}
                       aria-label={`使用照片 ${photo.name || photo.id}`}
                       onClick={() => void selectPhoto(photo)}
                     >
@@ -177,11 +204,12 @@ export default function ProfilePhotoPanel({ activePhoto, disabled = false, onSel
               );
             })}
           </div>
-        ) : (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            还没有保存过照片。上传后会存进照片库，可以随时切换或删除。
-          </Typography.Text>
-        )}
+          {photos.length <= 1 && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              还没有备选照片。上传新照片后就会出现在这里，可以随时切换。
+            </Typography.Text>
+          )}
+        </Modal>
       </div>
     </FileDropZone>
   );

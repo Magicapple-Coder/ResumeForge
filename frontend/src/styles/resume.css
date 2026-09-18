@@ -164,6 +164,42 @@
   margin-bottom: 16px;
 }
 
+/* 设置分页：三个标签各自装一类设置，切换时不留空档。 */
+.settings-tabs {
+  margin-top: 4px;
+}
+
+.settings-tabs .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+/* 每页开头的一行说明 + 该页的操作按钮（只有「AI 模型」有）。 */
+.settings-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.settings-section-titles {
+  min-width: 0;
+}
+
+.settings-section-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 分页里最后一张卡不要再留底边距。 */
+.settings-tabs .ant-tabs-tabpane > .settings-card:last-child,
+.settings-tabs .ant-tabs-tabpane > *:last-child .settings-card:last-child {
+  margin-bottom: 0;
+}
+
 /* ===== 版面诊断与「自动一页」 ===== */
 
 .resume-diagnosis {

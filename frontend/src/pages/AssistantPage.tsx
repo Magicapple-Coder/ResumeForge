@@ -360,10 +360,11 @@ export default function AssistantPage() {
         </header>
         {selecting && (
           <div className="assistant-select-bar">
-            <Space wrap>
-              <Typography.Text strong>已选 {selectedIds.size} 条</Typography.Text>
+            <Typography.Text type="secondary">已选 {selectedIds.size} 条</Typography.Text>
+            <Space size={8}>
               <Button
                 danger
+                size="small"
                 icon={<DeleteOutlined />}
                 disabled={selectedIds.size === 0}
                 onClick={() =>
@@ -379,7 +380,7 @@ export default function AssistantPage() {
               >
                 删除所选
               </Button>
-              <Button icon={<CloseOutlined />} onClick={exitSelecting}>
+              <Button size="small" icon={<CloseOutlined />} onClick={exitSelecting}>
                 退出多选
               </Button>
             </Space>

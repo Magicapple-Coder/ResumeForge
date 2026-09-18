@@ -58,16 +58,17 @@ export default function ExitAppButton() {
   }
 
   return (
-    <Tooltip title="退出应用（停止后端服务）" placement="right">
+    <Tooltip title="退出应用（停止后端服务）">
       <Button
         className="app-exit-button"
         type="text"
+        size="small"
         icon={<LogoutOutlined />}
         loading={exiting}
         onClick={exit}
         aria-label="退出应用"
       >
-        <span className="app-guide-label">退出</span>
+        <span className="app-exit-label">退出</span>
       </Button>
     </Tooltip>
   );

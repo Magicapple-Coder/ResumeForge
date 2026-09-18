@@ -1,6 +1,6 @@
 /** 设置页：大模型配置（含预设与连通测试）。 */
 import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons";
-import { App, Button, Form, Typography } from "antd";
+import { App, Button, Form, Tabs, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activateDataset,
@@ -49,9 +49,13 @@ import type {
 import { downloadBlob } from "../utils/download";
 import { reloadPage } from "../utils/navigation";
 
+/** 设置分页。三页各自装同一类东西：改模型配置不用先翻过整套数据备份。 */
+type SettingsTabKey = "model" | "data" | "app";
+
 export default function SettingsPage() {
   const [form] = Form.useForm<SettingsFormValues>();
   const { message } = App.useApp();
+  const [activeTab, setActiveTab] = useState<SettingsTabKey>("model");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -462,111 +466,168 @@ export default function SettingsPage() {
             配置简历生成、岗位需求解读和求职助手等 AI 功能使用的模型服务
           </Typography.Text>
         </div>
-        <div className="profile-page-header-actions">
-          {editing ? (
-            <>
-              <Button icon={<CloseOutlined />} disabled={saving || testing} onClick={cancelEditing}>
-                取消
-              </Button>
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                loading={saving}
-                disabled={testing}
-                onClick={() => void save()}
-              >
-                保存配置
-              </Button>
-            </>
-          ) : (
-            <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
-              编辑设置
-            </Button>
-          )}
-        </div>
       </div>
 
-      <LLMConfigCard
-        form={form}
-        editing={editing}
-        saving={saving}
-        testing={testing}
-        testResult={testResult}
-        apiKeyResetToken={apiKeyResetToken}
-        onPresetChange={applyPreset}
-        onResetApiKey={resetRevealedApiKey}
-        onRevealApiKey={revealSavedApiKey}
-        onRevealError={(error) => message.error(error)}
-        onTest={() => void test()}
-        onFetchModels={fetchModels}
+      {/* 设置项按"你改的是什么"分成三页，而不是全部平铺一页。
+          功能变多之后一整页排下来找起来很费劲：想改数据备份得先翻过整套模型参数。
+          分页之后每页只装同一类东西，「编辑设置」跟着**它真正控制的那一页**走——
+          此前它在页面顶部，却只管模型配置，而其余几组一直是可编辑的。 */}
+      <Tabs
+        className="settings-tabs"
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as SettingsTabKey)}
+        items={[
+          {
+            key: "model",
+            label: "AI 模型",
+            children: (
+              <>
+                <div className="settings-section-head">
+                  <div className="settings-section-titles">
+                    <Typography.Text type="secondary">
+                      简历生成、岗位解读与求职助手用的是同一套模型配置；改之前需要先点「编辑设置」。
+                    </Typography.Text>
+                  </div>
+                  <div className="settings-section-actions">
+                    {editing ? (
+                      <>
+                        <Button
+                          icon={<CloseOutlined />}
+                          disabled={saving || testing}
+                          onClick={cancelEditing}
+                        >
+                          取消
+                        </Button>
+                        <Button
+                          type="primary"
+                          icon={<SaveOutlined />}
+                          loading={saving}
+                          disabled={testing}
+                          onClick={() => void save()}
+                        >
+                          保存配置
+                        </Button>
+                      </>
+                    ) : (
+                      <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
+                        编辑设置
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <LLMConfigCard
+                  form={form}
+                  editing={editing}
+                  saving={saving}
+                  testing={testing}
+                  testResult={testResult}
+                  apiKeyResetToken={apiKeyResetToken}
+                  onPresetChange={applyPreset}
+                  onResetApiKey={resetRevealedApiKey}
+                  onRevealApiKey={revealSavedApiKey}
+                  onRevealError={(error) => message.error(error)}
+                  onTest={() => void test()}
+                  onFetchModels={fetchModels}
+                />
+
+                <LLMConfigRecordsCard
+                  records={records}
+                  recordsLoading={recordsLoading}
+                  activeRecordId={activeRecordId}
+                  editing={editing}
+                  saving={saving}
+                  testing={testing}
+                  recordSaving={recordSaving}
+                  recordApplyingId={recordApplyingId}
+                  recordDeletingId={recordDeletingId}
+                  recordModalOpen={recordModalOpen}
+                  recordName={recordName}
+                  onOpenRecordModal={openRecordModal}
+                  onApplyRecord={(record) => void applyRecord(record)}
+                  onRemoveRecord={(record) => void removeRecord(record)}
+                  onRecordNameChange={setRecordName}
+                  onSaveRecord={() => void saveRecord()}
+                  onCloseRecordModal={() => {
+                    if (!recordSaving) setRecordModalOpen(false);
+                  }}
+                />
+
+                {/* 联网搜索与模型配置同页：两者一起决定助手"能查什么、查得多细"。 */}
+                <SearchCard />
+
+                <SkillsCard
+                  skills={skills}
+                  loading={skillsLoading}
+                  importing={skillImporting}
+                  togglingId={skillTogglingId}
+                  deletingId={skillDeletingId}
+                  onImport={(file) => void importSkillFile(file)}
+                  onToggle={(skill, enabled) => void toggleSkill(skill, enabled)}
+                  onDelete={(skill) => void removeSkill(skill)}
+                  onOpen={(skill) => {
+                    setSkillEditorId(skill.id);
+                    setSkillEditorOpen(true);
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            key: "data",
+            label: "数据",
+            children: (
+              <>
+                <div className="settings-section-head">
+                  <div className="settings-section-titles">
+                    <Typography.Text type="secondary">
+                      岗位、简历与资料都存放在当前数据集里，可以整份导出备份或切换。
+                    </Typography.Text>
+                  </div>
+                </div>
+                <DatasetsCard
+                  datasets={datasets}
+                  loading={datasetsLoading}
+                  exporting={datasetExporting}
+                  importing={datasetImporting}
+                  switchingId={switchingDatasetId}
+                  renamingId={renamingDatasetId}
+                  deletingId={deletingDatasetId}
+                  renameTarget={renameTarget}
+                  renameValue={renameValue}
+                  onExport={(dataset) => void runDatasetExport(dataset)}
+                  onImport={(file, name) => void importDatasetFile(file, name)}
+                  onActivate={(dataset) => void switchDataset(dataset)}
+                  onOpenRename={(dataset) => {
+                    setRenameTarget(dataset);
+                    setRenameValue(dataset.name);
+                  }}
+                  onRenameValueChange={setRenameValue}
+                  onConfirmRename={() => void confirmDatasetRename()}
+                  onCancelRename={() => {
+                    if (renamingDatasetId === null) setRenameTarget(null);
+                  }}
+                  onDelete={(dataset) => void removeDataset(dataset)}
+                />
+              </>
+            ),
+          },
+          {
+            key: "app",
+            label: "应用",
+            children: (
+              <>
+                <div className="settings-section-head">
+                  <div className="settings-section-titles">
+                    <Typography.Text type="secondary">应用本身的版本与更新。</Typography.Text>
+                  </div>
+                </div>
+                <UpdateCard />
+              </>
+            ),
+          },
+        ]}
       />
-
-      <LLMConfigRecordsCard
-        records={records}
-        recordsLoading={recordsLoading}
-        activeRecordId={activeRecordId}
-        editing={editing}
-        saving={saving}
-        testing={testing}
-        recordSaving={recordSaving}
-        recordApplyingId={recordApplyingId}
-        recordDeletingId={recordDeletingId}
-        recordModalOpen={recordModalOpen}
-        recordName={recordName}
-        onOpenRecordModal={openRecordModal}
-        onApplyRecord={(record) => void applyRecord(record)}
-        onRemoveRecord={(record) => void removeRecord(record)}
-        onRecordNameChange={setRecordName}
-        onSaveRecord={() => void saveRecord()}
-        onCloseRecordModal={() => {
-          if (!recordSaving) setRecordModalOpen(false);
-        }}
-      />
-
-      {/* 联网搜索：与模型配置相邻，因为两者一起决定助手"能查什么、查得多细"。 */}
-      <SearchCard />
-
-      <SkillsCard
-        skills={skills}
-        loading={skillsLoading}
-        importing={skillImporting}
-        togglingId={skillTogglingId}
-        deletingId={skillDeletingId}
-        onImport={(file) => void importSkillFile(file)}
-        onToggle={(skill, enabled) => void toggleSkill(skill, enabled)}
-        onDelete={(skill) => void removeSkill(skill)}
-        onOpen={(skill) => {
-          setSkillEditorId(skill.id);
-          setSkillEditorOpen(true);
-        }}
-      />
-
-      <DatasetsCard
-        datasets={datasets}
-        loading={datasetsLoading}
-        exporting={datasetExporting}
-        importing={datasetImporting}
-        switchingId={switchingDatasetId}
-        renamingId={renamingDatasetId}
-        deletingId={deletingDatasetId}
-        renameTarget={renameTarget}
-        renameValue={renameValue}
-        onExport={(dataset) => void runDatasetExport(dataset)}
-        onImport={(file, name) => void importDatasetFile(file, name)}
-        onActivate={(dataset) => void switchDataset(dataset)}
-        onOpenRename={(dataset) => {
-          setRenameTarget(dataset);
-          setRenameValue(dataset.name);
-        }}
-        onRenameValueChange={setRenameValue}
-        onConfirmRename={() => void confirmDatasetRename()}
-        onCancelRename={() => {
-          if (renamingDatasetId === null) setRenameTarget(null);
-        }}
-        onDelete={(dataset) => void removeDataset(dataset)}
-      />
-
-      <UpdateCard />
 
       {/* 设置页里点技能名查看详情，与技能工作台共用同一个编辑弹窗。 */}
       <SkillEditorModal

@@ -29,6 +29,7 @@ import {
   Typography,
 } from "antd";
 import {
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
@@ -36,6 +37,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   answerDrill,
   createDrillSession,
@@ -582,6 +584,7 @@ function ActiveSession({
 
 export default function DrillPage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [current, setCurrent] = useState<DrillSession | null>(null);
   const [history, setHistory] = useState<DrillSessionBrief[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -647,6 +650,17 @@ export default function DrillPage() {
     <div className="drill-page">
       <div className="drill-page-head">
         <Space direction="vertical" size={0}>
+          {/* 深挖是从台账「拿去深挖」进来的子页面，但它是独立路由——浏览器后退之外
+              界面上没有别的出口，用户会以为"进去就出不来了"。 */}
+          <Button
+            type="link"
+            size="small"
+            className="drill-back"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate("/claims")}
+          >
+            返回事实台账
+          </Button>
           <Typography.Title level={4} style={{ margin: 0 }}>
             面试深挖
           </Typography.Title>
