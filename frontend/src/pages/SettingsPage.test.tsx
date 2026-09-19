@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteLLMConfigRecord: vi.fn(),
   exportDataset: vi.fn(),
   getLLMConfig: vi.fn(),
+  getReminderPopupSetting: vi.fn(),
   getSearchConfig: vi.fn(),
   importDataset: vi.fn(),
   listDatasets: vi.fn(),
@@ -17,6 +18,7 @@ const apiMocks = vi.hoisted(() => ({
   revealLLMApiKey: vi.fn(),
   saveLLMConfig: vi.fn(),
   saveLLMConfigRecord: vi.fn(),
+  saveReminderPopupSetting: vi.fn(),
   saveSearchConfig: vi.fn(),
   testLLM: vi.fn(),
 }));
@@ -89,6 +91,7 @@ function tooltipTriggerFor(label: string): HTMLElement {
 
 beforeEach(() => {
   apiMocks.getLLMConfig.mockResolvedValue(llmConfig);
+  apiMocks.getReminderPopupSetting.mockResolvedValue({ enabled: true });
   apiMocks.getSearchConfig.mockResolvedValue(searchConfig);
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
   apiMocks.listDatasets.mockResolvedValue([mainDataset]);
@@ -882,5 +885,29 @@ describe("SettingsPage 高级参数往返", () => {
         }),
       ),
     );
+  });
+});
+
+describe("SettingsPage 提醒弹窗开关", () => {
+  async function renderAppTab() {
+    render(
+      <AntdApp>
+        <SettingsPage />
+      </AntdApp>,
+    );
+    await waitFor(() => expect(apiMocks.getLLMConfig).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("tab", { name: "应用" }));
+  }
+
+  it("toggles the startup reminder popup switch", async () => {
+    apiMocks.saveReminderPopupSetting.mockImplementation(async (enabled) => ({ enabled }));
+    await renderAppTab();
+
+    const toggle = await screen.findByRole("switch", { name: "打开应用时弹出提醒" });
+    await waitFor(() => expect(toggle).toBeChecked());
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(apiMocks.saveReminderPopupSetting).toHaveBeenCalledWith(false));
   });
 });

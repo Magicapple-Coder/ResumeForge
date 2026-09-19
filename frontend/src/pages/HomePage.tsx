@@ -1,40 +1,100 @@
 /** 首页：数据概览、"接下来做什么"、全局搜索与最近动态。 */
 import {
   AuditOutlined,
+  BarChartOutlined,
+  CalendarOutlined,
   FileTextOutlined,
   FunnelPlotOutlined,
-  MessageOutlined,
+  InboxOutlined,
   RocketOutlined,
   SearchOutlined,
   SendOutlined,
+  SolutionOutlined,
   StarOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
-import { Alert, Card, Col, Empty, Input, List, Row, Space, Statistic, Tag, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Input,
+  List,
+  Modal,
+  Row,
+  Space,
+  Statistic,
+  Tag,
+  Typography,
+} from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createSearchParams, Link } from "react-router-dom";
+import { listUpcomingReminders } from "../api/reminders";
 import { getStats, searchAll } from "../api/search";
+import { getReminderPopupSetting } from "../api/settings";
 import { useApi } from "../hooks/useApi";
-import type { SearchResult } from "../types";
+import { REMINDER_URGENCY_COLORS } from "../types";
+import type { ReminderUpcoming, SearchHitType, SearchResult } from "../types";
 import { formatDateTime } from "../utils/format";
 
 /** 快捷入口：点一下就到自己要做的那件事上，不用先想它在哪个菜单里。 */
 const SHORTCUTS = [
-  { path: "/jobs", icon: <SearchOutlined />, label: "找岗位", hint: "粘贴或采集招聘信息" },
-  { path: "/resumes", icon: <FileTextOutlined />, label: "做简历", hint: "按岗位生成与导出" },
   {
-    path: "/assistant",
-    icon: <MessageOutlined />,
-    label: "问助手",
-    hint: "改简历、查资料、写招呼语",
+    path: "/analytics",
+    icon: <BarChartOutlined />,
+    label: "求职统计",
+    hint: "投递漏斗与月度趋势",
   },
-  { path: "/tracker", icon: <FunnelPlotOutlined />, label: "看进度", hint: "投出去之后走到哪一步" },
-  { path: "/claims", icon: <AuditOutlined />, label: "核事实", hint: "简历上的话站不站得住" },
-  { path: "/apply", icon: <SendOutlined />, label: "去投递", hint: "采集、匹配、排队投递" },
+  {
+    path: "/interview",
+    icon: <SolutionOutlined />,
+    label: "模拟面试·题库",
+    hint: "对话练习与即时出题",
+  },
+  {
+    path: "/apply",
+    icon: <TeamOutlined />,
+    label: "内推管理",
+    hint: "找人内推，记录每一次进展",
+  },
+  {
+    path: "/tracker",
+    icon: <CalendarOutlined />,
+    label: "日历提醒",
+    hint: "面试、测评截止别错过",
+  },
 ] as const;
+
+/** 全局搜索"更多结果"分组的展示顺序与图标/标签（与后端下发顺序一致）。 */
+const MORE_ORDER: SearchHitType[] = [
+  "referral",
+  "reminder",
+  "experience",
+  "claim",
+  "material",
+  "skill",
+];
+
+const MORE_HIT_META: Record<SearchHitType, { icon: ReactNode; label: string }> = {
+  referral: { icon: <TeamOutlined />, label: "内推" },
+  reminder: { icon: <CalendarOutlined />, label: "提醒" },
+  experience: { icon: <SolutionOutlined />, label: "面经" },
+  claim: { icon: <AuditOutlined />, label: "事实台账" },
+  material: { icon: <InboxOutlined />, label: "资料" },
+  skill: { icon: <ToolOutlined />, label: "技能" },
+};
 
 export default function HomePage() {
   const { data: stats, loading, error: statsError } = useApi(getStats);
+  const { data: upcomingReminders, loading: remindersLoading } = useApi(
+    () => listUpcomingReminders(8),
+    [],
+  );
+  const { data: popupSetting } = useApi(getReminderPopupSetting, []);
+  const [popupVisible, setPopupVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [resultKeyword, setResultKeyword] = useState("");
@@ -42,6 +102,13 @@ export default function HomePage() {
   const [searched, setSearched] = useState(false);
   const [searchError, setSearchError] = useState("");
   const searchVersion = useRef(0);
+
+  // 打开应用时：设置开启且有未完成提醒 → 弹出近期提醒。
+  useEffect(() => {
+    if (popupSetting?.enabled && (upcomingReminders?.length ?? 0) > 0) {
+      setPopupVisible(true);
+    }
+  }, [popupSetting, upcomingReminders]);
 
   useEffect(
     () => () => {
@@ -158,6 +225,40 @@ export default function HomePage() {
         style={{ marginTop: 16 }}
         title={
           <Space size={8}>
+            <CalendarOutlined />
+            <span>近期提醒</span>
+          </Space>
+        }
+        extra={<Link to="/tracker">查看全部</Link>}
+        loading={remindersLoading}
+      >
+        {(upcomingReminders ?? []).length === 0 ? (
+          <Empty description="近期没有待办提醒" />
+        ) : (
+          <List
+            size="small"
+            dataSource={upcomingReminders ?? []}
+            renderItem={(item: ReminderUpcoming) => (
+              <List.Item>
+                <Space size={6} wrap>
+                  <Tag color={REMINDER_URGENCY_COLORS[item.urgency] ?? "default"}>
+                    {item.due_label}
+                  </Tag>
+                  <Link to="/tracker">{item.title}</Link>
+                  <Typography.Text type="secondary">
+                    {formatDateTime(item.remind_at)}
+                  </Typography.Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        )}
+      </Card>
+
+      <Card
+        style={{ marginTop: 16 }}
+        title={
+          <Space size={8}>
             <ThunderboltOutlined />
             <span>接下来做什么</span>
           </Space>
@@ -203,7 +304,7 @@ export default function HomePage() {
       <Card style={{ marginTop: 16 }}>
         <Typography.Title level={5}>全局搜索</Typography.Title>
         <Input.Search
-          placeholder="搜索岗位（职位/公司/城市）或简历记录，如：后端开发 / 字节跳动"
+          placeholder="搜索岗位、简历，或内推、提醒、面经、台账、资料、技能，如：后端开发 / 字节跳动"
           enterButton="搜索"
           size="large"
           loading={searching}
@@ -215,8 +316,8 @@ export default function HomePage() {
           <Alert type="error" showIcon message={searchError} style={{ marginTop: 16 }} />
         )}
         {searched && (
-          <div style={{ marginTop: 16 }}>
-            <Typography.Title level={5} type="secondary">
+          <div className="home-search-results">
+            <Typography.Title level={5} type="secondary" style={{ margin: "8px 0" }}>
               匹配的岗位（{result?.jobs.length ?? 0}）
             </Typography.Title>
             <List
@@ -236,7 +337,7 @@ export default function HomePage() {
                 </List.Item>
               )}
             />
-            <Typography.Title level={5} type="secondary" style={{ marginTop: 12 }}>
+            <Typography.Title level={5} type="secondary" style={{ margin: "8px 0" }}>
               匹配的简历记录（{result?.resumes.length ?? 0}）
             </Typography.Title>
             <List
@@ -255,6 +356,42 @@ export default function HomePage() {
                 </List.Item>
               )}
             />
+            {(result?.more.length ?? 0) > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <Typography.Title level={5} type="secondary" style={{ margin: "8px 0" }}>
+                  更多结果（{result?.more.length ?? 0}）
+                </Typography.Title>
+                {MORE_ORDER.map((type) => {
+                  const hits = (result?.more ?? []).filter((hit) => hit.type === type);
+                  if (hits.length === 0) return null;
+                  const meta = MORE_HIT_META[type];
+                  return (
+                    <div key={type} className="home-more-group">
+                      <Space size={6} className="home-more-heading">
+                        {meta.icon}
+                        <Typography.Text type="secondary">
+                          {meta.label}（{hits.length}）
+                        </Typography.Text>
+                      </Space>
+                      <List
+                        size="small"
+                        dataSource={hits}
+                        renderItem={(hit) => (
+                          <List.Item>
+                            <Space>
+                              <Link to={hit.path}>{hit.title}</Link>
+                              {hit.subtitle && (
+                                <Typography.Text type="secondary">{hit.subtitle}</Typography.Text>
+                              )}
+                            </Space>
+                          </List.Item>
+                        )}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -326,6 +463,37 @@ export default function HomePage() {
           />
         </Card>
       )}
+
+      <Modal
+        open={popupVisible}
+        title="近期提醒"
+        onCancel={() => setPopupVisible(false)}
+        footer={
+          <Button type="primary" onClick={() => setPopupVisible(false)}>
+            知道了
+          </Button>
+        }
+      >
+        <List
+          size="small"
+          dataSource={upcomingReminders ?? []}
+          renderItem={(item: ReminderUpcoming) => (
+            <List.Item>
+              <Space size={6} wrap>
+                <Tag color={REMINDER_URGENCY_COLORS[item.urgency] ?? "default"}>
+                  {item.due_label}
+                </Tag>
+                <Link to="/tracker" onClick={() => setPopupVisible(false)}>
+                  {item.title}
+                </Link>
+                <Typography.Text type="secondary">
+                  {formatDateTime(item.remind_at)}
+                </Typography.Text>
+              </Space>
+            </List.Item>
+          )}
+        />
+      </Modal>
     </div>
   );
 }

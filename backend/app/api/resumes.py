@@ -11,11 +11,17 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models.job import Job
-from ..models.resume import ResumeRecord
+from ..services import trash
+from ..models.resume import GENERATE_ACTIVE_STATUSES, ResumeGenerateTask, ResumeRecord
 from ..schemas.common import Page
+from ..schemas.export import (
+    ExportRequest as ExportRequestSchema,
+    RedactionOptions as RedactionOptionsSchema,
+)
 from ..schemas.job import JobOut
 from ..schemas.resume import (
     GenerateRequest,
+    GenerateTaskOut,
     LayoutAnalyzeOut,
     LayoutAnalyzeRequest,
     LayoutDiagnosisOut,
@@ -34,18 +40,18 @@ from ..schemas.resume import (
     ResumeTitleUpdate,
 )
 from ..services.claims import build_baseline
-from ..services.exporter import (
-    build_filename,
-    export_json,
-    export_markdown,
-    normalize_page_limit,
-    render_html,
-)
+from ..services.exporter import normalize_page_limit, render_html
+from ..services.export_pipeline import ExportRequest, RenderContext, build_export
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
-from ..services.pdf_exporter import ResumePDFError, build_resume_pdf, font_available
+from ..services.pdf_exporter import ResumePDFError, font_available
+from ..services.privacy import RedactionOptions as PrivacyRedactionOptions, redact
 from ..services.profile_service import get_profile_detail, to_profile_out
 from ..services.resume_completeness import find_incomplete, incomplete_detail
+from ..services.resume_generate_runner import (
+    ResumeGenerateRunnerError,
+    get_resume_generate_runner,
+)
 from ..services.resume_generator import ResumeGenerator
 from ..services.resume_layout import (
     STATUS_OVERFLOW,
@@ -68,22 +74,16 @@ from ..services.resume_templates import (
     font_scale_options,
     font_scale_spec,
     format_field_options,
+    market_options,
     validated_format_config,
     template_options_with_custom,
 )
 from ..services.settings_service import get_llm_config
+from ..services.watermark import WatermarkError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
-
-# 支持的导出格式
-_EXPORT_FORMATS = {
-    "json": "application/json; charset=utf-8",
-    "md": "text/markdown; charset=utf-8",
-    "html": "text/html; charset=utf-8",
-    "pdf": "application/pdf",
-}
 
 # 服务端 PDF 的实际页数与用户选定的上限。前端靠它们提示"下载下来的页数和你选的不一样"，
 # 因此这两个响应头必须出现在 CORS 的 expose_headers 里（见 application.py）。
@@ -130,6 +130,8 @@ def read_resume_templates(db: Session = Depends(get_db)):
             "page_limit": DEFAULT_PAGE_LIMIT,
             "format_name": "",
         },
+        # 模板市场（R-19）：映射既有样式模板 + 格式预设 + 建议字号，不新建样式文件。
+        "market": market_options(),
         "pdf_direct_available": font_available(),
     }
 
@@ -181,7 +183,7 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
     saved 事件和最终 done 事件。
     """
     job = db.get(Job, payload.job_id) if payload.job_id is not None else None
-    if payload.job_id is not None and job is None:
+    if payload.job_id is not None and (job is None or trash.is_deleted(job)):
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
 
     profile = get_profile_detail(db)
@@ -274,6 +276,7 @@ def _save_record(
     page_limit: int = 1,
     font_scale: str = DEFAULT_FONT_SCALE,
     custom_instruction: str = "",
+    commit: bool = True,
 ) -> ResumeRecord:
     """生成结果落库（在流结束后的同一请求内调用）。
 
@@ -314,15 +317,105 @@ def _save_record(
         custom_instruction=custom_instruction.strip()[:2000],
     )
     db.add(record)
-    db.commit()
-    db.refresh(record)
-    logger.info(
-        "简历生成完成 record_id=%s model=%s job=%s",
-        record.id,
-        model,
-        job.title if job is not None else "通用简历",
-    )
+    if commit:
+        db.commit()
+        db.refresh(record)
+        logger.info(
+            "简历生成完成 record_id=%s model=%s job=%s",
+            record.id,
+            model,
+            job.title if job is not None else "通用简历",
+        )
+    else:
+        # 后台任务复用本函数：不提交，只 flush 拿到主键，让调用方把简历记录与任务终态
+        # 放进同一个事务一起提交（见 resume_generate_runner 的原子完成路径）。
+        db.flush()
     return record
+
+
+# ===== 生成后台任务（轮询模型，替代弹窗里的同步 SSE 等待）=====
+#
+# 为什么保留上面的 ``POST /generate``（SSE）又新增这套任务接口：SSE 是"请求期间持续
+# 连接"的旧形态，无法满足"关掉弹窗后生成继续在后台跑"；而直接改掉 SSE 会破坏既有
+# 流式语义与一批测试。所以新增一套任务接口，前端生成弹窗改走这里，SSE 路径保持不变。
+
+
+@router.post("/generate/tasks", response_model=GenerateTaskOut, status_code=201)
+def start_resume_generation(payload: GenerateRequest, db: Session = Depends(get_db)):
+    """启动一次后台简历生成，返回可轮询的任务（``task_id`` 即任务 id）。
+
+    前置校验与 ``POST /generate`` 完全一致（岗位存在、资料非空、LLM 已配置），
+    保证任务一旦建起来，后台线程就能拿到完整输入。
+    """
+    job = db.get(Job, payload.job_id) if payload.job_id is not None else None
+    if payload.job_id is not None and (job is None or trash.is_deleted(job)):
+        raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
+
+    profile = get_profile_detail(db)
+    if (
+        not profile.name
+        and not profile.projects
+        and not profile.experiences
+        and not profile.campus_experiences
+    ):
+        raise HTTPException(status_code=400, detail="请先在「我的资料」页完善个人信息")
+
+    config = get_llm_config(db)
+    if not config.base_url or not config.model:
+        raise HTTPException(status_code=400, detail="请先在「设置」页配置大模型 API")
+
+    # 防重复：已有进行中的任务就拒绝，绝不因用户连点两次而产生两条任务/两份简历。
+    active = (
+        db.query(ResumeGenerateTask)
+        .filter(ResumeGenerateTask.status.in_(GENERATE_ACTIVE_STATUSES))
+        .first()
+    )
+    if active is not None:
+        raise HTTPException(status_code=409, detail="已有简历生成任务正在进行中，请等待其完成")
+
+    task = ResumeGenerateTask(
+        job_id=payload.job_id,
+        title=payload.title,
+        options=payload.options.model_dump(),
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    runner = get_resume_generate_runner()
+    try:
+        runner.start(task.id)
+    except ResumeGenerateRunnerError as exc:
+        # 启动失败（极端竞态：恰好有另一条任务刚被创建）：回滚这条空任务，不留孤儿。
+        db.delete(task)
+        db.commit()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return GenerateTaskOut.model_validate(task)
+
+
+@router.get("/generate/tasks/{task_id}", response_model=GenerateTaskOut)
+def get_resume_generate_task(task_id: int, db: Session = Depends(get_db)):
+    """查询一次生成任务的状态（前端 1.5s 轮询）。"""
+    task = db.get(ResumeGenerateTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="生成任务不存在或已被删除")
+    return GenerateTaskOut.model_validate(task)
+
+
+@router.post("/generate/tasks/{task_id}/cancel", response_model=GenerateTaskOut)
+def cancel_resume_generate_task(task_id: int, db: Session = Depends(get_db)):
+    """取消进行中的生成任务。取消后**不落库**任何简历，任务标为 cancelled。"""
+    task = db.get(ResumeGenerateTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="生成任务不存在或已被删除")
+    runner = get_resume_generate_runner()
+    try:
+        runner.cancel(task_id)
+    except ResumeGenerateRunnerError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.expire_all()
+    refreshed = db.get(ResumeGenerateTask, task_id)
+    return GenerateTaskOut.model_validate(refreshed)
 
 
 def _build_manual_title(content: ResumeContent, job: Job | None, requested_title: str) -> str:
@@ -342,7 +435,7 @@ def _build_manual_title(content: ResumeContent, job: Job | None, requested_title
 def create_manual_resume(payload: ManualResumeRequest, db: Session = Depends(get_db)):
     """保存用户自行编写的简历，并可选关联岗位。"""
     job = db.get(Job, payload.job_id) if payload.job_id is not None else None
-    if payload.job_id is not None and job is None:
+    if payload.job_id is not None and (job is None or trash.is_deleted(job)):
         raise HTTPException(status_code=404, detail="关联岗位不存在或已被删除")
 
     content = payload.content.model_dump()
@@ -402,7 +495,7 @@ def list_resumes(
     has_job: bool | None = Query(default=None),
 ):
     """列出简历。``has_job=false`` 只返回通用简历（未关联任何岗位）。"""
-    query = db.query(ResumeRecord)
+    query = db.query(ResumeRecord).filter(trash.live_only(ResumeRecord))
     if job_id is not None:
         query = query.filter(ResumeRecord.job_id == job_id)
     if has_job is not None:
@@ -430,12 +523,12 @@ def list_resumes(
 async def suggest_resume_edits(resume_id: int, db: Session = Depends(get_db)):
     """按需生成当前简历针对关联岗位的修改建议，不修改简历内容。"""
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     if record.job_id is None:
         raise HTTPException(status_code=400, detail="这份简历没有关联的岗位，无法生成岗位化建议")
     job = db.get(Job, record.job_id)
-    if job is None:
+    if job is None or trash.is_deleted(job):
         raise HTTPException(status_code=400, detail="关联岗位已被删除，无法生成岗位化建议")
 
     config = get_llm_config(db)
@@ -470,7 +563,7 @@ async def suggest_resume_edits(resume_id: int, db: Session = Depends(get_db)):
 @router.get("/{resume_id}", response_model=ResumeOut)
 def get_resume(resume_id: int, db: Session = Depends(get_db)):
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     return _to_resume_out(record)
 
@@ -479,7 +572,7 @@ def get_resume(resume_id: int, db: Session = Depends(get_db)):
 def update_resume(resume_id: int, payload: ResumeContent, db: Session = Depends(get_db)):
     """保存用户对生成简历的手工修改。"""
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
 
     record.content = payload.model_dump()
@@ -499,7 +592,7 @@ def rename_resume(
 ):
     """只更新简历名称；正文与生成告警都不受影响。"""
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     record.title = payload.title
     db.commit()
@@ -515,7 +608,7 @@ def update_resume_favorite(
 ):
     """切换简历收藏状态，不修改简历正文。"""
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     record.favorite = payload.favorite
     db.commit()
@@ -525,10 +618,15 @@ def update_resume_favorite(
 
 @router.delete("/{resume_id}", status_code=204)
 def delete_resume(resume_id: int, db: Session = Depends(get_db)):
+    """移入回收站（软删除）。
+
+    简历记录里有生成正文、版式覆盖与警告信息，是用户花了模型调用换来的；误删的代价远大于
+    多留一行。彻底删除在「回收站」里单独提供（不可恢复，需二次确认）。
+    """
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
-    db.delete(record)
+    trash.soft_delete(db, "resume", record)
     db.commit()
 
 
@@ -541,7 +639,7 @@ def update_resume_layout(
     生成后内容偏多时，用户可以先增大页数或缩小字号再渲染，不必重跑模型。
     """
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     # 样式模板名按"内置优先，其次用户自制"解析；格式模板单独存一份名字，渲染时再解析成
     # 具体的覆盖配置——这样用户改了格式模板，引用它的简历跟着变。
@@ -567,7 +665,7 @@ def analyze_resume_layout(
     量一个高度去引一个无头浏览器依赖。所以这里的分工是——客户端负责量，规则全在这边。
     """
     record = db.get(ResumeRecord, resume_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
 
     measure = payload.measure
@@ -633,6 +731,57 @@ def render_resume(payload: ResumeRenderRequest, db: Session = Depends(get_db)):
     )
 
 
+def _get_live_resume(db: Session, resume_id: int) -> ResumeRecord:
+    record = db.get(ResumeRecord, resume_id)
+    if record is None or trash.is_deleted(record):
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    return record
+
+
+def _export_record(
+    db: Session,
+    record: ResumeRecord,
+    request: ExportRequest,
+    *,
+    allow_incomplete: bool,
+) -> Response:
+    """导出闸门 + 管线委托 + 响应头，是 GET / POST 两条导出路径的共用出口。"""
+    resume = ResumeContent.model_validate(record.content)
+    # 导出闸门：正文里还留着【待补】之类的标记时拦下来。带占位符的简历投出去，
+    # 用户往往直到面试被问起才发现——这道检查的价值全在"导出那一刻"。
+    if not allow_incomplete:
+        incomplete = find_incomplete(resume)
+        if incomplete:
+            raise HTTPException(status_code=409, detail=incomplete_detail(incomplete))
+    # 样式模板解析一次，json/md 用不到也不多花一次查询；html/pdf/docx 复用同一份解析结果。
+    export_template, export_html = resolve_style_template(db, record.template)
+    context = RenderContext(
+        template=export_template,
+        template_html=export_html,
+        page_limit=record.page_limit,
+        font_scale=record.font_scale,
+        format_config=_record_format_config(db, record),
+    )
+    try:
+        artifact = build_export(request, resume, context)
+    except ResumePDFError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WatermarkError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    headers: dict[str, str] = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(artifact.filename, safe='')}",
+    }
+    # 服务端 PDF/Word 用的是自己那套排版，页数未必等于用户选的上限（内容多时会多出一页）。
+    # 把实际页数带回去，让界面能提示，而不是让用户下载完才发现。
+    if artifact.pages is not None:
+        headers[PDF_PAGES_HEADER] = str(artifact.pages)
+    if artifact.page_limit is not None:
+        headers[PDF_PAGE_LIMIT_HEADER] = str(artifact.page_limit)
+    return Response(artifact.content, media_type=artifact.media_type, headers=headers)
+
+
 @router.get("/{resume_id}/export")
 def export_resume(
     resume_id: int,
@@ -643,50 +792,50 @@ def export_resume(
     ),
     db: Session = Depends(get_db),
 ):
-    record = db.get(ResumeRecord, resume_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    """兼容旧的 GET 导出：仍限四种格式，内部委托管线。全参数导出走 ``POST``。"""
+    record = _get_live_resume(db, resume_id)
+    return _export_record(
+        db,
+        record,
+        ExportRequest(format=format),
+        allow_incomplete=allow_incomplete,
+    )
+
+
+@router.post("/{resume_id}/export")
+def export_resume_with_options(
+    resume_id: int,
+    payload: ExportRequestSchema,
+    db: Session = Depends(get_db),
+):
+    """全参数导出（R-16 / R-17）：格式、水印、脱敏、页边距、字号、页数、照片。
+
+    脱敏作为管线前置步骤（``redact`` 是唯一实现），脱敏版是**独立导出文件**，不回写、
+    不落库副本。响应头保留 ``X-Resume-Pages`` / ``X-Resume-Page-Limit``。
+    """
+    record = _get_live_resume(db, resume_id)
+    privacy_options = PrivacyRedactionOptions(**payload.redact_options.model_dump())
+    request = ExportRequest(
+        format=payload.format,
+        watermark=payload.watermark,
+        redact=payload.redact,
+        redact_options=privacy_options,
+        margin_mm=payload.margin_mm,
+        font_scale=payload.font_scale,
+        page_limit=payload.page_limit,
+        include_photo=payload.include_photo,
+    )
+    return _export_record(db, record, request, allow_incomplete=payload.allow_incomplete)
+
+
+@router.post("/{resume_id}/redact", response_model=ResumeContent)
+def redact_resume_preview(
+    resume_id: int,
+    payload: RedactionOptionsSchema,
+    db: Session = Depends(get_db),
+):
+    """脱敏预览：返回脱敏后的 ``ResumeContent``，不落库、不改动原记录。"""
+    record = _get_live_resume(db, resume_id)
     resume = ResumeContent.model_validate(record.content)
-    # 导出闸门：正文里还留着【待补】之类的标记时拦下来。带占位符的 PDF 投出去，
-    # 用户往往直到面试被问起才发现——这道检查的价值全在"导出那一刻"。
-    if not allow_incomplete:
-        incomplete = find_incomplete(resume)
-        if incomplete:
-            raise HTTPException(status_code=409, detail=incomplete_detail(incomplete))
-    headers: dict[str, str] = {}
-    if format == "json":
-        content, media_type = export_json(resume), _EXPORT_FORMATS["json"]
-    elif format == "md":
-        content, media_type = export_markdown(resume), _EXPORT_FORMATS["md"]
-    elif format == "html":
-        export_template, export_html = resolve_style_template(db, record.template)
-        content, media_type = (
-            render_html(
-                resume,
-                template=export_template,
-                page_limit=record.page_limit,
-                font_scale=record.font_scale,
-                format_config=_record_format_config(db, record),
-                template_html=export_html,
-            ),
-            _EXPORT_FORMATS["html"],
-        )
-    else:
-        try:
-            pdf = build_resume_pdf(
-                resume,
-                template=resolve_style_template(db, record.template)[0],
-                page_limit=record.page_limit,
-                font_scale=record.font_scale,
-                format_config=_record_format_config(db, record),
-            )
-        except ResumePDFError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        content, media_type = pdf.content, _EXPORT_FORMATS["pdf"]
-        # 服务端 PDF 用的是自己那套排版，页数未必等于用户选的上限（内容多时会多出一页）。
-        # 把实际页数带回去，让界面能提示，而不是让用户下载完才发现。
-        headers[PDF_PAGES_HEADER] = str(pdf.pages)
-        headers[PDF_PAGE_LIMIT_HEADER] = str(record.page_limit)
-    filename = build_filename(resume, format)
-    headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename, safe='')}"
-    return Response(content, media_type=media_type, headers=headers)
+    options = PrivacyRedactionOptions(**payload.model_dump())
+    return redact(resume, options)

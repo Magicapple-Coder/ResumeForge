@@ -7,6 +7,17 @@ import { ApiError } from "../api/client";
 import { exportResume, fetchResumeHtml } from "../api/resumes";
 import { downloadBlob, printHtml } from "../utils/download";
 
+/**
+ * 浏览器打印路径的诚实提示。
+ *
+ * **为什么只能给提示、不能在应用内消除差异**：屏幕上的近似分页是预览用 CSS `columns`
+ * 排出来的估算；而「浏览器打印 / 另存为 PDF」走的是 `@media print` 的 `break-inside: avoid`，
+ * 页断点可能与屏幕不同（预览说一页、打印可能两页）。浏览器不向 JS 暴露打印页数，所以应用
+ * 无法在内部算出真实打印页数，只能就地说明"打印是权威、屏幕是近似"。
+ */
+export const PRINT_PAGINATION_NOTE =
+  "打印 / 另存为 PDF 的分页以浏览器为准，可能与屏幕近似分页略有不同。";
+
 interface Props {
   recordId: number;
   /** 服务端是否找到中文字体；为 false 时主按钮退回浏览器打印。 */
@@ -77,7 +88,9 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
     }
   };
 
-  /** 浏览器打印：版式与预览完全一致，用户在打印对话框里选「另存为 PDF」。 */
+  /** 浏览器打印：版式与预览同源（同一模板 + 同一 --fit-scale），但分页受 @media print 的
+   *  break-inside: avoid 影响，可能与屏幕近似分页略有不同——浏览器不向 JS 暴露打印页数，
+   *  应用内无法消除这个差异，只能在下拉项上提示一句（见 PRINT_PAGINATION_NOTE）。 */
   const printPdf = async () => {
     try {
       const html = await runExport((allowIncomplete) => fetchResumeHtml(recordId, allowIncomplete));
@@ -102,7 +115,11 @@ export default function ExportButtons({ recordId, pdfDirectAvailable = true }: P
   };
 
   const menuItems: MenuProps["items"] = [
-    { key: "pdf-print", label: "浏览器打印 / 另存为 PDF", icon: <PrinterOutlined /> },
+    {
+      key: "pdf-print",
+      label: <span title={PRINT_PAGINATION_NOTE}>浏览器打印 / 另存为 PDF</span>,
+      icon: <PrinterOutlined />,
+    },
     ...(pdfDirectAvailable ? [{ key: "pdf-download", label: "直接下载 PDF" }] : []),
     { key: "html", label: "导出 HTML" },
     { key: "md", label: "导出 Markdown" },

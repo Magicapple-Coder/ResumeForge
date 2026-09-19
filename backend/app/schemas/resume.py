@@ -158,6 +158,29 @@ class ResumeOut(ResumeBrief):
     parse_error: str = ""
 
 
+class GenerateTaskOut(BaseModel):
+    """简历生成后台任务的对外状态（前端按 1.5s 轮询）。
+
+    ``status`` 取值与 ``models.resume`` 顶部的生成状态常量一致。``message`` 是后端
+    最近一条 progress 文案，前端用它映射阶段条；``received_chars`` 只做字数计数、
+    不做百分比（总长未知）。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    resume_id: int | None = None
+    error: str = ""
+    message: str = ""
+    received_chars: int = 0
+    job_id: int | None = None
+    title: str = ""
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
 class ResumeFavoriteUpdate(BaseModel):
     """只更新收藏状态，避免切换收藏时覆盖整份简历内容。"""
 

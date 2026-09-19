@@ -5,6 +5,40 @@ body {
     -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
+/*
+ * 全局滚动条：统一成"几乎不抢视线"的细滚动条。
+ *
+ * 应用里到处是弹性容器（消息列表、预览区、弹窗体、卡片），默认的粗滚动条在浅色界面上
+ * 非常显眼——一屏出现两三条就显得乱（用户截图反馈过两次）。这里**只调外观，不动尺寸
+ * 语义**：滚动条仍然按需出现，不会因为样式而消失（那会让"这里能不能滚"变得没法判断），
+ * 也不去改 `scrollbar-gutter`（它防的是内容区左右跳动，和美观无关）。
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(15 23 42 / 18%) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(15 23 42 / 18%);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(15 23 42 / 32%);
+}
+
 #root {
   height: 100vh;
   overflow: hidden;
@@ -222,18 +256,47 @@ body {
 
 .user-guide-step-copy .ant-typography {
   max-width: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+/* 描述是"这一步做什么"的导读，与下方要点列表区分层级：浅一档的灰、更宽的行距，
+   并留出更多下边距，避免和要点粘在一起。 */
+.user-guide-description {
+  margin: 0 0 18px;
+  color: #55606e;
+  font-size: 14px;
+  line-height: 1.9;
 }
 
 .user-guide-points {
-  margin: 8px 0 0;
-  padding-left: 20px;
+  margin: 10px 0 0;
+  /* ul 用 flex 布局时浏览器不渲染默认的 ::marker 圆点，于是每个要点之间只剩 6px
+     空隙，长条目视觉上连成"一整段"。这里显式取消默认圆点、改用统一的小圆点标记，
+     让每一条都一眼可辨，又不抢正文的注意力；间距也从 6px 放宽到 10px，更耐扫读。 */
+  padding-left: 0;
   color: #4b5563;
-  line-height: 1.85;
-  /* 列表项之间留一点缝：长条目连在一起时很难扫读。 */
+  line-height: 1.8;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 12px;
+}
+
+.user-guide-points li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.user-guide-points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.68em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16365c;
+  opacity: 0.35;
 }
 
 .user-guide-footer {

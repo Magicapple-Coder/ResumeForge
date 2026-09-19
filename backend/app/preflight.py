@@ -21,6 +21,7 @@ _BACKEND_ROOT: Final = Path(__file__).resolve().parent.parent
 # 随包发送、缺了就无法正常工作的文件：(相对 backend/ 的路径, 用途)。
 _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/data/skills.json", "内置技能词典，岗位解析与匹配要用"),
+    ("app/data/ats_keywords.json", "ATS 本地检测的通用关键词词库"),
     ("app/prompts/apply_greeting.md", "自动投递招呼语生成提示词"),
     ("app/prompts/assistant_system.md", "AI 助手系统提示词"),
     ("app/prompts/application_status.md", "求职进度识别的提示词"),
@@ -31,6 +32,10 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/prompts/drill_evaluate.md", "面试深挖的逐轮判定提示词"),
     ("app/prompts/drill_review.md", "面试深挖的复盘与复练提示词"),
     ("app/prompts/image_extraction_addendum.md", "图片识别补充提示词"),
+    ("app/prompts/interview_analysis.md", "面试答题思路分析提示词"),
+    ("app/prompts/interview_answer.md", "面试单题参考答案提示词"),
+    ("app/prompts/interview_optimize_resume.md", "面试短板反向优化简历提示词"),
+    ("app/prompts/interview_questions.md", "个性化面试题库提示词"),
     ("app/prompts/interview_report.md", "模拟面试评分报告提示词"),
     ("app/prompts/interview_system.md", "模拟面试官系统提示词"),
     ("app/prompts/job_analysis.md", "岗位分析提示词"),
@@ -41,8 +46,13 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/prompts/resume_fix_json.md", "简历 JSON 修复提示词"),
     ("app/prompts/resume_generate_system.md", "简历生成系统提示词"),
     ("app/prompts/resume_generate_user.md", "简历生成用户提示词"),
+    ("app/prompts/resume_phrases.md", "简历话术生成器提示词"),
+    ("app/prompts/resume_polish.md", "简历多风格润色提示词"),
     ("app/prompts/resume_quality_retry.md", "简历质量重试提示词"),
+    ("app/prompts/resume_risk.md", "简历风险深挖提示词"),
+    ("app/prompts/resume_star.md", "简历 STAR 改写提示词"),
     ("app/prompts/resume_suggestions.md", "简历改进建议提示词"),
+    ("app/prompts/resume_translate.md", "简历中英互译提示词"),
     # 简历模板：三套版式加两段共用片段。缺了它们在生成简历时才会炸，而那时用户
     # 已经等了一轮模型调用；在这里拦住，报的是"包不完整"而不是一段渲染栈。
     ("app/templates/resume.html.j2", "经典简历模板"),

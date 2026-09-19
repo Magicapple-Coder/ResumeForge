@@ -51,6 +51,13 @@ MAX_QUEUE_BATCH = 200
 MAX_TASK_TARGETS = 500
 MAX_COLLECT_KEYWORDS = 10
 
+# 「补齐详情」的单批上限。补详情要逐个打开岗位页面（详情页是整个采集里最慢的一步），几百条一批
+# 会让一次任务跑很久、也更容易被风控盯上，所以超过就让用户分批。这个上限由**业务层**给出可操作的
+# 中文说明；schema 这层只用一个更大的硬上限挡住明显异常的请求体——阈值若设成一样，友好提示会被
+# 校验挡在外面，用户只会拿到一条 Pydantic 报错，看不到"要分批"的理由。
+MAX_BACKFILL_JOBS = 200
+MAX_BACKFILL_REQUEST_ITEMS = 1000
+
 BrowserState = Literal["stopped", "starting", "running", "unknown"]
 # 浏览器选择：auto=自动（优先 Chrome，未装回退 Edge）/ chrome / edge / custom=自定义路径。
 BrowserChoice = Literal["auto", "chrome", "edge", "custom"]
@@ -156,6 +163,31 @@ class CollectConfigOut(CollectConfigIn):
     defaults: CollectConfigIn = Field(default_factory=CollectConfigIn)
 
 
+class CollectTaskCreateIn(BaseModel):
+    """开始一次采集的请求体。
+
+    只有一个可选开关：是否保存本次抓到的站点原文（用于排查解析问题）。**默认关闭**——往磁盘
+    写站点数据必须由用户每次显式勾选，绝不默认记录。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    save_site_samples: bool = False
+
+
+class CollectBackfillIn(BaseModel):
+    """「补齐详情」请求体：按岗位 id 只补抓详情。
+
+    用于修**历史遗留**的空 JD——当年采集时详情没抓到（该成因已修好），但已经落库的那几条修不了，
+    因为采集按 URL 去重、重新采集会直接跳过它们。这里改由用户点名补齐。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # 空列表不在 schema 层拦：交给业务层给出「请先选择要补齐详情的岗位」这类可操作的中文提示。
+    job_ids: list[int] = Field(default_factory=list, max_length=MAX_BACKFILL_REQUEST_ITEMS)
+
+
 # ===== 投递专用浏览器 =====
 
 
@@ -197,6 +229,41 @@ class SiteListOut(BaseModel):
 
     current: str = ""
     sites: list[SiteOptionOut] = Field(default_factory=list)
+
+
+# ===== ⑪ 站点健康度（把"采集悄悄抓不到东西"变成看得见的 degraded 标记）=====
+
+
+class CollectRunSummaryOut(BaseModel):
+    """一次采集运行的摘要——站点健康度判据的输入之一。"""
+
+    status: str = ""
+    failure_category: str = ""
+    succeeded: int = 0
+    detail_missing: int = 0
+    created_at: str = ""
+
+
+class SiteHealthOut(BaseModel):
+    """一个招聘网站的采集健康度：``ok``（正常）或 ``degraded``（疑似改版）。"""
+
+    site_key: str = ""
+    display_name: str = ""
+    status: Literal["ok", "degraded"] = "ok"
+    # 人类可读、可操作的中文原因。前端**只展示**，绝不自行再判一次（判断的权威只有后端一处）。
+    reasons: list[str] = Field(default_factory=list)
+    # 统计明细：样本数、结构失败次数、详情漂移次数，供界面 / 诊断核对。
+    sampled: int = 0
+    selector_failures: int = 0
+    detail_drift_runs: int = 0
+    # 最近几次运行的摘要（与判据同一份输入），便于用户对照「采集记录」。
+    recent: list[CollectRunSummaryOut] = Field(default_factory=list)
+
+
+class SiteHealthListOut(BaseModel):
+    """所有已注册站点的健康度。前端据 ``site_key`` 找到当前站点的状态。"""
+
+    sites: list[SiteHealthOut] = Field(default_factory=list)
 
 
 # ===== 投递队列 =====
@@ -387,8 +454,11 @@ __all__ = [
     "BrowserChoice",
     "BrowserState",
     "BrowserStatusOut",
+    "CollectBackfillIn",
     "CollectConfigIn",
     "CollectConfigOut",
+    "CollectRunSummaryOut",
+    "CollectTaskCreateIn",
     "DEFAULT_BROWSER_CHOICE",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_GREETING",
@@ -397,7 +467,11 @@ __all__ = [
     "GREETING_RECORD_MAX_CHARS",
     "GreetingPreviewOut",
     "GreetingPreviewRequest",
+    "MAX_BACKFILL_JOBS",
+    "MAX_BACKFILL_REQUEST_ITEMS",
     "QueueStatus",
+    "SiteHealthListOut",
+    "SiteHealthOut",
     "SiteListOut",
     "SiteOptionOut",
     "TaskItemStatus",

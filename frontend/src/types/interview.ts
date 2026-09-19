@@ -1,4 +1,5 @@
 /** 模拟面试（后端 /api/interview）。 */
+import type { ResumeSuggestion } from "./resume";
 
 export const INTERVIEW_TYPES = [
   "技术面",
@@ -93,4 +94,129 @@ export interface InterviewAnswerResult {
   session: InterviewDetail;
   feedback: string;
   finished: boolean;
+}
+
+// ===== R-11 个性化题库 / 答题思路 / 反向优化简历 =====
+
+export const QUESTION_BANK_TYPES = ["基础题", "项目深挖题", "反问HR题"] as const;
+export type QuestionBankType = (typeof QUESTION_BANK_TYPES)[number];
+
+export interface InterviewQuestionItem {
+  question: string;
+  purpose: string;
+  answer_hint: string;
+}
+
+export interface QuestionBankGroup {
+  type: string;
+  questions: InterviewQuestionItem[];
+}
+
+export interface QuestionBankOut {
+  job_id: number | null;
+  job_title: string;
+  company: string;
+  resume_id: number | null;
+  groups: QuestionBankGroup[];
+  llm_used: boolean;
+  notes: string[];
+}
+
+export interface QuestionBankPayload {
+  job_id?: number | null;
+  resume_id?: number | null;
+}
+
+export interface InterviewAnalysisPayload {
+  question: string;
+  job_id?: number | null;
+  resume_id?: number | null;
+  context?: string;
+}
+
+export interface InterviewAnalysis {
+  question: string;
+  framework: string;
+  key_points: string[];
+  follow_up: string[];
+  pitfalls: string[];
+}
+
+export interface QuestionAnswerPayload {
+  question: string;
+  job_id?: number | null;
+  resume_id?: number | null;
+}
+
+export interface QuestionAnswer {
+  question: string;
+  answer: string;
+  key_points: string[];
+  sample_phrasing: string;
+}
+
+export interface InterviewOptimizePayload {
+  resume_id: number;
+  job_id?: number | null;
+  weaknesses?: string[];
+  follow_ups?: string[];
+}
+
+export interface InterviewOptimizeResult {
+  resume_id: number;
+  suggestions: ResumeSuggestion[];
+  llm_used: boolean;
+  notes: string[];
+}
+
+// ===== D5 题库历史 / 面试复盘历史 =====
+
+export interface QuestionBankRecord {
+  id: number;
+  job_id: number | null;
+  job_title: string;
+  company: string;
+  resume_id: number | null;
+  resume_title: string;
+  groups: QuestionBankGroup[];
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestionBankRecordPayload {
+  job_id?: number | null;
+  job_title?: string;
+  company?: string;
+  resume_id?: number | null;
+  resume_title?: string;
+  groups: QuestionBankGroup[];
+  model?: string;
+}
+
+export interface InterviewReviewRecord {
+  id: number;
+  job_id: number | null;
+  job_title: string;
+  company: string;
+  resume_id: number | null;
+  resume_title: string;
+  questions: string[];
+  analysis: InterviewAnalysis;
+  suggestions: ResumeSuggestion[];
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InterviewReviewRecordPayload {
+  job_id?: number | null;
+  job_title?: string;
+  company?: string;
+  resume_id?: number | null;
+  resume_title?: string;
+  questions: string[];
+  analysis: InterviewAnalysis;
+  suggestions: ResumeSuggestion[];
+  model?: string;
 }

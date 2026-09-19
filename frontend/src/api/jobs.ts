@@ -20,6 +20,8 @@ export interface JobListParams {
   job_type?: string;
   status?: string;
   favorite?: boolean;
+  /** 按录入方式粗筛：`collected`=投递台自动采集，`manual`=其余（手动填写/粘贴/截图/文档等）。 */
+  source_kind?: "collected" | "manual";
   page?: number;
   page_size?: number;
 }

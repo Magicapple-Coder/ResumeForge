@@ -43,7 +43,7 @@ export default function ClaimsPage() {
   const remove = async (claim: Claim) => {
     try {
       await deleteClaim(claim.id);
-      message.success("已删除");
+      message.success("已移入回收站，可在「回收站」里恢复");
       await reload();
       await baseline.reload();
     } catch (err) {

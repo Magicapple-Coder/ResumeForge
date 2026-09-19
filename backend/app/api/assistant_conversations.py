@@ -15,6 +15,7 @@ from ..schemas.assistant import (
     ChatConversationForkRequest,
     ChatConversationUpdate,
 )
+from ..services import trash
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ def list_conversations(limit: int, db: Session) -> list[ChatConversationBrief]:
     """按置顶、更新时间排序返回会话（含已归档，由前端按筛选展示）。"""
     rows = (
         db.query(ChatConversation)
+        .filter(trash.live_only(ChatConversation))
         .order_by(
             ChatConversation.pinned.desc(),
             ChatConversation.updated_at.desc(),
@@ -110,6 +112,7 @@ def list_conversations(limit: int, db: Session) -> list[ChatConversationBrief]:
 def read_conversation(conversation_id: int, db: Session) -> ChatConversationDetail:
     conversation = (
         db.query(ChatConversation)
+        .filter(trash.live_only(ChatConversation))
         .options(selectinload(ChatConversation.messages))
         .filter(ChatConversation.id == conversation_id)
         .one_or_none()
@@ -193,8 +196,19 @@ def fork_conversation(
 
 
 def delete_conversation(conversation_id: int, db: Session) -> None:
+    """移入回收站（软删除）。
+
+    以前是 `db.delete(conversation)` —— 连带消息一起真删（`cascade="all, delete-orphan"`）。
+    会话是用户和助手反复沟通出来的，误删一整段对话的代价太高，所以改成软删除；
+    彻底删除（连同消息）在「回收站」里单独提供。
+
+    已经在回收站里的会话**再删一次返回 404**（与其余五类内容一致）：不这么判的话，
+    `soft_delete` 是幂等的，界面上会得到"删成功"的假象，而它其实早就删过了。
+    """
     conversation = conversation_or_404(db, conversation_id)
-    db.delete(conversation)
+    if trash.is_deleted(conversation):
+        raise HTTPException(status_code=404, detail="会话不存在或已被删除")
+    trash.soft_delete(db, "conversation", conversation)
     db.commit()
 
 

@@ -29,6 +29,7 @@ const apiMocks = vi.hoisted(() => ({
   updateCollectConfig: vi.fn(),
   createCollectTask: vi.fn(),
   listSites: vi.fn(),
+  getSiteHealth: vi.fn(),
 }));
 
 vi.mock("../api/apply", () => ({
@@ -130,6 +131,8 @@ beforeEach(() => {
   apiMocks.getApplyConfig.mockResolvedValue({});
   apiMocks.getCollectConfig.mockResolvedValue(COLLECT_CONFIG);
   apiMocks.listSites.mockResolvedValue(SITES);
+  // 站点健康度：本文件不测 degraded 标记，给一份"无告警"的空列表即可（当前站点会被判为 ok）。
+  apiMocks.getSiteHealth.mockResolvedValue({ sites: [] });
 });
 
 afterEach(() => {
@@ -242,11 +245,40 @@ describe("CollectPanel", () => {
     );
 
     // 断言范围限定在「未生效」提示条内：/薪资/ 在全页还会命中表单的「最低薪资（K）」标签，
-    // 用 getByText 会命中多个元素。这里只关心提示条本身是否如实列出了未生效条件。
-    const banner = await screen.findByRole("alert");
+    // 用 getByText 会命中多个元素；而且页面上现在还有一条「采集之后还有两步」的流程提示，
+    // 同 role=alert，所以按**类名**定位这一条，而不是按 role。
+    await screen.findByText("以下条件未生效");
+    const banner = document.querySelector(".apply-collect-unmapped");
     expect(banner).toHaveTextContent("以下条件未生效");
     expect(banner).toHaveTextContent("薪资");
     expect(banner).toHaveTextContent("学历");
+  });
+
+  it("reports the local filter outcome, including conditions it could not apply", async () => {
+    // 本地筛选的三件事都要说出来：筛掉几条、几条因为岗位没写字段而没能判断、
+    // 以及用户自己填的条件有没有被识别。少说一件，用户就不知道"少了几个"是怎么少的。
+    const collectTask = detail({
+      kind: "collect",
+      config: {
+        filter_applied: ["薪资", "经验", "学历"],
+        filtered_out: 2,
+        filter_reasons: ["学历"],
+        filter_undecided: ["经验"],
+        filter_undecided_count: 3,
+        filter_unapplied: ["学历"],
+      },
+    });
+
+    render(
+      <AntdApp>
+        <CollectPanel disabled={false} onStarted={vi.fn()} collectTask={collectTask} />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText(/已按薪资 \/ 经验 \/ 学历在采集后筛选/)).toBeInTheDocument();
+    expect(screen.getByText(/本次筛掉 2 个不符合条件的岗位/)).toBeInTheDocument();
+    expect(screen.getByText(/3 个岗位没有写经验/)).toBeInTheDocument();
+    expect(screen.getByText(/这条条件没能识别，本次没有生效/)).toBeInTheDocument();
   });
 
   it("surfaces a load error instead of rendering a blank form", async () => {
@@ -259,5 +291,37 @@ describe("CollectPanel", () => {
     );
 
     expect(await screen.findByText("加载采集条件失败")).toBeInTheDocument();
+  });
+
+  it("keeps site-sample saving off by default and only sends true when ticked", async () => {
+    // 保存站点原文是"往磁盘写站点数据"的动作，默认必须关闭；勾了才把 true 传给后端。
+    apiMocks.getCollectConfig.mockResolvedValue({ ...COLLECT_CONFIG, keywords: ["后端"] });
+    apiMocks.updateCollectConfig.mockResolvedValue({ ...COLLECT_CONFIG, keywords: ["后端"] });
+    apiMocks.createCollectTask.mockResolvedValue(detail({ kind: "collect" }));
+
+    render(
+      <AntdApp>
+        <CollectPanel disabled={false} onStarted={vi.fn()} collectTask={null} />
+      </AntdApp>,
+    );
+
+    // 说明文案必须存在：用户得知道"存什么、存哪、会不会外传"。
+    expect(await screen.findByText(/只存到本机 backend\/data\/captures\//)).toBeInTheDocument();
+    // 等表单填上关键词，否则点「开始采集」会因为"没填关键词或城市"直接返回、根本不发请求。
+    await screen.findByText("后端");
+
+    // aria-label 是给这里定位用的：antd 会给两字中文按钮自动插空格，用中文文本当查询条件会找不到。
+    const box = screen.getByLabelText(
+      "保存本次抓到的站点原文（用于排查解析问题）",
+    ) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /开始采集/ }));
+    await waitFor(() => expect(apiMocks.createCollectTask).toHaveBeenCalledWith(false));
+
+    apiMocks.createCollectTask.mockClear();
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: /开始采集/ }));
+    await waitFor(() => expect(apiMocks.createCollectTask).toHaveBeenCalledWith(true));
   });
 });

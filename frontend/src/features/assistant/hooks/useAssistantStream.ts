@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { sendAssistantMessage } from "../../../api/assistant";
 import type {
   AssistantSource,
+  AssistantSourceNumber,
   AssistantStreamEvent,
   AssistantToolCall,
   ReasoningEffort,
@@ -54,7 +55,9 @@ export function useAssistantStream({
   const [pendingSentAt, setPendingSentAt] = useState("");
   const [pendingUserAttachments, setPendingUserAttachments] = useState<PendingAttachment[]>([]);
   const [streamingText, setStreamingText] = useState("");
+  const [streamingReasoning, setStreamingReasoning] = useState("");
   const [streamingSources, setStreamingSources] = useState<AssistantSource[]>([]);
+  const [streamingSourceMap, setStreamingSourceMap] = useState<AssistantSourceNumber[]>([]);
   const [streamingTools, setStreamingTools] = useState<AssistantToolCall[]>([]);
   const [progressText, setProgressText] = useState("");
   const [streamError, setStreamError] = useState("");
@@ -94,7 +97,9 @@ export function useAssistantStream({
       setPendingSentAt(new Date().toISOString());
       setPendingUserAttachments(optimisticAttachments);
       setStreamingText("");
+      setStreamingReasoning("");
       setStreamingSources([]);
+      setStreamingSourceMap([]);
       setStreamingTools([]);
       setProgressText("");
       setStreamError("");
@@ -118,9 +123,12 @@ export function useAssistantStream({
           (event: AssistantStreamEvent) => {
             if (abortRef.current !== controller) return;
             if (event.type === "delta") setStreamingText((current) => current + event.text);
+            if (event.type === "reasoning")
+              setStreamingReasoning((current) => current + event.text);
             if (event.type === "progress") setProgressText(event.message);
             if (event.type === "sources") {
               setStreamingSources(event.sources);
+              setStreamingSourceMap(event.source_map ?? []);
               if (event.error) setProgressText(event.error);
             }
             if (event.type === "tool") {
@@ -134,6 +142,7 @@ export function useAssistantStream({
                   link: event.link,
                   ok: event.ok,
                   error: event.error,
+                  changed: event.changed,
                 },
               ]);
             }
@@ -154,6 +163,7 @@ export function useAssistantStream({
           setPendingUserText("");
           setPendingUserAttachments([]);
           setStreamingText("");
+          setStreamingReasoning("");
           setStreamingTools([]);
           const refreshes: Promise<unknown>[] = [reloadConversations()];
           if (activeIdRef.current === conversationId) refreshes.push(loadDetail(conversationId));
@@ -187,7 +197,9 @@ export function useAssistantStream({
     pendingSentAt,
     pendingUserAttachments,
     streamingText,
+    streamingReasoning,
     streamingSources,
+    streamingSourceMap,
     streamingTools,
     progressText,
     streamError,

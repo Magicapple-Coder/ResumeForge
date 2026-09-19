@@ -45,6 +45,16 @@ def test_settings_accepts_unlimited_output_and_keeps_the_minimum_bound(client):
         assert response.status_code == 422, rejected
 
 
+def test_new_config_defaults_to_unlimited_output():
+    """新配置默认「不限制」，让新用户不调参也能用服务商/模型的默认上限。
+
+    这是**默认值**的改动，不迁移已保存的配置——用户已经存过的 max_tokens 原样保留，
+    悄悄改存量等于替用户改一个他未必想改的东西。
+    """
+    assert LLMConfig().max_tokens == UNLIMITED_MAX_TOKENS
+    assert LLMConfig().uses_unlimited_output is True
+
+
 def test_settings_api_key_reveal_is_explicit_and_not_cached(client):
     config = LLMConfig(
         provider="deepseek",

@@ -6,7 +6,12 @@
  * 除以页数）——这两件事出错的后果是"填充度算错"，而界面上完全看不出来。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { measureResumeLayout } from "./resumeLayoutMeasure";
+import {
+  measureResumeLayout,
+  overflowHeightFor,
+  pagesNeededFor,
+  type LayoutMeasure,
+} from "./resumeLayoutMeasure";
 
 interface Box {
   top?: number;
@@ -147,5 +152,39 @@ describe("measureResumeLayout", () => {
     stubElement(body, { top: 0, bottom: 0 }, { paddingTop: "53px", paddingBottom: "53px" });
     expect(measureResumeLayout(document, 1)).toBeNull();
     expect(measureResumeLayout(document, 0)).toBeNull();
+  });
+});
+
+function measure(usedHeight: number, pageContentHeight: number, pageLimit: number): LayoutMeasure {
+  return { usedHeight, pageContentHeight, pageLimit };
+}
+
+describe("pagesNeededFor", () => {
+  it("内容恰好放满一页时算一页", () => {
+    expect(pagesNeededFor(measure(1000, 1000, 1))).toBe(1);
+  });
+
+  it("多出一丁点就算下一页", () => {
+    expect(pagesNeededFor(measure(1001, 1000, 1))).toBe(2);
+  });
+
+  it("内容为空时至少算一页", () => {
+    expect(pagesNeededFor(measure(0, 1000, 1))).toBe(1);
+  });
+
+  it("页面内容高度非法时回退到上限页数", () => {
+    expect(pagesNeededFor(measure(500, 0, 2))).toBe(2);
+  });
+});
+
+describe("overflowHeightFor", () => {
+  it("放得下时返回 0", () => {
+    expect(overflowHeightFor(measure(900, 1000, 1))).toBe(0);
+    expect(overflowHeightFor(measure(2000, 1000, 2))).toBe(0);
+  });
+
+  it("超出时返回多出的高度（与 pageContentHeight 同单位）", () => {
+    expect(overflowHeightFor(measure(1300, 1000, 1))).toBe(300);
+    expect(overflowHeightFor(measure(2500, 1000, 2))).toBe(500);
   });
 });

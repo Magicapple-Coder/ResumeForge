@@ -64,13 +64,25 @@ def _join_bullets(items: list[str]) -> str:
 
 
 def export_markdown(resume: ResumeContent) -> str:
-    """导出不包含照片的 Markdown 文本。"""
+    """导出不包含照片的 Markdown 文本。
+
+    照片是**唯一**的例外（内嵌 data URL，放进文本导出没有意义）。除此之外，凡是预览里会
+    出现的内容这里都要有——以前漏掉了性别与出生年：预览页眉显示它们、md 里却查无此项，
+    属于"同一份简历两个输出说得不一样"（用户报告的正是这类差异，只是发生在别的输出上）。
+    """
     lines: list[str] = []
     header = resume.name
+    # 性别在预览里是姓名后缀（与 `_resume_sections.j2` 的位置一致）。
+    if resume.gender:
+        header += f"（{resume.gender}）"
     if resume.job_intent:
         header += f" · {resume.job_intent}"
     lines.append(f"# {header}")
-    contacts = " | ".join(item for item in [resume.phone, resume.email, resume.city] if item)
+    contacts = " | ".join(
+        item
+        for item in [resume.phone, resume.email, resume.city, resume.birth_year]
+        if item
+    )
     if contacts:
         lines.append(f"{contacts}\n")
 

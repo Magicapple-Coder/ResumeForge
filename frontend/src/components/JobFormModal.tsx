@@ -331,7 +331,14 @@ export default function JobFormModal({
       maskClosable={!submitting}
       closable={!submitting}
       width={720}
-      styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: 8 } }}
+      styles={{
+        body: {
+          maxHeight: "calc(100vh - 200px)",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 8,
+        },
+      }}
       // 多份确认面板自带操作按钮，保留默认的「保存/取消」会让用户以为要点弹窗底部。
       footer={multiMode ? null : undefined}
       destroyOnHidden

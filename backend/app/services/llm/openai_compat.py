@@ -52,6 +52,28 @@ def _finalize_tool_calls(pending: dict[int, dict]) -> list[dict]:
     return [pending[index] for index in sorted(pending)]
 
 
+def _extract_reasoning(delta: dict) -> str:
+    """从流式帧里读出模型的思考内容片段。
+
+    **没有一个统一的字段名**，各家的兼容端点各写各的，所以要逐个容忍：
+
+    - ``reasoning_content``：DeepSeek 系（含自建/网关）的思考内容；
+    - ``reasoning``：部分 OpenAI 系与第三方网关用的名字。
+
+    两个都缺失就返回空串——**什么都不产出，绝不臆造**。这一点很关键：绝大多数普通
+    模型和不开思考的请求本来就没有思考内容，缺失是常态而非异常，静默跳过即可。
+    只有确实是字符串且非空时才返回。
+    """
+    for key in ("reasoning_content", "reasoning"):
+        value = delta.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+
+
+
 def _looks_like_unsupported_tools(error: LLMError) -> bool:
     """判断这次失败是否因为服务商不认识 tools 参数。
 
@@ -259,6 +281,15 @@ class OpenAICompatProvider(BaseLLMProvider):
                             if total_chars > self._stream_char_limit():
                                 raise LLMError("模型流式输出过大，请调低最大输出长度")
                             yield LLMDelta(text=text)
+                        # 思考内容与正文分开产出：它不是要展示给用户的回答，而是"模型
+                        # 在想什么"。同样计入 total_chars——它是真实消耗的输出，且不受
+                        # 限的话一条只会思考的流会无界增长。
+                        reasoning = _extract_reasoning(delta)
+                        if reasoning:
+                            total_chars += len(reasoning)
+                            if total_chars > self._stream_char_limit():
+                                raise LLMError("模型流式输出过大，请调低最大输出长度")
+                            yield LLMDelta(reasoning=reasoning)
                         _accumulate_tool_calls(pending, delta.get("tool_calls"))
                         # 有的端点不发 finish_reason 就结束，所以下面还要兜一次。
                         if finish_reason and pending and not emitted:

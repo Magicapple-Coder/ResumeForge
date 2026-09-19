@@ -59,6 +59,28 @@ class JobMatchResult(BaseModel):
     notes: list[str] = Field(default_factory=list, max_length=20)
 
 
+class MatchScoreDimension(BaseModel):
+    """参考分的单个维度（0-100 分 + 权重 + 一句可读的证据）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    score: int = Field(ge=0, le=100)
+    weight: float
+    evidence: str = ""
+
+
+class MatchReferenceScore(BaseModel):
+    """匹配度参考分：0-100 总分 + 5 个分项 + 免责文案。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    score: int = Field(ge=0, le=100)
+    dimensions: list[MatchScoreDimension] = Field(default_factory=list)
+    disclaimer: str = ""
+
+
 class JobMatchOut(BaseModel):
     """落库后的匹配结论（GET /api/jobs/{id}/match-analysis 的响应）。"""
 
@@ -74,6 +96,8 @@ class JobMatchOut(BaseModel):
     model: str = ""
     created_at: datetime
     updated_at: datetime
+    # 参考分：派生值，只读、仅展示、带免责；未分析时为 None，不落库。
+    reference_score: MatchReferenceScore | None = None
 
 
 __all__ = [
@@ -82,5 +106,7 @@ __all__ = [
     "JobMatchOut",
     "JobMatchResult",
     "MatchCondition",
+    "MatchReferenceScore",
+    "MatchScoreDimension",
     "MatchStatus",
 ]

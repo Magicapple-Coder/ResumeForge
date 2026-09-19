@@ -92,6 +92,20 @@ def _anthropic_content_blocks(content: Any) -> list[dict[str, Any]]:
     return blocks or [{"type": "text", "text": ""}]
 
 
+def _has_tool_history(messages: list[dict] | None) -> bool:
+    """请求里是否已经带着工具结果——即这是一次"工具轮之后"的后续请求。
+
+    只有多轮工具调用才会让模型在上一轮产出 thinking 块，也就只有这种请求才可能因为
+    "没有回传 thinking"被服务端拒绝（见 ``_convert_messages`` 的说明）。用
+    ``role == "tool"`` 判定：工具结果只在跑完一轮工具后才出现，是"已经在工具循环里"
+    最干净的信号。
+    """
+    for message in messages or []:
+        if str(message.get("role") or "") == "tool":
+            return True
+    return False
+
+
 def _convert_messages(messages: list[dict]) -> tuple[str, list[dict[str, Any]]]:
     """拆分出 system 文本，并把消息转成 Messages 协议的结构。
 
@@ -100,6 +114,22 @@ def _convert_messages(messages: list[dict]) -> tuple[str, list[dict[str, Any]]]:
     - 助手消息里的 ``tool_calls`` → ``tool_use`` 内容块；
     - ``role: "tool"`` 的结果 → 紧随其后的 user 消息里的 ``tool_result`` 块
       （协议要求工具结果由 user 角色承载）。
+
+    **已知限制：不回传 extended thinking 的 thinking 块。** 官方要求：开启 extended
+    thinking 且发生**多轮工具调用**时，上一轮助手消息里的 thinking 块（连同它的
+    signature）必须**原样**拼回下一轮请求，否则服务端会以 400 拒绝后续请求。本实现
+    没有保存、也没有回传 thinking 块，因此这一种组合会受影响：
+
+    - **受影响场景**：原生 Anthropic（``AnthropicProvider``）+ 开启思考 + 一次回答里
+      触发工具调用、且模型在工具调用之后还需要再答一轮（多轮工具）。
+    - **用户看到什么**：第二轮请求失败，界面上出现"请求格式错误：本轮是「原生 Anthropic
+      接口 + 思考强度 + 工具调用」的组合……"（指向真因的专属提示，见 ``_http_error``），
+      那一轮回答中断（已产出的思考与正文保留）。
+    - **不受影响**：不开思考；开了思考但一轮就给出最终回答（无工具，或工具后直接结束）。
+
+    之所以选择记录而不是现在实现回传：回传要求把 thinking 文本与 signature 一起保存
+    并正确拼回消息序列，而思考内容当前**刻意不回灌给模型**（见 ``assistant_stream``），
+    两者是一套改动。先如实记录，避免留下"看起来支持、少数场景才炸"的假象。
     """
     system_parts: list[str] = []
     converted: list[dict[str, Any]] = []
@@ -192,7 +222,7 @@ class AnthropicProvider(BaseLLMProvider):
                     "POST", self._endpoint(), json=payload, headers=self._headers()
                 ) as response:
                     if response.status_code != 200:
-                        raise self._http_error(response)
+                        raise self._http_error(response, messages)
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
                         if len(body) + len(chunk) > _MAX_CHAT_RESPONSE_BYTES:
@@ -223,7 +253,7 @@ class AnthropicProvider(BaseLLMProvider):
                     "POST", self._endpoint(), json=payload, headers=self._headers()
                 ) as response:
                     if response.status_code != 200:
-                        raise self._http_error(response)
+                        raise self._http_error(response, messages)
                     async for delta in self._iter_sse(response):
                         yield delta
         except httpx.TimeoutException as exc:
@@ -236,8 +266,9 @@ class AnthropicProvider(BaseLLMProvider):
     async def _iter_sse(self, response: httpx.Response) -> AsyncIterator[LLMDelta]:
         """解析 Messages 协议的 SSE 事件流。
 
-        文本来自 ``text_delta``；工具调用由 ``content_block_start``（拿到 id 与
-        name）与 ``input_json_delta``（分片 JSON 拼接）组成，在块结束时产出。
+        文本来自 ``text_delta``；思考内容来自 ``thinking_delta``；工具调用由
+        ``content_block_start``（拿到 id 与 name）与 ``input_json_delta``（分片 JSON
+        拼接）组成，在块结束时产出。
         """
         total_chars = 0
         pending: dict[int, dict[str, Any]] = {}
@@ -278,14 +309,32 @@ class AnthropicProvider(BaseLLMProvider):
                 delta = event.get("delta") or {}
                 if not isinstance(delta, dict):
                     continue
-                if delta.get("type") == "text_delta":
+                delta_type = delta.get("type")
+                if delta_type == "text_delta":
                     text = delta.get("text")
                     if isinstance(text, str) and text:
                         total_chars += len(text)
                         if total_chars > self._stream_char_limit():
                             raise LLMError("模型流式输出过大，请调低最大输出长度")
                         yield LLMDelta(text=text)
-                elif delta.get("type") == "input_json_delta":
+                elif delta_type == "thinking_delta":
+                    # extended thinking 的思考内容：字段名固定是 ``thinking``。
+                    # 与正文分开产出，同样计入 total_chars（它是真实输出，且不设限时
+                    # 一条只会思考的流会无界增长）。
+                    thinking = delta.get("thinking")
+                    if isinstance(thinking, str) and thinking:
+                        total_chars += len(thinking)
+                        if total_chars > self._stream_char_limit():
+                            raise LLMError("模型流式输出过大，请调低最大输出长度")
+                        yield LLMDelta(reasoning=thinking)
+                elif delta_type == "signature_delta":
+                    # 每个 thinking 块尾部会跟一个 ``signature_delta``，它是**加密签名**，
+                    # 不是给人看的内容。它唯一的作用是原样回传给下一轮（见 ``_convert_messages``
+                    # 顶部关于 extended thinking 多轮工具的说明）。我们当前不回传
+                    # thinking 块，所以这里**刻意不采集**签名——采集了也没处用，反而会
+                    # 在 context 里留一段无法解释的密文。显式写出来，避免以后有人以为漏了。
+                    continue
+                elif delta_type == "input_json_delta":
                     index = int(event.get("index") or 0)
                     slot = pending.get(index)
                     if slot is not None:
@@ -414,12 +463,24 @@ class AnthropicProvider(BaseLLMProvider):
         ]
         return "".join(parts)
 
-    @staticmethod
-    def _http_error(response: httpx.Response) -> LLMError:
+    def _http_error(
+        self, response: httpx.Response, messages: list[dict] | None = None
+    ) -> LLMError:
         status = response.status_code
         logger.warning("Anthropic 调用失败 status=%s", status)
         if status == 400:
-            # 原生协议最常见的 400 是模型名或参数问题，提示更具体一点。
+            # 原生协议的 400 有两类，先区分再给提示。**开了思考又在多轮工具调用中**时，
+            # 400 几乎必然是"上一轮的 thinking 块没原样回传"（官方对 extended thinking 的
+            # 硬要求，本实现尚未支持，见 ``_convert_messages``）。此时若回通用文案
+            # （"检查模型名 / max_tokens / 预算"），会把用户支去改一堆无关参数、白忙一场，
+            # 所以这里指向真正的原因与出路。**只在这一组合下改文案，其它 400 仍走通用提示。**
+            if self._thinking_budget() > 0 and _has_tool_history(messages):
+                return LLMError(
+                    "请求格式错误：本轮是「原生 Anthropic 接口 + 思考强度 + 工具调用」的组合，"
+                    "官方要求把上一轮的思考块原样回传，当前版本尚未支持（HTTP 400）。"
+                    "请把「思考强度」调回「关闭」，或改用 OpenAI 兼容协议的服务商后重试。"
+                )
+            # 其它情况最常见的 400 是模型名或参数问题，保留更通用的提示。
             return LLMError(
                 "请求格式错误：请检查模型名称、max_tokens 与思考预算设置（HTTP 400）"
             )

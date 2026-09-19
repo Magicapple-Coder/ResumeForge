@@ -1,0 +1,26 @@
+/* 回收站页面。样式刻意很轻：这个页面要让人一眼看清"我删了什么、什么时候删的"，
+   不需要装饰；唯一需要强调的对比是「恢复」（安全）与「彻底删除」（不可逆）。 */
+
+.trash-page {
+  padding: 4px 0 24px;
+}
+
+.trash-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* 名称列里的副标题（公司 / 分类）会换行到第二行；给一点行距，避免两行贴在一起。 */
+.trash-page .ant-table-cell .ant-space-vertical {
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .trash-page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

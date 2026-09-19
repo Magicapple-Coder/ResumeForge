@@ -15,7 +15,7 @@ export default function ProfileBasicSection({ photo, editing, saving, onPhotoSel
   return (
     <Row gutter={[16, 16]} align="stretch" style={{ marginBottom: 16 }}>
       <Col xs={{ span: 24, order: 2 }} xl={{ span: 18, order: 1 }}>
-        <Card size="small" title="基本信息" className="profile-top-card">
+        <Card size="small" className="profile-top-card">
           <Row gutter={12}>
             <Col xs={24} sm={12} lg={8}>
               <Form.Item name="name" label="姓名" rules={[{ required: true, message: "必填" }]}>

@@ -1,0 +1,12 @@
+{
+  "categories": {
+    "编程语言": ["Python", "Java", "Go", "C++", "C#", "JavaScript", "TypeScript", "Rust", "Kotlin", "Swift", "PHP", "Ruby", "Shell", "SQL"],
+    "后端框架": ["Django", "Flask", "FastAPI", "Spring", "Spring Boot", "MyBatis", "Gin", "Node.js", "Express", "NestJS", "gRPC", "WebSocket"],
+    "前端技术": ["Vue", "React", "Angular", "HTML", "CSS", "Sass", "Webpack", "Vite", "小程序", "Electron", "Flutter", "React Native"],
+    "数据库": ["MySQL", "PostgreSQL", "Redis", "MongoDB", "Elasticsearch", "ClickHouse", "SQLite", "HBase", "TiDB", "Oracle"],
+    "云计算与运维": ["Docker", "Kubernetes", "AWS", "阿里云", "腾讯云", "Nginx", "Linux", "CI/CD", "Jenkins", "Git", "DevOps", "Prometheus", "Grafana", "服务网格"],
+    "数据与算法": ["机器学习", "深度学习", "PyTorch", "TensorFlow", "Spark", "Hadoop", "Flink", "Kafka", "数据仓库", "数据挖掘", "特征工程", "推荐系统", "NLP", "计算机视觉", "大模型", "AIGC"],
+    "测试与质量": ["单元测试", "自动化测试", "接口测试", "性能测试", "pytest", "JUnit", "Selenium", "测试用例", "质量保障"],
+    "通用软技能": ["沟通协作", "项目管理", "团队管理", "跨部门协作", "需求分析", "技术方案", "架构设计", "性能优化", "问题排查", "文档撰写", "敏捷开发", "Scrum", "代码评审"]
+  }
+}

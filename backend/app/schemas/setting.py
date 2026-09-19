@@ -28,7 +28,10 @@ class LLMConfig(BaseModel):
     # 简历生成更看重事实稳定性；用户仍可按需调高创意度。
     temperature: float = Field(default=0.1, ge=0, le=2)
     timeout_seconds: int = Field(default=120, ge=10, le=600)
-    max_tokens: int = Field(default=4096, ge=UNLIMITED_MAX_TOKENS, le=65536)
+    # 默认「不限制」：新用户不调参也能用服务商/模型的默认上限，而不是被一个手写的
+    # 4096 悄悄截断。这只影响**默认值**——已保存过 max_tokens 的配置原样保留，
+    # 不会因为一次升级就被改写（改动存量等于替用户改他未必想改的东西）。
+    max_tokens: int = Field(default=UNLIMITED_MAX_TOKENS, ge=UNLIMITED_MAX_TOKENS, le=65536)
     # 接口协议。Claude 既能用官方的 OpenAI 兼容层（选 openai），也能走原生 Messages
     # 协议（选 anthropic，支持扩展思考与独立的 system 字段）。
     api_style: Literal["openai", "anthropic"] = "openai"
@@ -167,3 +170,9 @@ class SearchConfig(BaseModel):
         if not value.startswith(("http://", "https://")):
             raise ValueError("SearXNG 地址必须以 http:// 或 https:// 开头")
         return value
+
+
+class ReminderPopupSetting(BaseModel):
+    """应用打开时是否弹出近期提醒（默认开）。"""
+
+    enabled: bool = True

@@ -110,6 +110,16 @@
   max-height: calc(100vh - 116px);
 }
 
+/*
+ * 多选态在标题下多出一条选中操作栏，于是子元素从 3 个变成 4 个。
+ * 网格行是按位置分配的：不补这一行，操作栏就会去顶替消息区的 `minmax(320px, 1fr)`
+ * 主行——它自己撑到 320px 高（表现为标题下方一大片空白），消息区反被挤成 `auto`
+ * 缩到内容高度、失去滚动区。补一行 `auto` 才是"多了一条工具条"的正确含义。
+ */
+.assistant-workspace.is-selecting {
+  grid-template-rows: auto auto minmax(320px, 1fr) auto;
+}
+
 .assistant-header {
   display: flex;
   flex-wrap: wrap;

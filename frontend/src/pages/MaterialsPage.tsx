@@ -82,7 +82,7 @@ export default function MaterialsPage() {
   const remove = async (material: Material) => {
     try {
       await deleteMaterial(material.id);
-      message.success("已删除");
+      message.success("已移入回收站，可在「回收站」里恢复");
       await load();
     } catch (error) {
       message.error(error instanceof Error ? error.message : "删除失败");

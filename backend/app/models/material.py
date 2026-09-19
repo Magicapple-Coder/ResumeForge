@@ -49,6 +49,9 @@ class Material(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+    # 软删除时间戳：NULL 表示「没删」。列表查询一律加 `deleted_at IS NULL`，
+    # 回收站里则只看非 NULL 的行（见 ``services/trash.py``）。
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 class CandidateJob(Base):
     __tablename__ = "candidate_job"
 
@@ -60,6 +63,20 @@ class CandidateJob(Base):
     images: Mapped[list[str]] = mapped_column(JSON, default=list)
     note: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(32), default="手动添加")
+    # 采集多带出来的字段：粘贴文本拿不到城市与薪资，而采集能拿到（迁移 0015）。
+    location: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    salary: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    # 原始岗位链接：既用于**与正式岗位双向去重**（同一链接不再重复采集），
+    # 也是"回原站看这条岗位"的入口。
+    source_url: Mapped[str] = mapped_column(String(512), default="", server_default="")
+    # 采集带回来的 JD 正文与任职要求。**必须与 ``raw_text`` 分开存**：``raw_text`` 是
+    # "粘贴进来的原始文本"（手动链路用），而采集已经在服务端把两者按小标题切分好了——
+    # 塞进 raw_text 会把这份结构丢掉，导入岗位时又变回"描述与要求混在一起"。
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    requirements: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # 产生这条候选的采集批次（``apply_task.id``）。**不建外键**：批次记录被清理掉时
+    # 不该连带删掉用户还没处理的候选岗位（与 ``claim_record`` 同样的取舍）。
+    collect_task_id: Mapped[int | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=CANDIDATE_JOB_PENDING, index=True)
     # 导入成功后指向正式岗位；岗位被删除时置空，备选记录仍保留。
     imported_job_id: Mapped[int | None] = mapped_column(nullable=True)

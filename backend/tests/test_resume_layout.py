@@ -316,11 +316,46 @@ def test_room_report_explains_the_font_floor():
 # ===== 与模板文件的漂移守卫 =====
 
 
+# 各层级字号比例在模板 CSS 里的选择器。键名与 `TEMPLATE_LAYOUT_DEFAULTS` 的 `*_ratio` 一一对应。
+# 直出 PDF 的字号层级就是靠这组比例与预览对齐的（`pdf_exporter.resolve_layout` 从注册表读），
+# 所以模板改了比例而注册表没跟上，就应该在这里被逮住。
+_RATIO_SELECTORS: dict[str, str] = {
+    "name_ratio": ".header .name",
+    "intent_ratio": ".header .intent",
+    "contact_ratio": ".header .contact",
+    "section_title_ratio": ".section-title",
+    "entry_title_ratio": ".entry-head .title",
+    # 条目头右侧副行与条目下副行是**两个**选择器：多数模板比例相同，technical 却是 0.86/0.9。
+    # 两个都要核对，否则只改其中一个（比如把 `.sub` 从 0.9 改成 0.86）会悄悄漂移而过。
+    "entry_meta_ratio": ".entry-head .meta",
+    "entry_sub_ratio": ".entry .sub",
+    "tag_font_ratio": ".skill-list li",
+}
+
+
+def _selector_font_size_ratio(css: str, selector: str) -> float:
+    """读出某条选择器的 `font-size` 是 `--fs` 的多少倍（`var(--fs)` 记作 1.0）。"""
+    block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert block, f"模板里没找到选择器 {selector}"
+    declarations = block.group(1)
+    scaled = re.search(r"font-size:\s*calc\(var\(--fs\)\s*\*\s*([\d.]+)\)", declarations)
+    if scaled:
+        return float(scaled.group(1))
+    assert re.search(r"font-size:\s*var\(--fs\)", declarations), (
+        f"{selector} 的字号既不是 calc(var(--fs)*N) 也不是 var(--fs)"
+    )
+    return 1.0
+
+
 def test_template_layout_defaults_match_the_template_files():
     """`TEMPLATE_LAYOUT_DEFAULTS` 上的数字必须与模板 CSS 一致。
 
     自动一页靠它们判断「当前值是多少、还能往紧收多少」。抄错会让它收紧一个用户根本
     没设过的值，或者该收没收——而这两件事在界面上都看不出来，只会表现为"按了没反应"。
+
+    **字号层级比例（`*_ratio`）也在这里核对**：直出 PDF 不再自带第二份系数，改从注册表读这组
+    比例；若注册表与模板 CSS 漂移（哪怕是"只改了注册表"），PDF 与预览的字号层级又会分叉——
+    这条守卫让那种漂移直接变红。
     """
     for name, spec in RESUME_TEMPLATES.items():
         css = (TEMPLATES_DIR / spec["file"]).read_text(encoding="utf-8")
@@ -338,6 +373,45 @@ def test_template_layout_defaults_match_the_template_files():
         assert gap, f"{spec['file']} 里没找到区块间距"
         assert float(gap.group(1)) == defaults["section_gap"], name
 
+        for key, selector in _RATIO_SELECTORS.items():
+            ratio = _selector_font_size_ratio(css, selector)
+            assert ratio == defaults[key], (
+                f"{name} 的 {key}（{selector}）：注册表 {defaults[key]} vs 模板 {ratio}"
+            )
+
+
+# 模板配色在 `TEMPLATE_LAYOUT_DEFAULTS` 里的键，值对应模板 `:root` 里的同名 CSS 变量
+# （去掉 `--` 前缀）。直出 PDF 的强调色从这读（`pdf_exporter` 不再自带 `_TEMPLATE_COLORS`），
+# 所以模板改了颜色而注册表没跟上，PDF 配色就会与预览悄悄分叉。
+_COLOR_KEYS = ("accent", "text", "muted", "line")
+
+
+def _normalize_hex(value: str) -> str:
+    """把十六进制颜色归一成 6 位小写（`#abc` 展开成 `#aabbcc`，忽略大小写）。"""
+    text = value.strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    return text.lower()
+
+
+def test_template_colors_match_the_template_files():
+    """`TEMPLATE_LAYOUT_DEFAULTS` 上的颜色必须与模板 CSS 的 `:root` 变量一致。
+
+    期望值从注册表读、拿模板 CSS 比对，不在这里再抄一份颜色常量——抄一份就等于又写了一遍
+    "跟自己比"。这条与上面的版式守卫一起，保证 `pdf_exporter` 读注册表拿到的强调色与预览
+    是**同一份定义**：此前 PDF 自带 `_TEMPLATE_COLORS`，模板改 `--accent` 它不会跟着变。
+    """
+    for name, spec in RESUME_TEMPLATES.items():
+        css = (TEMPLATES_DIR / spec["file"]).read_text(encoding="utf-8")
+        defaults = TEMPLATE_LAYOUT_DEFAULTS[name]
+        for key in _COLOR_KEYS:
+            var = f"--{key}"
+            match = re.search(re.escape(var) + r"\s*:\s*(#[0-9a-fA-F]{3,6})", css)
+            assert match, f"{spec['file']} 里没找到 {var}"
+            assert _normalize_hex(match.group(1)) == _normalize_hex(str(defaults[key])), (
+                f"{name} 的 {var}：注册表 {defaults[key]} vs 模板 {match.group(1)}"
+            )
+
 
 def test_every_template_has_layout_defaults():
     assert set(TEMPLATE_LAYOUT_DEFAULTS) == set(RESUME_TEMPLATES)
@@ -351,7 +425,9 @@ def test_every_template_sizes_everything_from_the_fs_variable():
     """
     for name, spec in RESUME_TEMPLATES.items():
         css = (TEMPLATES_DIR / spec["file"]).read_text(encoding="utf-8")
-        assert "--fs: {{ base_px }}px;" in css, name
+        # `--fs` 除了档位基准值，还挂着一个**版式自适应**系数：自适应靠它把整份版式真实变矮，
+        # 而不是加一层只改视觉的 transform（后者会让预览与打印的页数对不上）。
+        assert "--fs: calc({{ base_px }}px * var(--fit-scale, 1));" in css, name
         # 正文与标题的主要尺寸都要走 calc(var(--fs) * N)。
         assert "font-size: var(--fs);" in css, name
         assert "calc(var(--fs) *" in css, name

@@ -204,8 +204,65 @@ def test_empty_result_message_differs_from_failure_message():
     result_msg = TaskRunner._collect_message(ApplyTask(kind="collect", succeeded=7))
 
     assert "没有找到匹配的岗位" in empty_msg
-    assert "共新增 7 个岗位" in result_msg
+    # 文案说的是"已暂存"而不是"已新增"：采集**不写岗位广场**，岗位要用户勾选后才导入。
+    # 措辞必须与真实行为一致，否则用户会去岗位广场找一个还没被导入的岗位。
+    assert "已暂存 7 个岗位" in result_msg
+    assert "共新增" not in result_msg
     assert empty_msg != result_msg
+
+
+def test_collect_message_tells_the_user_what_to_do_next():
+    """用户反馈过"采集完只知道成功了，不知道下一步该做什么"——文案必须给出下一个动作。
+
+    只说"已完成"等于把"接下来怎么办"留给用户猜；而这一步（勾选 → 导入）恰恰是整条链路里
+    最需要人来做决定的地方。
+    """
+    from app.models.apply import ApplyTask
+    from app.services.apply.task_runner import TaskRunner
+
+    message = TaskRunner._collect_message(ApplyTask(kind="collect", succeeded=3))
+
+    assert "本次采集结果" in message
+    assert "导入" in message
+
+
+def test_collect_message_reports_how_many_were_filtered_out():
+    """筛掉了多少、因为什么，必须写进文案——否则用户只会觉得"怎么少了几个"。"""
+    from app.models.apply import ApplyTask
+    from app.services.apply.task_runner import TaskRunner
+
+    task = ApplyTask(
+        kind="collect", succeeded=4, config={"filtered_out": 2, "filter_reasons": ["学历"]}
+    )
+    message = TaskRunner._collect_message(task)
+
+    assert "已暂存 4 个岗位" in message
+    assert "另有 2 个不符合" in message
+
+
+def test_collect_message_says_when_a_condition_was_not_understood():
+    """用户填了读不懂的条件时必须明说"这次没生效"——这是本项目最忌讳的静默失效。"""
+    from app.models.apply import ApplyTask
+    from app.services.apply.task_runner import TaskRunner
+
+    task = ApplyTask(kind="collect", succeeded=1, config={"filter_unapplied": ["学历"]})
+    message = TaskRunner._collect_message(task)
+
+    assert "没能识别" in message
+    assert "学历" in message
+
+
+def test_collect_message_distinguishes_all_filtered_from_nothing_found():
+    """全被筛掉与"没搜到"是两回事：说成后者会让用户去改关键词，而问题出在筛选条件上。"""
+    from app.models.apply import ApplyTask
+    from app.services.apply.task_runner import TaskRunner
+
+    message = TaskRunner._collect_message(
+        ApplyTask(kind="collect", succeeded=0, skipped=0, config={"filtered_out": 5})
+    )
+
+    assert "不符合你填的筛选条件" in message
+    assert "没有找到匹配的岗位" not in message
 
 
 def test_login_wall_while_waiting_fails_immediately():

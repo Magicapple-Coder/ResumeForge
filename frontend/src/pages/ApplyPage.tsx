@@ -15,12 +15,16 @@ import {
   resumeTask,
   stopTask,
 } from "../api/apply";
+import { listJobs } from "../api/jobs";
+import { listTracks } from "../api/tracker";
+import ReferralPanel from "../components/ReferralPanel";
 import ApplyProgressPanel from "../components/apply/ApplyProgressPanel";
 import ApplyQueuePanel from "../components/apply/ApplyQueuePanel";
 import ApplyRecordsPanel from "../components/apply/ApplyRecordsPanel";
 import ApplySettingsModal from "../components/apply/ApplySettingsModal";
 import BrowserStatusBar from "../components/apply/BrowserStatusBar";
 import CollectPanel from "../components/apply/CollectPanel";
+import CollectRecordsPanel from "../components/apply/CollectRecordsPanel";
 import CurrentSiteBar from "../components/apply/CurrentSiteBar";
 import { isActiveTaskStatus, useTaskPolling } from "../hooks/useTaskPolling";
 import type { ApplyTask } from "../types";
@@ -31,6 +35,32 @@ export default function ApplyPage() {
   const [task, setTask] = useState<ApplyTask | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("queue");
+  const [jobOptions, setJobOptions] = useState<{ value: number; label: string }[]>([]);
+  const [trackOptions, setTrackOptions] = useState<{ value: number; label: string }[]>([]);
+
+  // 内推面板需要绑定岗位 / 漏斗，这里拉取可选项；失败静默，不影响投递台本身。
+  useEffect(() => {
+    listJobs({ page_size: 100 })
+      .then((page) =>
+        setJobOptions(
+          page.items.map((job) => ({
+            value: job.id,
+            label: `${job.title}${job.company ? ` · ${job.company}` : ""}`,
+          })),
+        ),
+      )
+      .catch(() => setJobOptions([]));
+    listTracks({})
+      .then((trackList) =>
+        setTrackOptions(
+          trackList.items.map((track) => ({
+            value: track.id,
+            label: `${track.company} · ${track.title}`,
+          })),
+        ),
+      )
+      .catch(() => setTrackOptions([]));
+  }, []);
 
   // 首屏恢复：应用重启或切页回来时，若仍有进行中的投递任务，直接接着显示进度。
   useEffect(() => {
@@ -134,9 +164,26 @@ export default function ApplyPage() {
             ),
           },
           {
+            key: "collect-records",
+            label: "采集记录",
+            // 刷新键拼上"完成时间"：采集一结束它就会变，于是记录页签自己重新拉一次，
+            // 不必让用户手动刷新去看刚跑完的那一次。
+            children: (
+              <CollectRecordsPanel
+                disabled={running}
+                refreshKey={`${task?.id ?? 0}-${detail?.status ?? ""}-${detail?.finished_at ?? ""}`}
+              />
+            ),
+          },
+          {
             key: "records",
             label: "投递记录",
             children: <ApplyRecordsPanel disabled={running} onRetried={adoptTask} />,
+          },
+          {
+            key: "referrals",
+            label: "内推",
+            children: <ReferralPanel jobOptions={jobOptions} trackOptions={trackOptions} />,
           },
         ]}
       />

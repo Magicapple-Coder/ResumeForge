@@ -18,9 +18,14 @@ export const TEMPLATE_CATALOG: ResumeTemplateCatalog = {
     { name: "minimal", label: "极简", description: "只用黑灰与字号层级，没有色块与装饰" },
   ],
   font_scales: [
-    { name: "small", label: "小字号", description: "字更小、信息密度更高，适合内容偏多" },
-    { name: "standard", label: "标准字号", description: "默认档位，兼顾可读性与篇幅" },
-    { name: "large", label: "大字号", description: "字更大更醒目，适合内容较少" },
+    {
+      name: "small",
+      label: "小字号",
+      description: "字更小、信息密度更高，适合内容偏多",
+      base_px: 12,
+    },
+    { name: "standard", label: "标准字号", description: "默认档位，兼顾可读性与篇幅", base_px: 14 },
+    { name: "large", label: "大字号", description: "字更大更醒目，适合内容较少", base_px: 15.5 },
   ],
   format_fields: [
     { key: "accent", label: "强调色", type: "color" },
@@ -37,6 +42,7 @@ export const TEMPLATE_CATALOG: ResumeTemplateCatalog = {
   ],
   defaults: { template: "classic", font_scale: "standard", page_limit: 1, format_name: "" },
   pdf_direct_available: true,
+  market: [],
 };
 
 export const DEFAULT_LAYOUT: ResumeLayout = {

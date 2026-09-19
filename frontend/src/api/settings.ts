@@ -6,6 +6,7 @@ import type {
   LLMConfigRecord,
   LLMModelsResult,
   LLMTestResult,
+  ReminderPopupSetting,
   SearchConfig,
   UpdateCheckResult,
 } from "../types";
@@ -67,6 +68,14 @@ export function getSearchConfig(): Promise<SearchConfig> {
 
 export function saveSearchConfig(config: SearchConfig): Promise<SearchConfig> {
   return request("/settings/search", { method: "PUT", body: JSON.stringify(config) });
+}
+
+export function getReminderPopupSetting(): Promise<ReminderPopupSetting> {
+  return request("/settings/reminder-popup");
+}
+
+export function saveReminderPopupSetting(enabled: boolean): Promise<ReminderPopupSetting> {
+  return request("/settings/reminder-popup", { method: "PUT", body: JSON.stringify({ enabled }) });
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {

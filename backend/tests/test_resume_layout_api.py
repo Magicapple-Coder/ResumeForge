@@ -192,8 +192,9 @@ def test_font_scale_adjust_reaches_the_html(client):
         },
     )
     assert response.status_code == 200
-    # 标准档 14px × 0.9 = 12.6px
-    assert "--fs: 12.6px" in response.text
+    # 标准档 14px × 0.9 = 12.6px。外面那层 `calc(... * var(--fit-scale, 1))` 是版式自适应的
+    # 挂钩（默认 1 时不改变结果）——断言基准值按这一档算出来，而不是最终像素。
+    assert "--fs: calc(12.6px * var(--fit-scale, 1))" in response.text
 
 
 def test_override_wins_over_the_named_format_template(client):

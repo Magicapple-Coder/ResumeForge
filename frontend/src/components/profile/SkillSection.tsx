@@ -10,7 +10,6 @@ interface Props {
 export function SkillSection({ editable }: Props) {
   return (
     <ProfileSection
-      title="专业技能"
       fieldName="skills"
       editable={editable}
       emptyValue={{ name: "", level: "" }}

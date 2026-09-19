@@ -7,6 +7,7 @@ import type {
   AssistantConversationDetail,
   AssistantMessage,
   AssistantSource,
+  AssistantSourceNumber,
   AssistantToolCall,
 } from "../../../types";
 import { copyText } from "../../../utils/clipboard";
@@ -16,6 +17,7 @@ import AssistantEmptyState from "./AssistantEmptyState";
 import {
   AssistantMessageContent,
   MessageAttachments,
+  MessageReasoning,
   MessageSources,
   MessageToolCalls,
   StreamingStatus,
@@ -33,7 +35,10 @@ interface Props {
   pendingSentAt: string;
   pendingUserAttachments: PendingAttachment[];
   streamingText: string;
+  /** 正在流式产出的思考内容（开启思考强度时才有）。 */
+  streamingReasoning: string;
   streamingSources: AssistantSource[];
+  streamingSourceMap: AssistantSourceNumber[];
   streamingTools: AssistantToolCall[];
   progressText: string;
   streamError: string;
@@ -60,7 +65,9 @@ export default function AssistantMessageList({
   pendingSentAt,
   pendingUserAttachments,
   streamingText,
+  streamingReasoning,
   streamingSources,
+  streamingSourceMap,
   streamingTools,
   progressText,
   streamError,
@@ -140,8 +147,12 @@ export default function AssistantMessageList({
                   <span className="assistant-quoted-text">{item.context.quoted.excerpt}</span>
                 </div>
               ) : null}
-              <AssistantMessageContent content={item.content} />
+              <AssistantMessageContent content={item.content} sourceMap={item.context.source_map} />
               <MessageAttachments attachments={item.attachments} />
+              <MessageReasoning
+                reasoning={item.context.reasoning}
+                truncated={item.context.reasoning_truncated}
+              />
               <MessageSources sources={item.context.sources ?? []} />
               <MessageToolCalls calls={item.context.tool_calls ?? []} />
               {item.status === "error" && item.error && <Alert type="error" message={item.error} />}
@@ -187,10 +198,14 @@ export default function AssistantMessageList({
               {formatDateTime(pendingSentAt)}
             </Typography.Text>
           </div>
-          <AssistantMessageContent content={streamingText || progressText || "正在思考…"} />
+          <AssistantMessageContent
+            content={streamingText || progressText || "正在思考…"}
+            sourceMap={streamingSourceMap}
+          />
           <StreamingStatus
             message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}
           />
+          <MessageReasoning reasoning={streamingReasoning} />
           <MessageSources sources={streamingSources} />
           <MessageToolCalls calls={streamingTools} />
         </article>

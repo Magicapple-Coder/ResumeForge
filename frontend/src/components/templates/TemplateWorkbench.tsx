@@ -12,11 +12,13 @@ import {
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
+  RobotOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import { App, Button, Card, Collapse, Dropdown, Empty, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchResumeTemplates } from "../../api/resumes";
 import {
   deleteResumeTemplate,
@@ -26,6 +28,7 @@ import {
 import type { ResumeTemplateCatalog, ResumeTemplateDetail } from "../../types";
 import FileDropZone from "../common/FileDropZone";
 import { RowActions } from "../common/RowActions";
+import BuiltinStyleGallery from "./BuiltinStyleGallery";
 import FormatTemplateEditorModal from "./FormatTemplateEditorModal";
 import StyleTemplateEditorModal from "./StyleTemplateEditorModal";
 import TemplatePreviewModal from "./TemplatePreviewModal";
@@ -37,6 +40,7 @@ interface Props {
 
 export default function TemplateWorkbench({ onChanged }: Props) {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState<ResumeTemplateDetail[]>([]);
   const [catalog, setCatalog] = useState<ResumeTemplateCatalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -86,6 +90,15 @@ export default function TemplateWorkbench({ onChanged }: Props) {
     void loadCatalog();
     onChanged?.();
   };
+
+  /**
+   * 带着上下文跳到求职助手，并用 `?ask=` 预填一句提问。
+   *
+   * 只把模板名放进问题里当上下文，**不自动发送**——助手页只负责预填，用户改完再发。
+   * 刻意只引导到「格式模板」：样式模板是完整 HTML，助手生成/清洗后容易悄悄变样，
+   * 那类改动仍留给工作台里的编辑器。
+   */
+  const askAssistant = (prompt: string) => navigate(`/assistant?ask=${encodeURIComponent(prompt)}`);
 
   const remove = async (template: ResumeTemplateDetail) => {
     try {
@@ -166,6 +179,18 @@ export default function TemplateWorkbench({ onChanged }: Props) {
                   ? setStyleEditor({ open: true, id: row.id, html: "", name: row.name })
                   : setFormatEditor({ open: true, template: row }),
             },
+            // 只有格式模板能交给助手改（样式模板是 HTML，助手不生成）。跳过去时把模板名
+            // 一起带上，助手才知道用户说的是哪一个。
+            ...(row.kind === "format"
+              ? [
+                  {
+                    key: "ask",
+                    label: "找助手改这个模板",
+                    icon: <RobotOutlined />,
+                    onClick: () => askAssistant(`帮我调整格式模板「${row.name}」：`),
+                  },
+                ]
+              : []),
             {
               key: "delete",
               label: "删除",
@@ -250,20 +275,23 @@ export default function TemplateWorkbench({ onChanged }: Props) {
       >
         <Collapse
           ghost
+          defaultActiveKey={["builtin"]}
           items={[
             {
               key: "builtin",
               label: `内置样式（${(catalog?.templates ?? []).filter((item) => !item.custom).length} 个，只读）`,
               children: (
-                <Space wrap>
-                  {(catalog?.templates ?? [])
+                // 用真实渲染的缩略图代替纯文字标签：光看「经典 / 现代」这些名字，
+                // 用户并不知道自己选的是什么，只能挨个点开来试。
+                <BuiltinStyleGallery
+                  items={(catalog?.templates ?? [])
                     .filter((item) => !item.custom)
-                    .map((item) => (
-                      <Tag key={item.name} className="template-chip">
-                        {item.label}
-                      </Tag>
-                    ))}
-                </Space>
+                    .map((item) => ({
+                      name: item.name,
+                      label: item.label,
+                      description: item.description,
+                    }))}
+                />
               ),
             },
           ]}
@@ -291,13 +319,18 @@ export default function TemplateWorkbench({ onChanged }: Props) {
         title="格式模板（版式）"
         style={{ marginTop: 16 }}
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setFormatEditor({ open: true, template: null })}
-          >
-            自制版式
-          </Button>
+          <Space wrap>
+            <Button icon={<RobotOutlined />} onClick={() => askAssistant("帮我新建一个格式模板：")}>
+              找求职助手制作
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setFormatEditor({ open: true, template: null })}
+            >
+              自制版式
+            </Button>
+          </Space>
         }
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>

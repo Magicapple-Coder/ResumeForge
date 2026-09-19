@@ -12,6 +12,7 @@ from app.schemas.resume import (
     ResumeSkill,
 )
 from app.services.exporter import build_filename, export_json, export_markdown, render_html, sanitize_filename
+from app.services.resume_sample import sample_resume_content
 
 RESUME = ResumeContent(
     name="张三",
@@ -125,3 +126,42 @@ def test_filename_sanitize_and_build():
     assert sanitize_filename("...") == "resume"
     filename = build_filename(RESUME, "md")
     assert filename.startswith("张三-后端开发工程师-") and filename.endswith(".md")
+
+
+# ===== md / json 的字段完整性（"同一份简历几个输出说得不一样"的防线）=====
+
+
+def _flatten_texts(value) -> list[str]:
+    """把任意层级的字段值摊平成"应当出现在导出文本里的字符串"。"""
+    if isinstance(value, dict):
+        return [text for child in value.values() for text in _flatten_texts(child)]
+    if isinstance(value, list):
+        return [text for child in value for text in _flatten_texts(child)]
+    if value is None or value == "" or value == 0:
+        return []
+    return [str(value)]
+
+
+def test_markdown_export_covers_every_field_the_preview_shows():
+    """md 导出必须覆盖所有非空字段（照片是**唯一**且有意的例外）。
+
+    漏字段这种事**用户极难发现**——只有哪天把内容复制粘贴到招聘网站时才会觉得"怎么少了一行"。
+    所以这里按字段逐个断言，而不是抽查几个代表。样本里刻意补上性别与出生年：它们以前
+    只有预览里有、md 里没有。
+    """
+    resume = sample_resume_content().model_copy(update={"gender": "男", "birth_year": "1999"})
+
+    markdown = export_markdown(resume)
+
+    for name, value in resume.model_dump(exclude={"photo"}).items():
+        for text in _flatten_texts(value):
+            assert text in markdown, (name, text)
+
+
+def test_json_export_keeps_every_field_except_the_photo():
+    """JSON 必须字段完整；照片的排除是**有意**的（内嵌 data URL 会撑出无意义的大字段）。"""
+    resume = sample_resume_content()
+
+    data = json.loads(export_json(resume))
+
+    assert set(data) == set(resume.model_dump().keys()) - {"photo"}

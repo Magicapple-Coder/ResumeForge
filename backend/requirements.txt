@@ -5,6 +5,8 @@
 # reads a single pin.
 fastapi==0.141.1
 starlette==1.6.0
+# Multipart form parsing for the referral note-image upload endpoint.
+python-multipart==0.0.20
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.40
 pydantic==2.11.3
@@ -26,3 +28,7 @@ fonttools==4.65.0
 # Chrome/Edge over the DevTools WebSocket. Pure Python (no compiler, has wheels),
 # and the HTTP side reuses the existing httpx dependency.
 websocket-client==1.8.0
+# Word (.docx) export (R-16): pure-Python with wheels, no build toolchain, so the
+# first-run installer stays compiler-free. Layout reuses ResumeLayout instead of
+# introducing a second layout engine.
+python-docx==1.1.2

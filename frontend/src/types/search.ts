@@ -3,9 +3,30 @@
 import type { Job } from "./job";
 import type { ResumeBrief } from "./resume";
 
+/** 全局搜索"更多结果"覆盖的数据域。 */
+export type SearchHitType =
+  | "referral"
+  | "reminder"
+  | "experience"
+  | "claim"
+  | "material"
+  | "skill";
+
+/** 扩展数据域里的一条命中结果，放在 ``SearchResult.more`` 中。 */
+export interface SearchHit {
+  type: SearchHitType;
+  id: number;
+  title: string;
+  subtitle: string;
+  /** 指向真实前端路由，前端据此跳转。 */
+  path: string;
+}
+
 export interface SearchResult {
   jobs: Job[];
   resumes: ResumeBrief[];
+  /** 内推 / 提醒 / 面经 / 台账 / 资料 / 技能 的命中结果。 */
+  more: SearchHit[];
 }
 
 /** 待确认的台账条目：首页只报数，点进去才看详情。 */

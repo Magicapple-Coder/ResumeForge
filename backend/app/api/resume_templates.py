@@ -30,6 +30,7 @@ from ..services.resume_templates import (
     TEMPLATES_DIR,
     font_scale_spec,
     template_spec,
+    validated_format_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,9 +158,13 @@ def preview_template(payload: TemplatePreviewRequest, db: Session = Depends(get_
                 template_name = saved.name
         template_name, template_html = resolve_style_template(db, template_name)
 
-    format_config = payload.format_config
-    if not format_config:
-        format_config = resolve_format_config(db, payload.format_name)
+    # 与真实渲染同口径：`/api/resumes/render` 与记录落库都是"先 resolve(format_name)、
+    # 再用 format_config 逐键覆盖"（见 api/resumes.py 的 render_resume 与
+    # _record_format_config）。预览此前是"有 format_config 就整份顶替 format_name"，
+    # 于是前端一旦把当前字号系数（在 format_config 里）传进来，就会把 format_name 的
+    # 版式（如 compact 的行高/页边距）整个丢掉，缩略图与用户实际生成的简历不一致。
+    format_config = dict(resolve_format_config(db, payload.format_name))
+    format_config.update(validated_format_config(payload.format_config))
 
     content = _preview_content(payload, db)
     try:

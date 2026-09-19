@@ -155,7 +155,6 @@ export default function ApplyRecordsPanel({ disabled, onRetried }: Props) {
         loading={loading}
         columns={columns}
         dataSource={data?.items ?? []}
-        scroll={{ x: "max-content" }}
         pagination={{
           current: page,
           pageSize,

@@ -315,9 +315,14 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
               onClick={() => void move(index, 1)}
             />
           </Tooltip>
-          <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(item)}>
-            编辑
-          </Button>
+          <Tooltip title="编辑">
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              aria-label={`编辑 ${item.job_title}`}
+              onClick={() => setEditing(item)}
+            />
+          </Tooltip>
           <Popconfirm
             title="移出投递队列？"
             okText="移出"

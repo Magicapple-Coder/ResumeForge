@@ -30,7 +30,18 @@ RECOGNITION_SOURCES = (
     "文档识别",
     "备选岗位导入",
     "AI 助手录入",
+    # 投递台的自动采集写入的就是这个来源。它必须在这里，否则采集进来的岗位一旦落到
+    # 库里，读取路径上的 `JobOut` 会因为"来源不在白名单"而校验失败——那会让**整份岗位
+    # 列表与首页统计**一起返回 500（真实故障就是这么发生的），而不是仅仅这一条读不出来。
+    "岗位采集",
 )
+
+# 采集 / 候选导入写进 ``Job.recognition_source`` 的两个取值。**必须出现在
+# ``RECOGNITION_SOURCES`` 里**（有测试钉住）。在这里定义常量是为了让"采集器"与"候选导入"
+# 共用同一个字面量，而不是各自抄一遍字符串——抄两遍的结果是其中一个改了另一个不知道，
+# 而症状正是上面那条 500。
+RECOGNITION_SOURCE_COLLECT = "岗位采集"
+RECOGNITION_SOURCE_CANDIDATE_IMPORT = "备选岗位导入"
 
 # 一次粘贴的材料最多拆成多少份岗位草稿；再多就不是"顺手粘了几份"了。
 MAX_MULTI_JOBS = 12
@@ -232,9 +243,46 @@ class JobMultiTextParseResult(BaseModel):
 
 
 class JobOut(JobCreate):
+    """岗位的读取模型。
+
+    **它继承 `JobCreate` 只是为了复用字段定义，绝不能因此继承输入侧的校验。**
+    `JobCreate` 的白名单（来源 / 状态 / 备注图片）是"写入时"的规则，会随版本演进；
+    一旦把它们带进读取路径，库里任何一条按旧规则写入、在新规则下"不合法"的历史数据，
+    都会让 `JobOut.model_validate(row)` 抛错——而列表接口是**逐行**构造响应的，
+    于是一条坏数据就让整份岗位列表、首页统计、投递台选岗一起 500。
+    2026-09-18 的线上故障正是这个形态：采集器写入来源 `岗位采集`，而白名单里还没有它。
+
+    所以这里把继承来的校验器**逐个覆盖成直通**（同名方法会替换父类实现），
+    读取只如实回显库里存着什么。
+    """
+
     model_config = ConfigDict(from_attributes=True)
     id: int
     source: str = Field(default="手动添加", max_length=64)
     keywords: list[SkillTag] = Field(default_factory=list, max_length=500)
     created_at: datetime
     updated_at: datetime
+    # 输入侧把备注图片限制成 2 张（受单次请求体上限约束），但那是**写入规则**，
+    # 不是这一列能存多少。库里可能存在按旧上限写入的记录，读取不该因为条数变多
+    # 就把整份列表炸掉，所以这里重新声明、去掉上限。
+    note_images: list[str] = Field(default_factory=list)
+
+    @field_validator("status")
+    @classmethod
+    def status_must_be_supported(cls, value: str) -> str:
+        return value
+
+    @field_validator("source_url")
+    @classmethod
+    def source_url_must_be_http(cls, value: str) -> str:
+        return value
+
+    @field_validator("note_images")
+    @classmethod
+    def note_images_must_be_safe(cls, value: list[str]) -> list[str]:
+        return value
+
+    @field_validator("recognition_source")
+    @classmethod
+    def recognition_source_must_be_supported(cls, value: str) -> str:
+        return value

@@ -7,9 +7,11 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..services import trash
 from ..models.job import JOB_STATUSES, Job
 from ..schemas.common import Page
 from ..schemas.job import (
+    RECOGNITION_SOURCE_COLLECT,
     JobBatchDeleteResult,
     JobBatchRequest,
     JobBatchStatusRequest,
@@ -54,7 +56,7 @@ def _to_out(job: Job) -> JobOut:
 
 
 def _get_jobs_or_404(db: Session, job_ids: list[int]) -> list[Job]:
-    jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
+    jobs = db.query(Job).filter(trash.live_only(Job), Job.id.in_(job_ids)).all()
     found_ids = {job.id for job in jobs}
     missing_ids = [job_id for job_id in job_ids if job_id not in found_ids]
     if missing_ids:
@@ -78,10 +80,14 @@ def list_jobs(
     job_type: str = Query(default=""),
     status: str = Query(default=""),
     favorite: bool | None = Query(default=None),
+    # 按录入方式粗筛：collected=投递台自动采集，manual=其余（手动填写/粘贴/截图/文档/助手等）。
+    # 这是界面上「手动添加 / 自动采集」二分筛的稳定口径：采集写入的是固定的 recognition_source
+    # 值（RECOGNITION_SOURCE_COLLECT），而手动录入的 recognition_source 五花八门，用「等于」反而不稳。
+    source_kind: str = Query(default=""),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
-    query = db.query(Job)
+    query = db.query(Job).filter(trash.live_only(Job))
     if keyword:
         like = f"%{keyword}%"
         query = query.filter(
@@ -100,6 +106,10 @@ def list_jobs(
         query = query.filter(Job.status == status)
     if favorite is not None:
         query = query.filter(Job.favorite == favorite)
+    if source_kind == "collected":
+        query = query.filter(Job.recognition_source == RECOGNITION_SOURCE_COLLECT)
+    elif source_kind == "manual":
+        query = query.filter(Job.recognition_source != RECOGNITION_SOURCE_COLLECT)
     total = query.count()
     jobs = query.order_by(Job.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return Page(items=[_to_out(job) for job in jobs], total=total)
@@ -245,7 +255,7 @@ def batch_delete_jobs(payload: JobBatchRequest, db: Session = Depends(get_db)):
 async def analyze_job(job_id: int, db: Session = Depends(get_db)):
     """按需生成岗位需求总结和通用求职建议，不修改岗位或个人资料。"""
     job = db.get(Job, job_id)
-    if job is None:
+    if job is None or trash.is_deleted(job):
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
     config = get_llm_config(db)
     if not config.base_url or not config.model:
@@ -266,7 +276,7 @@ async def analyze_job(job_id: int, db: Session = Depends(get_db)):
 @router.get("/{job_id}", response_model=JobOut)
 def get_job(job_id: int, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
-    if job is None:
+    if job is None or trash.is_deleted(job):
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
     return _to_out(job)
 
@@ -274,15 +284,21 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 @router.put("/{job_id}", response_model=JobOut)
 def update_job(job_id: int, payload: JobUpdate, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
-    if job is None:
+    if job is None or trash.is_deleted(job):
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
     return _to_out(update_job_record(db, job, payload))
 
 
 @router.delete("/{job_id}", status_code=204)
 def delete_job(job_id: int, db: Session = Depends(get_db)):
+    """移入回收站（软删除）。
+
+    岗位是采集/粘贴攒起来的，一次误点不该让它彻底消失；而且岗位被删后**关联的投递记录会保留
+    快照并按既有约定置空 job_id**，所以软删除与真删在这条行为上没有区别。
+    彻底删除在「回收站」里单独提供（不可恢复，需二次确认）。
+    """
     job = db.get(Job, job_id)
-    if job is None:
+    if job is None or trash.is_deleted(job):
         raise HTTPException(status_code=404, detail="岗位不存在或已被删除")
-    db.delete(job)
+    trash.soft_delete(db, "job", job)
     db.commit()

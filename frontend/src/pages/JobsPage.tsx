@@ -7,13 +7,14 @@ import {
   DeleteOutlined,
   InboxOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { App, Button, Input, Popconfirm, Select, Space, Typography } from "antd";
 import type { TableRowSelection } from "antd/es/table/interface";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { markCandidateJobImported } from "../api/candidateJob";
-import { addToQueue, QueueConflictError } from "../api/apply";
+import { addToQueue, QueueConflictError, startBackfill } from "../api/apply";
 import {
   batchDeleteJobs,
   batchUpdateJobStatus,
@@ -35,6 +36,12 @@ import type { CandidateJob, Job } from "../types";
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
+// 与后端 `source_kind` 查询参数一一对应；标签用「自动采集 / 手动添加」是因为这是用户能
+// 一眼理解的二分，而不是把 recognition_source 的原始值「岗位采集」直接搬上来。
+const SOURCE_KIND_OPTIONS = [
+  { value: "collected", label: "自动采集" },
+  { value: "manual", label: "手动添加" },
+];
 type BatchAction = "status" | "delete" | null;
 
 export default function JobsPage() {
@@ -45,6 +52,7 @@ export default function JobsPage() {
   const [keyword, setKeyword] = useState(searchParams.get("keyword") ?? "");
   const [jobType, setJobType] = useState("");
   const [status, setStatus] = useState("");
+  const [sourceKind, setSourceKind] = useState<"" | "collected" | "manual">("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -60,6 +68,8 @@ export default function JobsPage() {
   const [batchStatus, setBatchStatus] = useState<string>();
   const [batchAction, setBatchAction] = useState<BatchAction>(null);
   const [favoriteJobId, setFavoriteJobId] = useState<number | null>(null);
+  // 「补齐详情」触发中：防止连点，也让按钮有个加载态。
+  const [backfilling, setBackfilling] = useState(false);
   // 备选岗位：抽屉里暂存未核对的招聘信息，导入时走正式岗位表单。
   const [candidatesOpen, setCandidatesOpen] = useState(false);
   const [importCandidate, setImportCandidate] = useState<CandidateJob | null>(null);
@@ -74,13 +84,27 @@ export default function JobsPage() {
     reload,
     error,
   } = useApi(
-    () => listJobs({ keyword, job_type: jobType, status, page, page_size: pageSize }),
-    [keyword, jobType, status, page, pageSize],
+    () =>
+      listJobs({
+        keyword,
+        job_type: jobType,
+        status,
+        source_kind: sourceKind || undefined,
+        page,
+        page_size: pageSize,
+      }),
+    [keyword, jobType, status, sourceKind, page, pageSize],
   );
 
   useEffect(() => {
     if (error) message.error(error);
   }, [error, message]);
+
+  // 只有"职位描述为空"的岗位才值得补详情（补详情要逐个打开页面，很慢），按钮据此出现/消失，
+  // 而不是常驻一个点了没反应的按钮。当前只统计这一页已加载的岗位：补的就这一页里空的那些。
+  const emptyDescriptionJobIds = (jobs?.items ?? [])
+    .filter((job) => !job.description.trim())
+    .map((job) => job.id);
 
   useEffect(() => {
     if (!linkedJobId || openedLinkedJobId === linkedJobId || loading) return;
@@ -101,7 +125,7 @@ export default function JobsPage() {
       try {
         await deleteJob(id);
         setSelectedJobIds((current) => current.filter((jobId) => jobId !== id));
-        message.success("岗位已删除");
+        message.success("已移入回收站，可在「回收站」里恢复");
         void reload();
       } catch (err) {
         message.error(err instanceof Error ? err.message : "删除失败");
@@ -171,6 +195,26 @@ export default function JobsPage() {
     },
     [message, modal],
   );
+
+  const backfillDetails = async () => {
+    // 批量优先：选择模式下有勾选就补勾选的，否则补当前这页所有 JD 为空的岗位。
+    const target =
+      selectionMode && selectedJobIds.length > 0 ? selectedJobIds : emptyDescriptionJobIds;
+    if (target.length === 0) {
+      message.warning("当前页没有需要补齐详情的岗位");
+      return;
+    }
+    setBackfilling(true);
+    try {
+      await startBackfill(target);
+      // 它是 kind=collect 的批次，界面入口在投递台：不告诉用户去哪儿看，他会以为点了没反应。
+      message.success(`已开始为 ${target.length} 个岗位补齐详情，进度见「投递台 → 自动采集」`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "补齐详情失败");
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const applyBatchStatus = async () => {
     if (selectedJobIds.length === 0) {
@@ -284,6 +328,19 @@ export default function JobsPage() {
             }}
             options={STATUS_OPTIONS}
           />
+          <Select
+            aria-label="来源筛选"
+            placeholder="来源"
+            allowClear
+            disabled={batchAction !== null}
+            style={{ width: 120 }}
+            value={sourceKind || undefined}
+            onChange={(value) => {
+              setSourceKind((value ?? "") as "" | "collected" | "manual");
+              setPage(1);
+            }}
+            options={SOURCE_KIND_OPTIONS}
+          />
           {selectionMode ? (
             <Button
               icon={<CloseCircleOutlined />}
@@ -308,6 +365,19 @@ export default function JobsPage() {
           >
             备选岗位
           </Button>
+          {emptyDescriptionJobIds.length > 0 && (
+            // 只在有 JD 为空的岗位时才出现——否则按钮点了什么也不会发生。
+            // 显式 aria-label：antd 会给纯中文按钮做字距处理，用文本当查询条件可能找不到。
+            <Button
+              icon={<ReloadOutlined />}
+              aria-label="补齐详情"
+              disabled={batchAction !== null}
+              loading={backfilling}
+              onClick={() => void backfillDetails()}
+            >
+              补齐详情
+            </Button>
+          )}
           <Button
             type="primary"
             icon={<PlusOutlined />}

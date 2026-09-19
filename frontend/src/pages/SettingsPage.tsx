@@ -23,6 +23,7 @@ import { LLM_PRESETS } from "../config";
 import DatasetsCard from "../components/settings/DatasetsCard";
 import LLMConfigCard from "../components/settings/LLMConfigCard";
 import LLMConfigRecordsCard from "../components/settings/LLMConfigRecordsCard";
+import ReminderPopupCard from "../components/settings/ReminderPopupCard";
 import SearchCard from "../components/settings/SearchCard";
 import SkillsCard from "../components/settings/SkillsCard";
 import UpdateCard from "../components/settings/UpdateCard";
@@ -619,9 +620,10 @@ export default function SettingsPage() {
               <>
                 <div className="settings-section-head">
                   <div className="settings-section-titles">
-                    <Typography.Text type="secondary">应用本身的版本与更新。</Typography.Text>
+                    <Typography.Text type="secondary">应用本身的版本、更新与提醒行为。</Typography.Text>
                   </div>
                 </div>
+                <ReminderPopupCard />
                 <UpdateCard />
               </>
             ),

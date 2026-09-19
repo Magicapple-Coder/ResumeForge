@@ -1,30 +1,61 @@
 {# 版式自适应脚本：把内容缩进所选页数，并把缩放比例与溢出状态写到 body.dataset，
    供前端预览读取后提示"增加页数 / 缩小字号"。 #}
+{# 关键取舍：**按版式缩放，而不是加一层 transform**。
+
+   以前这里是给 body 挂 `transform: scale(s)`——它只改变**视觉**，不改变**版式**。于是产生了
+   结构性矛盾：预览看起来刚好一页，而打印/导出的分页是按**未缩放的版式**算的，结果多出一页
+   （用户实测反馈："预览一页装得下，浏览器打印却超出一页"）。transform 不改布局盒，分页算法
+   也看不到它，两者永远对不齐。
+
+   现在改成设置 `--fit-scale`，由 CSS 的 `--fs` 吸收：
+     --fs: calc(基准字号 * var(--fit-scale))
+   模板里所有尺寸都是 `calc(var(--fs) * k)` 推出来的，因此整份版式**真实变矮**。这样预览、
+   导出 HTML、浏览器打印、服务端 PDF 看到的是同一套版式 + 同一份 `@page` 规则，分页自然一致。
+
+   为什么是迭代而不是一次算出：页边距等绝对尺寸（mm）不参与缩放，所以高度与 scale 只是近似
+   成正比。跑 2~3 轮就够了，而且每轮只在"确实还超"时才继续，绝不会来回震荡。 #}
 <script nonce="{{ csp_nonce }}">
   (() => {
     const pageCount = {{ page_limit }};
-    const referenceWidth = 793.7;              // 210mm ≈ 793.7px
-    const referenceHeight = 1122.5 * pageCount; // 297mm * 页数
+    const referenceWidth = 793.7;                // 210mm ≈ 793.7px（96dpi）
+    const referenceHeight = 1122.5 * pageCount;  // 297mm * 页数
+    // 注意：下面的 minScale / maxPasses / 0.995 / 0.001 / +1px 这几个数值，与
+    // `backend/app/services/pdf_exporter.py` 里的 MIN_FIT_SCALE / _FIT_MAX_PASSES /
+    // _FIT_RATIO_MARGIN / _FIT_MIN_STEP / _FIT_TOLERANCE_MM 是同一套口径的两份实现。
+    // 两套引擎（JS 与 Python）无法共享同一份常量，只能靠测试钉住同步：
+    // `tests/test_pdf_exporter.py::test_fit_scale_constants_match_the_preview_script`
+    // 会逐个数值比对两边。**改这里必须同步改那边**，否则测试会红。
+    // 缩放下限：再小就"缩到看不清"了，那不如如实提示用户加页。
+    const minScale = 0.5;   // = pdf_exporter.MIN_FIT_SCALE
+    const maxPasses = 3;    // = pdf_exporter._FIT_MAX_PASSES
+
     const fit = () => {
       const page = document.body;
       if (!page) return;
-      page.style.transform = "none";
-      page.style.transformOrigin = "top left";
-      page.style.width = "210mm";
-      page.style.height = `${297 * pageCount}mm`;
-      const naturalWidth = Math.max(page.scrollWidth, referenceWidth);
-      const naturalHeight = Math.max(page.scrollHeight, referenceHeight);
-      const scale = Math.min(1, referenceWidth / naturalWidth, referenceHeight / naturalHeight);
+
       page.dataset.pages = String(pageCount);
-      page.dataset.scale = scale.toFixed(3);
-      // 内容比所选页数更多：已经整体缩小，但字会偏小，前端应提示换选项。
-      page.dataset.overflow = page.scrollHeight > referenceHeight + 1 ? "1" : "0";
-      if (scale < 1) {
-        page.style.width = `${210 / scale}mm`;
-        page.style.height = `${(297 * pageCount) / scale}mm`;
-        page.style.transform = `scale(${scale})`;
+      let scale = 1;
+      page.style.setProperty("--fit-scale", "1");
+
+      for (let pass = 0; pass < maxPasses; pass += 1) {
+        const naturalWidth = Math.max(page.scrollWidth, referenceWidth);
+        const naturalHeight = Math.max(page.scrollHeight, referenceHeight);
+        if (naturalHeight <= referenceHeight + 1 && naturalWidth <= referenceWidth + 1) break;  // +1px 容差 = pdf_exporter._FIT_TOLERANCE_MM
+        // 0.995 是给"绝对尺寸不参与缩放"留的余量，避免在边界上反复贴不住。
+        const next = Math.max(
+          minScale,
+          scale * Math.min(referenceWidth / naturalWidth, referenceHeight / naturalHeight) * 0.995,  // = pdf_exporter._FIT_RATIO_MARGIN
+        );
+        if (next >= scale - 0.001) break;  // = pdf_exporter._FIT_MIN_STEP
+        scale = next;
+        page.style.setProperty("--fit-scale", scale.toFixed(4));
       }
+
+      page.dataset.scale = scale.toFixed(3);
+      // 缩到下限仍然放不下：已经尽力了，界面据此提示用户去加页或换字号。
+      page.dataset.overflow = page.scrollHeight > referenceHeight + 1 ? "1" : "0";
     };
+
     window.addEventListener("load", fit);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
   })();

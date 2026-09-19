@@ -181,6 +181,9 @@ class ApplicationTrack(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    # 软删除时间戳：NULL 表示「没删」。列表查询一律加 `deleted_at IS NULL`，
+    # 回收站里则只看非 NULL 的行（见 ``services/trash.py``）。
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 __all__ = [

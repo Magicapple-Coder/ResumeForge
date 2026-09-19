@@ -96,6 +96,25 @@ describe("FavoritesPage", () => {
     );
   });
 
+  it("简历页签不强制横向滚动，去掉多余滚动条", async () => {
+    renderPage();
+    await screen.findByText("数据分析师");
+
+    // 岗位页签列更宽，仍保留横向滚动兜底（scroll.x 会挂上 ant-table-scroll-horizontal）。
+    // 该类加在表格外层容器上，不在 <table> 上。
+    expect(
+      document.querySelector(".ant-table")?.classList.contains("ant-table-scroll-horizontal"),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByText("简历"));
+    await screen.findByText("数据分析岗位简历");
+
+    // 简历页签列更窄，去掉 scroll.x 后不再出现用不上的横向滚动条。
+    expect(
+      document.querySelector(".ant-table")?.classList.contains("ant-table-scroll-horizontal"),
+    ).toBe(false);
+  });
+
   it("removes a job favorite once and reloads the filtered list", async () => {
     renderPage();
     await screen.findByText("数据分析师");

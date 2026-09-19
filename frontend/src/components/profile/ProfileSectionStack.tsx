@@ -20,6 +20,9 @@ interface Props {
   saving: boolean;
   photo: string;
   dragOverSection: ProfileSectionKey | null;
+  /** 查看态下被折叠的分区；编辑态忽略（永远展开）。 */
+  collapsedSections: Set<ProfileSectionKey>;
+  onToggleCollapsed: (sectionKey: ProfileSectionKey) => void;
   onPhotoSelect: (dataUrl: string) => void;
   onHandlePointerDown: ProfileSectionPointerDownHandler;
   onMoveByOffset: (sectionKey: ProfileSectionKey, offset: -1 | 1) => void;
@@ -32,6 +35,8 @@ export default function ProfileSectionStack({
   saving,
   photo,
   dragOverSection,
+  collapsedSections,
+  onToggleCollapsed,
   onPhotoSelect,
   onHandlePointerDown,
   onMoveByOffset,
@@ -44,6 +49,8 @@ export default function ProfileSectionStack({
       editable={editing}
       compact={sectionReorderMode}
       dragOver={dragOverSection === sectionKey}
+      collapsed={!editing && collapsedSections.has(sectionKey)}
+      onToggleCollapsed={() => onToggleCollapsed(sectionKey)}
       onHandlePointerDown={onHandlePointerDown}
       onMoveByOffset={onMoveByOffset}
     >
@@ -70,7 +77,7 @@ export default function ProfileSectionStack({
       {section("awards", <AwardSection editable={editing} />)}
       {section(
         "summary",
-        <Card size="small" title="个人总结 / 自我评价" style={{ marginBottom: 16 }}>
+        <Card size="small" style={{ marginBottom: 16 }}>
           <Form.Item name="summary" style={{ marginBottom: 0 }}>
             <Input.TextArea
               rows={4}

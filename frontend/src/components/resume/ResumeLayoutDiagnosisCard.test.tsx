@@ -74,6 +74,8 @@ function fakePreview(
       }
       return { usedHeight: measurements[css] ?? 2800, pageContentHeight: 2600, pageLimit: 1 };
     },
+    // 拖动字号的即时反馈与诊断卡无关，给个空实现满足接口即可。
+    setLiveProbe() {},
   };
   return ref;
 }

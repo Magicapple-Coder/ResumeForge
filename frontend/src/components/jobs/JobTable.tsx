@@ -6,10 +6,20 @@ import type { ColumnsType } from "antd/es/table";
 import type { TableRowSelection } from "antd/es/table/interface";
 import type { HTMLAttributes } from "react";
 import type { Job, Page } from "../../types";
+import { formatDateTime } from "../../utils/format";
 import { RowActions, RowContextMenu, type RowActionItem } from "../common/RowActions";
 import SkillTags from "../SkillTags";
 
 type BatchAction = "status" | "delete" | null;
+
+// 投递台自动采集写入的 recognition_source 是固定值；手动录入则是一串五花八门的值（含空串）。
+// 因此「采集」用相等判断、「手动」取其余，比反过来「source === 手动添加」更稳（source 会随站点增多）。
+const RECOGNITION_SOURCE_COLLECT = "岗位采集";
+
+/** 岗位是「自动采集」还是「手动添加」的二分口径，用于职位列的来源角标。 */
+function jobSourceKind(job: Job): "collected" | "manual" {
+  return job.recognition_source === RECOGNITION_SOURCE_COLLECT ? "collected" : "manual";
+}
 
 interface Props {
   jobs: Page<Job> | undefined;
@@ -81,14 +91,25 @@ export default function JobTable({
       width: 260,
       render: (_, job) => (
         <div>
-          <Button
-            type="link"
-            className="table-text-link"
-            disabled={batchAction !== null}
-            onClick={batchAction === null ? () => onOpenDetail(job) : undefined}
-          >
-            {job.title}
-          </Button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Tooltip title={`导入于 ${formatDateTime(job.created_at)}`}>
+              <Button
+                type="link"
+                className="table-text-link"
+                disabled={batchAction !== null}
+                onClick={batchAction === null ? () => onOpenDetail(job) : undefined}
+              >
+                {job.title}
+              </Button>
+            </Tooltip>
+            {jobSourceKind(job) === "collected" ? (
+              <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                采集
+              </Tag>
+            ) : (
+              <Tag style={{ marginInlineEnd: 0 }}>手动</Tag>
+            )}
+          </div>
           <div style={{ marginTop: 4 }}>
             <SkillTags tags={job.keywords} max={4} />
           </div>

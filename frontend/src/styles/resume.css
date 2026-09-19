@@ -12,6 +12,42 @@
   font-size: 12px;
 }
 
+/* 内容超出所选页数时，紧贴预览上方给出"约需几页 / 超出多少"的醒目提示。 */
+.resume-preview-overflow {
+  margin-bottom: 8px;
+}
+
+/* 溢出时的"近似分页"分隔线：叠加在横向多列流上，按 A4 宽度标记页边界。
+   用虚线 + 半透明标签，刻意不画成实线纸边——它就是估算，不是真实分页。 */
+.resume-preview-page-separator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  transform: translateX(-1px);
+}
+
+.resume-preview-page-separator-line {
+  display: block;
+  height: 100%;
+  border-left: 2px dashed rgba(173, 104, 0, 0.55);
+}
+
+.resume-preview-page-separator-label {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  padding: 2px 8px;
+  background: #fff7e6;
+  color: #ad6800;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
 .resume-preview-viewport {
   display: block;
   width: 100%;
@@ -200,6 +236,24 @@
   margin-bottom: 0;
 }
 
+/* 简历预览弹窗的底部操作条：**吸附在弹窗底部**，内容再长也不用翻到最后才点得到。
+   `flex-wrap` 不只是为了窄屏——原来这一行是两个不换行的分组做 space-between，
+   一旦宽度不够就会横向溢出，于是弹窗体底部冒出一条横向滚动条（用户截图反馈过）。 */
+.resume-detail-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 16px;
+  padding: 12px 0 4px;
+  background: var(--rf-surface, #fff);
+  border-top: 1px solid var(--rf-border, #f0f0f0);
+}
+
 /* ===== 版面诊断与「自动一页」 ===== */
 
 .resume-diagnosis {
@@ -233,6 +287,12 @@
   margin: 8px 0 0;
   padding-left: 20px;
   font-size: 13px;
+  /* 建议可能有 5~6 条，整块展开会把下方的简历预览挤到很矮（预览区高度以前是跟随
+     上方内容算的）。这里给列表一个固定上限、超出内部滚动：诊断仍然完整可读，
+     但永远不会因为"建议条数多"而占掉预览的空间。 */
+  max-height: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .resume-diagnosis-list li {

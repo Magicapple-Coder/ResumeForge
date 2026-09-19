@@ -23,16 +23,132 @@ DEFAULT_PAGE_LIMIT = 1
 # 自动一页要靠它们判断"当前值是多少、还能往紧收多少"，抄错会让它收紧一个
 # 用户根本没设置过的值（或反过来该收没收）。`test_resume_templates.py` 会
 # 逐个模板读文件核对，所以这里改了模板不更新会直接测试失败。
-#   padding_mm    ：body 的页边距
-#   line_height   ：body 的 line-height
-#   section_gap   ：`.section` 的 margin-bottom 系数（× 字号）
-TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float]] = {
-    "classic": {"padding_mm": 14.0, "line_height": 1.7, "section_gap": 1.3},
-    "modern": {"padding_mm": 14.0, "line_height": 1.72, "section_gap": 1.2},
-    "compact": {"padding_mm": 12.0, "line_height": 1.55, "section_gap": 0.85},
-    "elegant": {"padding_mm": 16.0, "line_height": 1.76, "section_gap": 1.35},
-    "technical": {"padding_mm": 12.0, "line_height": 1.6, "section_gap": 1.0},
-    "minimal": {"padding_mm": 18.0, "line_height": 1.8, "section_gap": 1.45},
+#   padding_mm         ：body 的页边距
+#   line_height        ：body 的 line-height
+#   section_gap        ：`.section` 的 margin-bottom 系数（× 字号）
+#   name_ratio         ：`.header .name` 的字号倍数（× 字号）
+#   intent_ratio       ：`.header .intent`（求职意向）
+#   contact_ratio      ：`.header .contact`（联系方式）
+#   section_title_ratio：`.section-title`
+#   entry_title_ratio  ：`.entry-head .title`
+#   entry_meta_ratio   ：`.entry-head .meta`（条目头右侧的机构 / 时间等）
+#   entry_sub_ratio    ：`.entry .sub`（条目下的绩点 / 核心课程 / 技术栈等副行）
+#   tag_font_ratio     ：`.skill-list li`（技能标签字号）
+# 注意 `.entry-head .meta` 与 `.entry .sub` 是**两个**选择器、多数模板比例相同但并非总是
+# 相同（technical 是 0.86 / 0.9），所以各自一个键；合成一个会让其中之一悄悄偏掉。
+# `*_ratio` 一律是"相对基准字号的倍数"：直出 PDF 与预览的字号层级靠它们对齐，
+# 因此 PDF 侧**不再自带第二份系数**（那份只对 classic 成立的副本正是"导出与预览
+# 字号不一致"的来源）。同一套 `test_resume_layout.py` 的 CSS 守卫会逐条核对。
+#
+# 每个模板的**配色默认值**也放在这里（`accent` / `text` / `muted` / `line`，键名对应模板
+# `:root` 里的 CSS 变量去掉 `--` 前缀），值一律是**十六进制字符串**——与上面的数值键
+# 类型不同，所以这个注册表的值类型是 `float | str`。直出 PDF 的强调色从这里读
+# （`pdf_exporter` 曾自带一份 `_TEMPLATE_COLORS`，与 `--accent` 是同一件事的两份定义，
+# 模板一改颜色 PDF 就悄悄漂移）。`text`/`muted`/`line` 目前只有 HTML 用，一并收录是为了
+# 让"模板颜色"在此一处定义，将来 PDF 要画辅助文字/分隔线时也从这读，而不是再抄一份。
+TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
+    "classic": {
+        "padding_mm": 14.0,
+        "line_height": 1.7,
+        "section_gap": 1.3,
+        "name_ratio": 1.86,
+        "intent_ratio": 1.07,
+        "contact_ratio": 0.93,
+        "section_title_ratio": 1.14,
+        "entry_title_ratio": 1.07,
+        "entry_meta_ratio": 0.93,
+        "entry_sub_ratio": 0.93,
+        "tag_font_ratio": 0.93,
+        "accent": "#16365c",
+        "text": "#1f2937",
+        "muted": "#6b7280",
+        "line": "#d9dee7",
+    },
+    "modern": {
+        "padding_mm": 14.0,
+        "line_height": 1.72,
+        "section_gap": 1.2,
+        "name_ratio": 2.0,
+        "intent_ratio": 1.07,
+        "contact_ratio": 0.93,
+        "section_title_ratio": 1.14,
+        "entry_title_ratio": 1.07,
+        "entry_meta_ratio": 0.93,
+        "entry_sub_ratio": 0.93,
+        "tag_font_ratio": 0.93,
+        "accent": "#0f766e",
+        "text": "#24303f",
+        "muted": "#667085",
+        "line": "#d7e0e6",
+    },
+    "compact": {
+        "padding_mm": 12.0,
+        "line_height": 1.55,
+        "section_gap": 0.85,
+        "name_ratio": 1.6,
+        "intent_ratio": 1.0,
+        "contact_ratio": 0.9,
+        "section_title_ratio": 1.05,
+        "entry_title_ratio": 1.0,
+        "entry_meta_ratio": 0.9,
+        "entry_sub_ratio": 0.9,
+        "tag_font_ratio": 0.9,
+        "accent": "#30363f",
+        "text": "#1f2430",
+        "muted": "#6b7280",
+        "line": "#dcdfe6",
+    },
+    "elegant": {
+        "padding_mm": 16.0,
+        "line_height": 1.76,
+        "section_gap": 1.35,
+        "name_ratio": 1.9,
+        "intent_ratio": 1.0,
+        "contact_ratio": 0.9,
+        "section_title_ratio": 1.11,
+        "entry_title_ratio": 1.05,
+        "entry_meta_ratio": 0.9,
+        "entry_sub_ratio": 0.9,
+        "tag_font_ratio": 0.93,
+        "accent": "#1f3b4d",
+        "text": "#22252b",
+        "muted": "#7a7f88",
+        "line": "#e0ddd6",
+    },
+    "technical": {
+        "padding_mm": 12.0,
+        "line_height": 1.6,
+        "section_gap": 1.0,
+        "name_ratio": 1.8,
+        "intent_ratio": 1.04,
+        "contact_ratio": 0.86,
+        "section_title_ratio": 1.04,
+        "entry_title_ratio": 1.04,
+        "entry_meta_ratio": 0.86,
+        "entry_sub_ratio": 0.9,
+        "tag_font_ratio": 0.86,
+        "accent": "#0b5fa5",
+        "text": "#1c2430",
+        "muted": "#5d6b7a",
+        "line": "#ccd6e0",
+    },
+    "minimal": {
+        "padding_mm": 18.0,
+        "line_height": 1.8,
+        "section_gap": 1.45,
+        "name_ratio": 1.75,
+        "intent_ratio": 1.0,
+        "contact_ratio": 0.9,
+        "section_title_ratio": 1.0,
+        "entry_title_ratio": 1.04,
+        "entry_meta_ratio": 0.9,
+        "entry_sub_ratio": 0.9,
+        "tag_font_ratio": 0.93,
+        "accent": "#17181a",
+        "text": "#17181a",
+        "muted": "#767a80",
+        "line": "#e6e6e6",
+    },
 }
 
 # 模板文件里版式默认值所在的样式模板名（`classic` 对应 `resume.html.j2`）。
@@ -76,8 +192,8 @@ RESUME_TEMPLATES: dict[str, dict] = {
 }
 
 
-def template_layout_defaults(name: str) -> dict[str, float]:
-    """某个样式模板的版式默认值；未知模板退回经典模板的那一组。"""
+def template_layout_defaults(name: str) -> dict[str, float | str]:
+    """某个样式模板的版式与配色默认值；未知模板退回经典模板的那一组。"""
     return TEMPLATE_LAYOUT_DEFAULTS.get(
         (name or "").strip(), TEMPLATE_LAYOUT_DEFAULTS[DEFAULT_TEMPLATE]
     )
@@ -217,6 +333,64 @@ def format_field_options() -> list[dict]:
     ]
 
 
+# ===== 模板市场（R-19）=====
+# 四套场景预设：**映射既有样式模板 + 既有格式预设 + 建议字号**，不新建任何 .html.j2
+# 文件、不引在线资源，全离线。``template`` 是 ``RESUME_TEMPLATES`` 里的键，
+# ``format_name`` 是 ``FORMAT_PRESETS`` 里的键，``font_scale`` 是 ``FONT_SCALES`` 里的键，
+# ``page_limit`` 为建议篇幅——「使用此模板」预览时原样交给渲染管线即可。
+TEMPLATE_MARKET_PRESETS: tuple[dict, ...] = (
+    {
+        "name": "internet",
+        "label": "互联网",
+        "category": "互联网",
+        "description": "青绿强调色 + 紧凑版式，突出项目与技能，适合研发 / 产品 / 运营投递",
+        "template": "modern",
+        "format_name": "compact",
+        "format_config": {},
+        "font_scale": "standard",
+        "page_limit": 1,
+    },
+    {
+        "name": "soe",
+        "label": "国企",
+        "category": "国企",
+        "description": "深蓝稳重配色、正文舒展，突出教育背景与荣誉，适合体制内与国企投递",
+        "template": "classic",
+        "format_name": "spacious",
+        "format_config": {},
+        "font_scale": "standard",
+        "page_limit": 1,
+    },
+    {
+        "name": "foreign",
+        "label": "外企",
+        "category": "外企",
+        "description": "优雅留白 + 单色强调，适合文商科与英文岗位，突出经历与奖项",
+        "template": "elegant",
+        "format_name": "spacious",
+        "format_config": {},
+        "font_scale": "standard",
+        "page_limit": 1,
+    },
+    {
+        "name": "campus",
+        "label": "应届生",
+        "category": "应届生",
+        "description": "精简紧凑、小字号，一页放下教育、校园经历与实习，适合校招海投",
+        "template": "compact",
+        "format_name": "compact",
+        "format_config": {},
+        "font_scale": "small",
+        "page_limit": 1,
+    },
+)
+
+
+def market_options() -> list[dict]:
+    """模板市场预设清单（返回副本，避免调用方改到全局常量）。"""
+    return [dict(item) for item in TEMPLATE_MARKET_PRESETS]
+
+
 # 几个开箱可用的格式模板，让用户不必从零调参。
 FORMAT_PRESETS: tuple[dict, ...] = (
     {
@@ -305,11 +479,15 @@ def template_options_with_custom(custom: list[dict]) -> list[dict]:
 
 
 def font_scale_options() -> list[dict]:
+    # `base_px` 也一并下发：无级字号滑块要把绝对像素映射回"最近档位 + 系数"，
+    # 就必须知道每档的基准字号。让前端自己抄一份 12/14/15.5 会与这里漂移
+    # （改 FONT_SCALES 时没人记得去改前端），所以由后端作为唯一来源。
     return [
         {
             "name": item["name"],
             "label": item["label"],
             "description": item["description"],
+            "base_px": item["base_px"],
         }
         for item in FONT_SCALES.values()
     ]
@@ -324,7 +502,9 @@ __all__ = [
     "FORMAT_FIELD_KEYS",
     "FORMAT_PRESETS",
     "RESUME_TEMPLATES",
+    "TEMPLATE_MARKET_PRESETS",
     "font_scale_options",
+    "market_options",
     "font_scale_spec",
     "format_css",
     "format_field_options",

@@ -1,5 +1,14 @@
 /** 简历记录预览弹窗（历史记录用）：加载详情、调整版式、渲染 HTML 后展示。 */
-import { BulbOutlined, EditOutlined, FolderOpenOutlined, MessageOutlined } from "@ant-design/icons";
+import {
+  BulbOutlined,
+  EditOutlined,
+  ExportOutlined,
+  EyeInvisibleOutlined,
+  FolderOpenOutlined,
+  MessageOutlined,
+  SafetyCertificateOutlined,
+  ShareAltOutlined,
+} from "@ant-design/icons";
 import { Alert, App, Button, Modal, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -15,10 +24,14 @@ import { RESUME_ENHANCEMENT_LEVELS } from "../config";
 import type { ResumeContent, ResumeDetail, ResumeLayout } from "../types";
 import type { LayoutMeasure } from "../utils/resumeLayoutMeasure";
 import ExportButtons from "./ExportButtons";
+import ExportOptionsModal from "./ExportOptionsModal";
+import RedactionModal from "./RedactionModal";
 import ResumeEditorModal from "./ResumeEditorModal";
+import SharePackageModal from "./SharePackageModal";
 import ResumeLayoutControls from "./ResumeLayoutControls";
 import ResumeLayoutDiagnosisCard from "./resume/ResumeLayoutDiagnosisCard";
 import ResumePreview, { type ResumePreviewHandle } from "./ResumePreview";
+import ResumeQualityModal from "./ResumeQualityModal";
 import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
 
 interface Props {
@@ -55,6 +68,10 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false);
+  const [redactionOpen, setRedactionOpen] = useState(false);
+  const [sharePackageOpen, setSharePackageOpen] = useState(false);
   const loadedRecordId = useRef<number | null>(null);
   const requestVersion = useRef(0);
   const saveRequestVersion = useRef(0);
@@ -173,8 +190,13 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
       title={detail?.title ?? "简历预览"}
       open={!!recordId}
       onCancel={onClose}
-      width={860}
+      width="min(960px, 96vw)"
       footer={null}
+      // 弹窗自身滚动：预览区高度已经与上方内容解耦（见 ResumePreview 的固定预算），
+      // 内容再长也只是让这里滚动，不去压缩预览。
+      styles={{
+        body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", overflowX: "hidden" },
+      }}
       destroyOnHidden
     >
       {error ? (
@@ -213,6 +235,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
               layout={layout}
               resumeId={detail.id}
               disabled={relayouting}
+              previewRef={previewRef}
               onChange={(next) => void applyLayout(next)}
             />
             {relayouting && <Typography.Text type="secondary">正在按新版式渲染…</Typography.Text>}
@@ -239,14 +262,8 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
               setEditorOpen(true);
             }}
           />
-          <div
-            style={{
-              marginTop: 16,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          {/* 固定在弹窗底部：内容长（版面诊断 + 预览）时不必一路翻到最后才够得着这些按钮。 */}
+          <div className="resume-detail-footer">
             <Space wrap>
               <Button
                 icon={<EditOutlined />}
@@ -273,9 +290,33 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
               </Button>
               <Button
                 icon={<MessageOutlined />}
-                onClick={() => navigate(`/assistant?resume_id=${detail.id}`)}
+                onClick={() => navigate(`/assistant?resume_id=${detail.id}&new=1`)}
               >
                 咨询求职助手
+              </Button>
+              <Button
+                icon={<SafetyCertificateOutlined />}
+                onClick={() => setQualityOpen(true)}
+              >
+                质量检测
+              </Button>
+              <Button
+                icon={<ExportOutlined />}
+                onClick={() => setExportOptionsOpen(true)}
+              >
+                导出选项
+              </Button>
+              <Button
+                icon={<EyeInvisibleOutlined />}
+                onClick={() => setRedactionOpen(true)}
+              >
+                一键脱敏
+              </Button>
+              <Button
+                icon={<ShareAltOutlined />}
+                onClick={() => setSharePackageOpen(true)}
+              >
+                离线分享
               </Button>
             </Space>
             <ExportButtons recordId={detail.id} pdfDirectAvailable={pdfDirectAvailable} />
@@ -298,6 +339,26 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
         resetKey={suggestionsResetKey}
         onClose={() => setSuggestionsOpen(false)}
         onGenerated={() => setSuggestionsGenerated(true)}
+      />
+      <ResumeQualityModal
+        open={qualityOpen}
+        resumeId={detail?.id ?? null}
+        onClose={() => setQualityOpen(false)}
+      />
+      <ExportOptionsModal
+        recordId={detail?.id ?? 0}
+        open={exportOptionsOpen && !!detail}
+        onClose={() => setExportOptionsOpen(false)}
+      />
+      <RedactionModal
+        recordId={detail?.id ?? 0}
+        open={redactionOpen && !!detail}
+        onClose={() => setRedactionOpen(false)}
+      />
+      <SharePackageModal
+        recordId={detail?.id ?? 0}
+        open={sharePackageOpen && !!detail}
+        onClose={() => setSharePackageOpen(false)}
       />
     </Modal>
   );

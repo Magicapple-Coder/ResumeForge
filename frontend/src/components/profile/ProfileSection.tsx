@@ -11,7 +11,6 @@ const ITEM_DRAG_THRESHOLD_PX = 6;
 type ItemLabelFormatter = (item: ProfileListItem, index: number) => string;
 
 interface Props {
-  title: string;
   /** 表单字段名（对应 profile 的 educations/experiences/...） */
   fieldName: string;
   /** 只读查看时保留内容，但锁定动态列表操作。 */
@@ -202,7 +201,6 @@ function ProfileListBody({
 }
 
 export default function ProfileSection({
-  title,
   fieldName,
   editable = true,
   emptyValue,
@@ -210,7 +208,7 @@ export default function ProfileSection({
   itemLabel,
 }: Props) {
   return (
-    <Card size="small" title={title} style={{ marginBottom: 16 }}>
+    <Card size="small" style={{ marginBottom: 16 }}>
       <Form.List name={fieldName}>
         {(fields, operations) => (
           <ProfileListBody

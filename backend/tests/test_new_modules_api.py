@@ -14,6 +14,7 @@ from app.services.data_backup import (
     BackupError,
     inspect_archive,
 )
+from app.services.resume_templates import FONT_SCALES
 from app.services.update_check import _is_newer
 
 PHOTO_PNG = (
@@ -241,6 +242,15 @@ def test_resume_template_catalog_and_layout_update(client):
     assert {"classic", "modern", "compact", "elegant", "technical", "minimal"} <= names
     assert [item for item in body["templates"] if item["custom"]] == []
     assert {item["name"] for item in body["font_scales"]} == {"small", "standard", "large"}
+    # 每个档位都必须带 `base_px`，且**与后端唯一的档位表 FONT_SCALES 完全一致**：
+    # 无级字号滑块靠它把拖出来的绝对像素映射回"最近档位 + 系数"。期望值现读
+    # FONT_SCALES，而不是在这里抄一份 12/14/15.5——抄了就等于在测试里养出第二份真相，
+    # 改档位（后端改一行）时它不会跟着动，"下发值"与"实际渲染值"就会悄悄分叉。
+    assert {item["name"]: item["base_px"] for item in body["font_scales"]} == {
+        name: spec["base_px"] for name, spec in FONT_SCALES.items()
+    }
+    # 光"有"这个字段还不够：值必须是正数，否则前端会算出 0 甚至负数的滑块范围。
+    assert all(item["base_px"] > 0 for item in body["font_scales"])
     # 格式模板的参数清单与内置预设也要一起下发：生成弹窗与工作台共用这一份。
     assert {item["key"] for item in body["format_fields"]} >= {"accent", "line_height", "page_padding"}
     assert "compact" in {item["name"] for item in body["format_presets"]}
@@ -298,6 +308,32 @@ def test_resume_layout_rejects_unknown_template(client):
     )
     assert patched.status_code == 200
     assert patched.json()["template"] == "classic"
+
+
+def test_template_preview_merges_format_name_with_overrides(client):
+    """预览必须与真实渲染同口径：format_name 的基础版式 + format_config 的逐键覆盖。
+
+    此前预览是"有 format_config 就整份顶替 format_name"，于是前端一旦把当前字号系数
+    （在 format_config 里）传进来，就会把 format_name 的版式（如 compact 的行高/页边距）
+    整个丢掉——缩略图里看到的是"被我自己的系数挤掉版式"的结果，与实际生成的简历不一致。
+    """
+    response = client.post(
+        "/api/resume-templates/preview",
+        json={
+            "template_name": "classic",
+            "format_name": "compact",  # 基础版式：行高 1.45 / 页边距 11mm / 区块间距 0.85
+            "format_config": {"font_scale_adjust": 1.021},
+            "page_limit": 1,
+            "font_scale": "standard",
+        },
+    )
+    assert response.status_code == 200
+    body = response.text
+    # 1) format_name 的基础版式没有被 format_config 顶掉。
+    assert "line-height: 1.45" in body
+    assert "padding: 11mm" in body
+    # 2) format_config 的系数也照常叠加：标准档 14 × 1.021 = 14.29px。
+    assert "calc(14.29px" in body
 
 
 # ===== 备份与更新检查 =====

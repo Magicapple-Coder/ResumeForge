@@ -17,6 +17,7 @@ from ..schemas.setting import (
     LLMModelsResult,
     LLMTestRequest,
     LLMTestResult,
+    ReminderPopupSetting,
     SearchConfig,
 )
 from ..services.llm import create_provider
@@ -25,12 +26,14 @@ from ..services.llm.model_catalog import list_available_models
 from ..services.settings_service import (
     delete_llm_config_record,
     get_llm_config,
+    get_reminder_popup_on_start,
     get_search_config,
     list_llm_config_records,
     mask_llm_config,
     resolve_llm_config_api_key,
     save_llm_config,
     save_llm_config_record,
+    save_reminder_popup_on_start,
     save_search_config,
 )
 
@@ -113,6 +116,17 @@ def read_search_settings(db: Session = Depends(get_db)):
 @router.put("/search", response_model=SearchConfig)
 def write_search_settings(payload: SearchConfig, db: Session = Depends(get_db)):
     return save_search_config(db, payload)
+
+
+@router.get("/reminder-popup", response_model=ReminderPopupSetting)
+def read_reminder_popup(db: Session = Depends(get_db)):
+    """打开应用时是否弹出近期提醒（默认开）。"""
+    return ReminderPopupSetting(enabled=get_reminder_popup_on_start(db))
+
+
+@router.put("/reminder-popup", response_model=ReminderPopupSetting)
+def write_reminder_popup(payload: ReminderPopupSetting, db: Session = Depends(get_db)):
+    return ReminderPopupSetting(enabled=save_reminder_popup_on_start(db, payload.enabled))
 
 
 @router.post("/llm/models", response_model=LLMModelsResult)

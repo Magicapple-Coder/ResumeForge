@@ -11,6 +11,7 @@ import logging
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from . import trash
 from ..models.material import Material
 from ..schemas.material import MaterialCreate, MaterialUpdate
 
@@ -21,7 +22,7 @@ MAX_MATERIAL_TOOL_CHARS = 6_000
 
 
 def list_materials(db: Session, *, keyword: str = "", category: str = "") -> list[Material]:
-    query = db.query(Material)
+    query = db.query(Material).filter(trash.live_only(Material))
     if category.strip():
         query = query.filter(Material.category == category.strip())
     if keyword.strip():
@@ -39,7 +40,11 @@ def list_materials(db: Session, *, keyword: str = "", category: str = "") -> lis
 
 
 def material_or_none(db: Session, material_id: int) -> Material | None:
-    return db.get(Material, material_id)
+    """取一份资料；**已在回收站里的当作不存在**（见 ``claim_or_none`` 的说明）。"""
+    material = db.get(Material, material_id)
+    if material is None or trash.is_deleted(material):
+        return None
+    return material
 
 
 def create_material(db: Session, payload: MaterialCreate) -> Material:
@@ -60,10 +65,11 @@ def update_material(db: Session, material: Material, payload: MaterialUpdate) ->
 
 
 def delete_material(db: Session, material_id: int) -> bool:
+    """移入回收站（软删除）；彻底删除在「回收站」里单独提供。"""
     material = db.get(Material, material_id)
-    if material is None:
+    if material is None or trash.is_deleted(material):
         return False
-    db.delete(material)
+    trash.soft_delete(db, "material", material)
     db.commit()
     return True
 

@@ -103,8 +103,13 @@ def build_interview_messages(
             "index": index,
             "job_title": session.job_title or "未指定（按面试类型提问）",
             "company": session.company,
-            "focus": session.focus or "未指定，按面试类型通用考察点提问",
-            "persona": session.persona,
+            # **必须 strip**：提示词里是 `{% if persona %}`，而 Jinja 认为纯空白字符串为真，
+            # 于是"只打了几个空格"的人设会渲染出一个空标题——模型看到"面试官人设（用户自定义）"
+            # 下面什么都没有，可能自己编一条出来，比不给更糟。
+            # 收在这里而不是依赖调用方：这是"进提示词"的唯一汇聚点，无论会话怎么创建都成立。
+            # 考察重点同理（纯空白的 focus 会盖掉下面那句"未指定"的兜底文案）。
+            "focus": (session.focus or "").strip() or "未指定，按面试类型通用考察点提问",
+            "persona": (session.persona or "").strip(),
             "first_round": "true" if first_round else "",
         },
     )

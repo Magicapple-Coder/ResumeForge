@@ -18,6 +18,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from . import trash
 from ..models.tracker import (
     MERGE_CREATED,
     MERGE_LABELS,
@@ -54,7 +55,11 @@ MAX_LIST_LIMIT = 500
 
 
 def track_or_none(db: Session, track_id: int) -> ApplicationTrack | None:
-    return db.get(ApplicationTrack, track_id)
+    """取一条投递记录；**已在回收站里的当作不存在**（见 ``claim_or_none`` 的说明）。"""
+    record = db.get(ApplicationTrack, track_id)
+    if record is None or trash.is_deleted(record):
+        return None
+    return record
 
 
 def list_tracks(db: Session, *, status: str = "", keyword: str = "") -> list[ApplicationTrack]:
@@ -63,7 +68,7 @@ def list_tracks(db: Session, *, status: str = "", keyword: str = "") -> list[App
     默认排序刻意是"进行中的排在前面、越靠后的阶段越靠前"：用户打开这一页最想先看到的是
     还在推进的那几家，而不是三个月前就结束了的。
     """
-    query = db.query(ApplicationTrack)
+    query = db.query(ApplicationTrack).filter(trash.live_only(ApplicationTrack))
     if status:
         query = query.filter(ApplicationTrack.status == status)
     target = (keyword or "").strip()
@@ -164,10 +169,15 @@ def update_track(db: Session, record: ApplicationTrack, payload: TrackUpdate) ->
 
 
 def delete_track(db: Session, track_id: int) -> bool:
+    """移入回收站（软删除）。
+
+    **不再真删**：投递记录是用户一条条维护起来的（进度、下次动作、备注），误删的代价远大于
+    多留一行。彻底删除在「回收站」里单独提供，且必须二次确认。
+    """
     record = db.get(ApplicationTrack, track_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         return False
-    db.delete(record)
+    trash.soft_delete(db, "track", record)
     db.commit()
     return True
 

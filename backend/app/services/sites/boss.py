@@ -17,7 +17,7 @@ import json
 import logging
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 from ...models.apply import (
     FAILURE_CAPTCHA_REQUIRED,
@@ -28,7 +28,13 @@ from ...models.apply import (
 from ..apply.form_engine import FormEngine
 from ..browser.cdp_client import CdpClient, CdpError
 from ..browser.page_ready import ReadyWait, wait_for_page_state
-from .boss_network import DETAIL_MARKER, SEARCH_MARKER
+from .boss_network import DETAIL_MARKERS, SEARCH_MARKERS
+from .boss_text import (
+    looks_like_salary,
+    normalize_text,
+    split_job_sections,
+    split_title_salary,
+)
 from .base import (
     ApplyOutcome,
     CollectQuery,
@@ -52,18 +58,30 @@ BOSS_ENTRY_URL = "https://www.zhipin.com/"
 NETWORK_RESPONSE_EVENT = "Network.responseReceived"
 
 # ===== 选择器常量（站点改版时只改这里）=====
-SELECTOR_SEARCH_CARD = ".job-card-wrapper, li.job-card-wrapper"
-SELECTOR_SEARCH_TITLE = ".job-name, .job-title"
-SELECTOR_SEARCH_COMPANY = ".company-name, .company-info .name"
-SELECTOR_SEARCH_SALARY = ".salary, .red"
-SELECTOR_SEARCH_LOCATION = ".job-area, .job-card-right .job-area"
-SELECTOR_SEARCH_LINK = "a"
+#
+# **每一条都是多候选并列**，任一命中即可用。这不是"多写几个好看"，而是改版存活率的
+# 关键：BOSS 的岗位卡片 class 从 `job-card-wrapper` 换成了 `job-card-box`（左边列表面板
+# 那种新版布局），只留旧 class 的结果就是 `matched: 0` —— 于是"页面明明正常"却被判成
+# 采集失败。并列候选让"改了一半"的页面仍然能用。
+SELECTOR_SEARCH_CARD = (
+    "li.job-card-box, .job-card-wrapper, ul.rec-job-list > li, .job-list-container .job-card-box"
+)
+# 岗位详情链接。它比任何卡片 class 都稳——改版可以换 class，但"点进去看岗位"这件事
+# 必须有个链接，所以它是兜底路径的锚点。
+SELECTOR_JOB_LINK = 'a[href*="/job_detail/"]'
+SELECTOR_SEARCH_TITLE = "a.job-name, .job-name, .job-title"
+SELECTOR_SEARCH_COMPANY = "span.boss-name, .company-name, .company-info .name"
+# 薪资单独定位。新版列表把薪资与岗位名放在同一个节点里，这条匹配不到时会由
+# `split_title_salary` 从标题尾部把薪资拆出来（见 boss_text）。
+SELECTOR_SEARCH_SALARY = ".salary, .red, .job-salary, .salary-text, [class*='salary']"
+SELECTOR_SEARCH_LOCATION = "span.company-location, .job-area, .job-card-right .job-area"
+SELECTOR_SEARCH_LINK = f"a.job-name, {SELECTOR_JOB_LINK}, a"
 SELECTOR_SEARCH_NEXT = ".options-pages a:last-child, a.next"
 SELECTOR_JOB_DESCRIPTION = ".job-sec-text, .job-detail-section .text"
 SELECTOR_JOB_REQUIREMENTS = ".job-detail-section:last-child .text"
-SELECTOR_APPLY_ENTRY = "a.btn-startchat, .btn-startchat, .op-btn-chat, .btn-chat"
-SELECTOR_GREETING_INPUT = ".dialog-container textarea, textarea.chat-input"
-SELECTOR_GREETING_SEND = ".dialog-container .btn-send, .btn-sure-v2"
+SELECTOR_APPLY_ENTRY = "a.btn-startchat, .btn-startchat, .op-btn-chat, .btn-chat, [class*='btn-startchat']"
+SELECTOR_GREETING_INPUT = ".dialog-container textarea, textarea.chat-input, #chat-input"
+SELECTOR_GREETING_SEND = ".dialog-container .btn-send, .btn-sure-v2, button[type='send']"
 SELECTOR_SUBMIT_BUTTON = ".btn-submit, .btn-sure"
 SELECTOR_FILE_INPUT = "input[type=file]"
 SELECTOR_CAPTCHA = ".geetest_panel, .geetest_box, #nc_1_wrapper, .verify-wrap"
@@ -71,7 +89,20 @@ SELECTOR_LOGIN = ".login-dialog, .sign-form, .login-panel"
 # 明确的"无结果"标志：页面加载完成且呈现空状态时用它区分"关键词真的搜不到"与"没抓到"。
 SELECTOR_SEARCH_EMPTY = ".job-empty-wrapper, .search-empty, .empty-tip, .job-list-empty, .empty-wrapper"
 # 岗位详情"可抓取"的兜底选择器集合（任一命中即说明详情内容已渲染出来）。
-SELECTOR_DETAIL_READY = ".job-sec-text, .job-detail-section, .job-detail-box, .job-name"
+#
+# **刻意不含 `.job-name`**：详情页顶部/推荐位也有岗位名，用它判定会让等待在 JD 的 XHR 回来
+# 之前就"就绪"，于是网络层提前收网、拿不到详情接口的响应——真实故障里 18 条采集岗位有 8 条
+# 描述为空，就是这个过早就绪。这里只认真正属于 JD 正文的容器。
+SELECTOR_DETAIL_READY = (
+    ".job-sec-text, .job-detail-section, .job-detail-box, "
+    ".job-detail-body, .job-detail-content, [class*='job-detail'] .text"
+)
+# 「这一页可以采集了」的判定选择器：卡片**或**岗位详情链接存在即可。
+#
+# 比 ``SELECTOR_SEARCH_CARD`` 宽一档是刻意的：改版只换了卡片 class 时，链接仍然在，
+# 于是这次等待被认成"就绪"，网络层与兜底脚本立刻接手；若死守卡片选择器，页面明明
+# 已经好了也要干等满 15 秒，最后报一句"页面结构可能已变化"。
+SELECTOR_SEARCH_READY = f"{SELECTOR_SEARCH_CARD}, {SELECTOR_JOB_LINK}"
 
 # 集中成一张表，业务代码统一从这里取（便于改版时一处替换）。
 _SELECTORS = {
@@ -134,6 +165,53 @@ def _current_url(client: CdpClient) -> str:
     if isinstance(state, dict):
         return str(state.get("url", ""))
     return ""
+
+
+def query_params(query: str) -> dict[str, str]:
+    """把查询串拆成参数表（不做 URL 解码）。"""
+    params: dict[str, str] = {}
+    for part in query.split("&"):
+        if not part:
+            continue
+        name, _, value = part.partition("=")
+        params[name] = value
+    return params
+
+
+def same_target_page(current: str, target: str) -> bool:
+    """当前地址是否**就是**目标那一页。
+
+    判据：**目标地址里的每个查询参数，都能在当前地址里取到相同的值**（且同主机）。
+    而不是整串相等，也不是"路径相同"——两头都试过，各有一个真实故障：
+
+    - **整串相等太严**：站点会规范化查询串（补默认参数、调换顺序、``/web/geek/job``
+      跳成 ``/web/geek/jobs``）。拼出来的目标与浏览器实际落地的地址永远不完全一致，
+      于是**每一次正常导航都被误判成"没切换"**，等满超时后报"页面没有切换到目标地址"
+      ——页面其实早就渲染好了（真实反馈里就是这么发生的）。
+    - **只看路径太松**：``?page=1`` 与 ``?page=2`` 路径完全相同，会把"还停在上一页"
+      认成"已到位"，翻页于是读到上一页的内容。
+
+    带参数的比较正好卡在中间：既容纳站点的规范化（多出来的参数、顺序变化、路径改名都
+    不影响），又要求页码 / 关键词这些**真正区分页面**的参数一致。目标没有查询参数时
+    （例如站点入口页）无从比较，返回 ``False``，交由调用方的其它判据处理。
+    """
+    try:
+        current_parts, target_parts = urlparse(current), urlparse(target)
+    except ValueError:
+        return False
+    if not target_parts.query:
+        return False
+    if (current_parts.scheme, current_parts.netloc) != (
+        target_parts.scheme,
+        target_parts.netloc,
+    ):
+        return False
+    current_query = query_params(current_parts.query)
+    for name, value in query_params(target_parts.query).items():
+        # 解码后再比：同一个值可能被编码成不同的百分比串（`%E5%90%8E%E7%AB%AF` 与原文）。
+        if unquote(current_query.get(name, "")) != unquote(value):
+            return False
+    return True
 
 
 def _readiness_script(selector: str) -> str:
@@ -216,6 +294,39 @@ def _collect_script() -> str:
             "      url: a ? a.href : '',\n",
             "    };\n",
             "  });\n",
+            "  const next = document.querySelector(" + _js(_SELECTORS["search_next"]) + ");\n",
+            "  return JSON.stringify({\n",
+            "    url: location.href,\n",
+            "    title: document.title || '',\n",
+            "    items,\n",
+            "    has_next: !!(next && !next.classList.contains('disabled')),\n",
+            "  });\n",
+            "})()",
+        ]
+    )
+
+
+def _collect_links_script() -> str:
+    """最后一道兜底：**只按岗位详情链接**抓，拿到标题与地址。
+
+    卡片 class 改名是最常见的失效方式，而"点进去看岗位"的链接几乎不会消失，所以它是
+    DOM 这条路上最稳的锚点。代价是拿不到公司 / 薪资 / 地点（它们在不同层级的兄弟节点里，
+    没有卡片结构就无从定位）——但那三样空着，也比因为一个 class 改名就报"什么都抓不到"
+    强得多：用户至少能看到"抓到了哪些岗位"，而不是面对一个静默的 0。
+    """
+    return "".join(
+        [
+            "(() => { /* rf:collect-links */\n",
+            f"  const LINK = {_js(SELECTOR_JOB_LINK)};\n",
+            "  const seen = new Set();\n",
+            "  const items = [];\n",
+            "  for (const a of document.querySelectorAll(LINK)) {\n",
+            "    const href = a.href || '';\n",
+            "    if (!href || seen.has(href)) continue;\n",
+            "    seen.add(href);\n",
+            "    items.push({ title: (a.textContent || '').trim(), company: '',\n",
+            "      salary: '', location: '', url: href });\n",
+            "  }\n",
             "  const next = document.querySelector(" + _js(_SELECTORS["search_next"]) + ");\n",
             "  return JSON.stringify({\n",
             "    url: location.href,\n",
@@ -459,12 +570,22 @@ def parse_search_payload(
         for item in items:
             if not isinstance(item, dict):
                 continue
+            # DOM 里读到的文本被反爬混淆过（私用区数字、`boss`/`kanzhun`/`直聘` 水印、
+            # 康熙部首），必须**先还原再做判断**——否则"全栈工程师\ue032\ue033-\ue032\ue036K"
+            # 无论怎么切都切不出薪资。
+            title, title_salary = split_title_salary(item.get("title", ""))
+            salary = normalize_text(item.get("salary", ""))
+            if not looks_like_salary(salary):
+                # 薪资元素没取到，或取到的是一个同时含岗位名的容器（新版列表把两者放在
+                # 同一个节点里）。这时用标题尾部拆出来的那份；拆不出来就**留空**——
+                # 留空好过把岗位名当成薪资写进库里。
+                salary = title_salary
             results.append(
                 SearchResult(
-                    title=str(item.get("title", "")),
-                    company=str(item.get("company", "")),
-                    location=str(item.get("location", "")),
-                    salary=str(item.get("salary", "")),
+                    title=title,
+                    company=normalize_text(item.get("company", "")),
+                    location=normalize_text(item.get("location", "")),
+                    salary=salary,
                     url=str(item.get("url", "")),
                     source=BOSS_DISPLAY_NAME,
                 )
@@ -480,11 +601,15 @@ def parse_search_payload(
 def parse_job_detail(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise SiteFailure(FAILURE_SELECTOR_INVALID, "岗位详情返回了无法解析的内容")
+    # DOM 读到的 JD 同样被反爬混淆过（水印 token / 康熙部首），先还原再切分。
+    dom_requirements = normalize_text(payload.get("requirements", ""))
+    description, split_requirements = split_job_sections(payload.get("description", ""))
     return {
-        "job_title": str(payload.get("job_title", "")),
-        "company": str(payload.get("company", "")),
-        "description": str(payload.get("description", "")),
-        "requirements": str(payload.get("requirements", "")),
+        "job_title": normalize_text(payload.get("job_title", "")),
+        "company": normalize_text(payload.get("company", "")),
+        "description": description,
+        # DOM 单独取到了「任职要求」容器就用它；没有就用在描述里切出来的那一段。
+        "requirements": dom_requirements or split_requirements,
         "url": str(payload.get("url", "")),
     }
 
@@ -501,8 +626,8 @@ def _with_response_bodies(
 
     wanted = {
         url
-        for marker in (SEARCH_MARKER, DETAIL_MARKER)
-        for url in response_urls(events, marker=marker)
+        for markers in (SEARCH_MARKERS, DETAIL_MARKERS)
+        for url in response_urls(events, markers=markers)
     }
     body_events: list[dict[str, Any]] = []
     fetched: set[str] = set()
@@ -550,6 +675,18 @@ class BossAdapter(SiteAdapter):
     entry_url = BOSS_ENTRY_URL
     supports_collect = True
     supports_apply = True
+    # 这三个条件走**本地筛选**而不是查询参数：BOSS 把它们做成不透明的数字编码，
+    # 猜错就是静默返回错误结果。而列表接口本来就返回每条岗位的学历要求、经验要求与
+    # 薪资数字（见 ``boss_network.parse_search_response`` 的 ``extra``），采完之后按
+    # 这些字段筛即可，无需编码表，而且筛掉几条都能如实报出来。
+    post_filter_conditions = ("薪资", "经验", "学历")
+
+    # "保存抓到的站点原文"要保存的两个接口：搜索列表与岗位详情。片段与解析路径共用同一组
+    # markers（``boss_network`` 里定义），改一处即可同时作用于解析与样例保存——站点知识只有一份。
+    # **加新站点 / 改这里时务必确认：该接口的响应体里不含凭据**——它会被原样落盘（落盘字段只有
+    # url_path / captured_at / body，不含 headers/Cookie/请求体，但 body 是原文）。若某站点把
+    # 令牌放进响应体，就绝不能把它列进 sample_markers。
+    sample_markers = (("search", SEARCH_MARKERS), ("detail", DETAIL_MARKERS))
 
     def __init__(self, *, ready_wait: ReadyWait | None = None) -> None:
         # 等待参数可注入：生产用默认值，离线测试可传一个极短的超时/间隔。
@@ -580,8 +717,12 @@ class BossAdapter(SiteAdapter):
         """导航之后轮询直到页面可采集，或按约定失败。
 
         - **必须等新文档接管**：``Page.navigate`` 只是**发起**导航，返回时旧文档可能仍在，
-          直接抓会读到上一页的内容（分页场景会读到上一页并错算 ``has_next``）。因此要求
-          当前地址已等于目标地址、或已不同于导航前的地址，才认这次读取有效。
+          直接抓会读到上一页的内容（分页场景会读到上一页并错算 ``has_next``）。所以要有
+          "这确实是目标那一页"的证据，二者取一：目标地址里的查询参数（关键词 / 城市 / 页码）
+          在当前地址里都取到相同的值（见 ``same_target_page``），或地址相对导航前已经变化。
+          早先这里要求"地址与拼出来的目标**整串相等**"，而站点会规范化查询串
+          （``/web/geek/job`` → ``/web/geek/jobs``），于是**一次正常的导航被误判成没切换**，
+          等满超时后报出"页面没有切换到目标地址"——真实反馈里就是这么发生的。
         - 目标选择器匹配到内容 → 就绪；``allow_empty`` 时"明确无结果"也算就绪；
         - 出现登录失效 / 验证码 → **立刻**抛对应 ``SiteFailure``，不傻等满超时；
         - **超时是唯一的失败时限**：``readyState === 'complete'`` **不代表** SPA 该渲染的内容
@@ -598,7 +739,9 @@ class BossAdapter(SiteAdapter):
 
         def _fresh(state: dict[str, Any]) -> bool:
             url = str(state.get("url", ""))
-            if target_url and url == target_url:
+            # 目标地址里的查询参数（关键词 / 城市 / 页码）都取到相同的值 → 就是目标那一页。
+            # 这条对站点的查询串规范化免疫，同时仍然拦得住"还停在上一页"。
+            if target_url and same_target_page(url, target_url):
                 return True
             # 没有记录导航前地址时无法判断新旧，只能放行（测试 / 首次导航）。
             return not previous_url or url != previous_url
@@ -635,15 +778,14 @@ class BossAdapter(SiteAdapter):
         return f"{base}&page={max(page, 1)}"
 
     def unmapped_conditions(self, query: CollectQuery) -> list[str]:
-        """首期只映射关键词 + 城市 + 翻页；其余条件由界面显示「未生效」。"""
-        unmapped: list[str] = []
-        if query.salary_min is not None:
-            unmapped.append("薪资")
-        if query.experience:
-            unmapped.append("经验")
-        if query.education:
-            unmapped.append("学历")
-        return unmapped
+        """这里返回的是**真的没能生效**的条件。
+
+        薪资 / 经验 / 学历**不在这里**：它们由采集器在采集后按接口字段本地筛选
+        （见 ``post_filter_conditions``），属于"换了一种方式生效"。只有采集器发现
+        连接口字段也拿不到时，才会把它们回报成"未能判断"——那是另一回事，
+        而且界面会分别说清楚，不会混成一句"未生效"。
+        """
+        return []
 
     def _capture_network(
         self, client: CdpClient, action: Callable[[], Any]
@@ -691,29 +833,42 @@ class BossAdapter(SiteAdapter):
         target = self.build_search_url(query, page)
         previous = _current_url(client)
 
+        # 页面等待的结果**先记下来、不立刻抛**：在宣布"页面没好"之前，网络层可能已经把
+        # 岗位列表拿到手了。真实故障正是这样——DOM 选择器过期（卡片 class 从
+        # `job-card-wrapper` 改成 `job-card-box`），接口明明返回了数据，却在等待阶段
+        # 直接抛失败，于是采集永远成功不了。
+        outcome: dict[str, Any] = {"state": {}, "failure": None}
+
         def _load() -> dict[str, Any]:
             client.navigate(target)
-            return self._await_ready(
-                client,
-                selector=_SELECTORS["search_card"],
-                expected="岗位卡片（如 .job-card-wrapper）",
-                allow_empty=True,
-                target_url=target,
-                previous_url=previous,
-            )
+            try:
+                outcome["state"] = self._await_ready(
+                    client,
+                    # 就绪判定用**宽一档**的选择器（卡片或岗位链接）：改版只换了卡片
+                    # class 时，页面明明已经好了，也不至于干等满超时。
+                    selector=SELECTOR_SEARCH_READY,
+                    expected="岗位卡片（如 li.job-card-box / .job-card-wrapper，或岗位详情链接）",
+                    allow_empty=True,
+                    target_url=target,
+                    previous_url=previous,
+                )
+            except SiteFailure as exc:
+                outcome["failure"] = exc
+            return outcome["state"]
 
         # 导航与等待都在订阅期间完成：接口响应要等页面跑起来才回来。
         responses, state = self._capture_network(client, _load)
 
-        # ① 首选：从接口响应里解析（字段更全，且不依赖渲染时序）。**放在"DOM 说无结果"
-        #    的判断之前**：接口拿到了岗位就说明这次搜索有结果，此时 DOM 匹配 0 个只说明
-        #    页面没渲染出来（或选择器失效）——按 DOM 判空会把"抓到了"说成"没搜到"。
-        from .boss_network import looks_like_search, parse_search_response
+        # ① 首选：从接口响应里解析（字段更全，且不受渲染时序与 DOM 改版影响）。**放在"DOM
+        #    说无结果"的判断之前**：接口拿到了岗位就说明这次搜索有结果，此时 DOM 匹配 0 个
+        #    只说明页面没渲染出来（或选择器失效）——按 DOM 判空会把"抓到了"说成"没搜到"。
+        from .boss_network import looks_like_search, parse_search_response, search_has_more
         from ..browser.network_capture import first_json_with
 
         network_items = first_json_with(responses, looks_like_search)
         parsed = parse_search_response(network_items) if network_items is not None else None
         if parsed:
+            has_more = search_has_more(network_items)
             return SearchPage(
                 results=[
                     SearchResult(
@@ -728,9 +883,16 @@ class BossAdapter(SiteAdapter):
                     for item in parsed
                 ],
                 page=page,
-                has_next=bool(state.get("has_next")),
+                # 接口里的翻页标志优先：等待用的那个探针根本不报 has_next，
+                # 一路取它会让"永远没有下一页"，翻页在第 1 页就停住。
+                has_next=has_more if has_more is not None else bool(state.get("has_next")),
                 unmapped_conditions=self.unmapped_conditions(query),
             )
+
+        # ② 接口没拿到、而页面等待已判定失败 → 如实抛出那次失败（带可操作诊断）。
+        failure = outcome["failure"]
+        if failure is not None:
+            raise failure
 
         if int(state.get("matched", 0) or 0) <= 0:
             # 走到这里意味着页面**明确**处于"无结果"状态：关键词确实搜不到，返回空页是合法的。
@@ -741,13 +903,32 @@ class BossAdapter(SiteAdapter):
                 unmapped_conditions=self.unmapped_conditions(query),
             )
 
-        # ② 兜底：DOM 解析。
+        # ③ 兜底一：按卡片结构解析 DOM。
         payload = _as_payload(client.evaluate(_collect_script()))
         payload = payload if isinstance(payload, dict) else {}
         blocker = detect_blocker(payload)
         if blocker is not None:
             raise blocker_failure(blocker, payload)
-        return parse_search_payload(payload, page, self.unmapped_conditions(query))
+        dom_page = parse_search_payload(payload, page, self.unmapped_conditions(query))
+        if dom_page.results:
+            return dom_page
+
+        # ④ 兜底二：卡片没匹配到，但页面等待认为"有内容"（多半是靠岗位链接判定就绪的）
+        #    → 换一套只依赖链接的脚本再试一次。只有标题与地址，但绝不把"抓不到"说成"没有"。
+        link_payload = _as_payload(client.evaluate(_collect_links_script()))
+        link_payload = link_payload if isinstance(link_payload, dict) else {}
+        link_items = link_payload.get("items")
+        if isinstance(link_items, list) and link_items:
+            return parse_search_payload(link_payload, page, self.unmapped_conditions(query))
+
+        # ⑤ 三轮都没拿到任何岗位：如实报错并附诊断，**不**静默返回 0 条。静默的 0 是最坏的
+        #    结果——用户会以为"关键词没搜到"，而实际上是工具坏了。
+        raise SiteFailure(
+            FAILURE_SELECTOR_INVALID,
+            selector_diagnostic(payload, "岗位卡片（如 li.job-card-box / .job-card-wrapper）"),
+            url=str(payload.get("url") or ""),
+            title=str(payload.get("title") or ""),
+        )
 
     def fetch_job_detail(self, client: CdpClient, url: str) -> dict[str, Any]:
         # 同样要等页面就绪，否则会在空白文档上抓到空内容（或读到上一个岗位页的残留）。

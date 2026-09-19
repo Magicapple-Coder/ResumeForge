@@ -1,5 +1,8 @@
 import {
   AuditOutlined,
+  BarChartOutlined,
+  BookOutlined,
+  DeleteOutlined,
   FileTextOutlined,
   FunnelPlotOutlined,
   HomeOutlined,
@@ -32,26 +35,46 @@ const TrackerPage = lazy(() => import("./pages/TrackerPage"));
 const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
+const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
 const SkillsPage = lazy(() => import("./pages/SkillsPage"));
 const InterviewPage = lazy(() => import("./pages/InterviewPage"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const TrashPage = lazy(() => import("./pages/TrashPage"));
 const UserGuideModal = lazy(() => import("./components/UserGuideModal"));
 
 const { Sider, Header, Content } = Layout;
 
+/**
+ * 侧栏导航按「找岗位 → 做简历 → 投递跟进 → 面试准备 → 我的数据 → 系统」的顺序分组。
+ *
+ * 分组依据是用户真实的使用顺序，而不是功能上线时间：收藏夹紧跟岗位广场（同属"找岗位"），
+ * 「我的资料」排在资料箱/工作台之前（它是后面几项的数据来源），「事实台账」靠近设置
+ * （属于数据核对一类的低频入口）。**顺序即分组，不额外加分隔标题**——侧栏只有 200px，
+ * 加分组标题会把 13 项挤成两屏。
+ */
 const MENU_ITEMS = [
+  // 找岗位
   { key: "/", icon: <HomeOutlined />, label: "首页" },
   { key: "/jobs", icon: <SearchOutlined />, label: "岗位广场" },
+  { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
+  // 做简历
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
+  // 投递与跟进
   { key: "/apply", icon: <SendOutlined />, label: "投递台" },
   { key: "/tracker", icon: <FunnelPlotOutlined />, label: "求职进度" },
-  { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
-  { key: "/assistant", icon: <MessageOutlined />, label: "求职助手" },
+  { key: "/analytics", icon: <BarChartOutlined />, label: "求职统计" },
+  // 面试准备
   { key: "/interview", icon: <SolutionOutlined />, label: "模拟面试" },
-  { key: "/materials", icon: <InboxOutlined />, label: "资料箱" },
-  { key: "/skills", icon: <ToolOutlined />, label: "工作台" },
+  { key: "/assistant", icon: <MessageOutlined />, label: "求职助手" },
+  // 我的数据
   { key: "/profile", icon: <ProfileOutlined />, label: "我的资料" },
+  { key: "/materials", icon: <InboxOutlined />, label: "资料箱" },
+  { key: "/knowledge", icon: <BookOutlined />, label: "知识库" },
+  { key: "/skills", icon: <ToolOutlined />, label: "工作台" },
+  // 系统
   { key: "/claims", icon: <AuditOutlined />, label: "事实台账" },
+  { key: "/trash", icon: <DeleteOutlined />, label: "回收站" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
 
@@ -150,13 +173,16 @@ export default function App() {
         <Route path="/resumes" element={<ResumesPage />} />
         <Route path="/apply" element={<ApplyPage />} />
         <Route path="/tracker" element={<TrackerPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/materials" element={<MaterialsPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/interview" element={<InterviewPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/claims" element={<ClaimsPage />} />
+        <Route path="/trash" element={<TrashPage />} />
         <Route path="/claims/drill" element={<DrillPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

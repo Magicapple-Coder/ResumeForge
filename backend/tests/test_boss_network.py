@@ -29,8 +29,9 @@ from app.services.browser.page_ready import ReadyWait
 from app.services.sites.base import CollectQuery, SiteFailure
 from app.services.sites.boss import NETWORK_RESPONSE_EVENT, BossAdapter
 from app.services.sites.boss_network import (
-    DETAIL_MARKER,
+    DETAIL_MARKERS,
     SEARCH_MARKER,
+    SEARCH_MARKERS,
     format_salary,
     looks_like_detail,
     looks_like_search,
@@ -206,19 +207,35 @@ def _body_event(request_id: str, body, *, base64_encoded: bool = False) -> dict:
     }
 
 
-def test_response_urls_filter_by_marker_and_keep_order():
+def test_response_urls_filter_by_markers_and_keep_order():
     events = [
         _response_event("1", "https://www.zhipin.com/img/logo.png"),
         _response_event("2", f"https://www.zhipin.com{SEARCH_MARKER}?page=1"),
         _response_event("3", f"https://www.zhipin.com{SEARCH_MARKER}?page=2"),
     ]
-    urls = response_urls(events, marker=SEARCH_MARKER)
+    urls = response_urls(events, markers=SEARCH_MARKERS)
     # 顺序有意义：页面上同一接口会被调用多次，先回来的通常是我们正要的那份。
     assert urls == [
         f"https://www.zhipin.com{SEARCH_MARKER}?page=1",
         f"https://www.zhipin.com{SEARCH_MARKER}?page=2",
     ]
-    assert response_urls(events, marker=DETAIL_MARKER) == []
+    assert response_urls(events, markers=DETAIL_MARKERS) == []
+
+
+def test_loose_markers_survive_an_api_path_rename():
+    """站点给接口路径加版本后缀（``joblist.json`` → ``joblistV2.json``）时仍要认得出来。
+
+    以前只认整串路径，改一次命名整条"网络优先"通路就**静默失效**（失败方式是退回 DOM，
+    从外面完全看不出来），而 DOM 恰好是最容易被改版打穿的那一层。
+    """
+    exact = f"https://www.zhipin.com{SEARCH_MARKER}?page=1"
+    renamed = "https://www.zhipin.com/wapi/zpgeek/search/joblistV2.json?page=1"
+    events = [_response_event("1", exact), _response_event("2", renamed)]
+
+    # 原路径与改版后的路径都要认得出来，且保持出现顺序。
+    assert response_urls(events, markers=SEARCH_MARKERS) == [exact, renamed]
+    # 两套候选**不能重叠**：列表响应绝不能被当成详情去解析（结构完全不同）。
+    assert response_urls(events, markers=DETAIL_MARKERS) == []
 
 
 def test_collect_bodies_decodes_base64_payloads():
@@ -552,3 +569,45 @@ def test_a_stop_does_not_throw_away_events_already_captured():
     # 此刻用户点了停止：再发 CDP 命令会被守卫拦下，但"取走已到手的数据"不该被拦。
     wrapped = StopAwareCdpClient(inner, _stopped)
     assert len(wrapped.drain_events()) == 1
+
+
+def test_the_fields_the_local_filters_read_are_the_ones_the_api_parser_produces():
+    """把"本地筛选读哪些键"与"接口解析产出哪些键"接在一起钉住。
+
+    这是最容易在真实使用里**悄悄失效**的一环：筛选逻辑自己有测试、解析函数也有测试，
+    但两边用的键名对不上时，线上每个岗位都会落进"判断不了 → 原样保留"——筛选看起来在工作
+    （有账目、有提示），实际一条都没筛掉。所以这条测试必须**跨两个模块**验证。
+    """
+    from app.services.apply.collect_filters import evaluate_filters
+
+    payload = {
+        "zpData": {
+            "jobList": [
+                {
+                    "encryptJobId": "abc",
+                    "jobName": "全栈工程师",
+                    "brandName": "某某科技",
+                    "cityName": "天津",
+                    "lowSalary": 20000,
+                    "highSalary": 30000,
+                    "salaryMonth": 12,
+                    "jobExperience": "3-5年",
+                    "jobDegree": "本科",
+                }
+            ]
+        }
+    }
+
+    parsed = parse_search_response(payload)
+
+    assert parsed is not None
+    extra = parsed[0]["extra"]
+    # 我本科、3-5 年、期望 ≥20K —— 三条都满足，应当保留。
+    assert evaluate_filters(
+        education="本科", experience="3-5年", salary_min=20, extra=extra
+    ).keep
+    # 反向确认它真的**在判断**：我只要大专学历时，这个要求本科的岗位应当被筛掉。
+    # 少了这一半，键名对不上时上面那句仍然会通过（全都因为"缺字段"而保留）。
+    decision = evaluate_filters(education="大专", extra=extra)
+    assert decision.keep is False
+    assert decision.rejected_by == ("学历",)

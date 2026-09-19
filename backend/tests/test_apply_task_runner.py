@@ -240,6 +240,31 @@ def test_runner_completes_and_writes_back_job_status(db_session):
     assert job.status == JOB_STATUS_APPLIED
 
 
+def test_a_custom_greeting_wins_over_the_default_one(db_session):
+    """**用户为这个岗位自己写的招呼语，必须真的被发出去**（而不是被默认招呼语顶掉）。
+
+    这条是"用户自定义必须真实生效"里最容易出问题的一类：界面里能逐条编辑招呼语，用户改完
+    看到的是"已保存"，但发出去的到底是哪一条，只有断言到**适配器收到什么**才知道。
+
+    验证方式：把招呼语设成一个哨兵串，跑完一轮后看写回记录里的招呼语是不是它——
+    运行器会把适配器**实际发出去**的那条写回 `item.greeting`（见 ``task_runner`` 里的
+    ``item.greeting = outcome.greeting_sent``），所以记录里是哨兵串就说明自定义那条赢了。
+    """
+    task = _setup_task(db_session, 1)
+    item = db_session.query(ApplyTaskItem).filter_by(task_id=task.id).one()
+    item.greeting = "您好，我是自己写的那一条 SENTINEL_GREETING"
+    db_session.commit()
+
+    runner = _runner(FakeAdapter())
+    runner.start(task.id)
+    _wait(runner)
+    _wait_db(db_session, lambda: _task_status(db_session, task.id), "completed", "任务状态")
+
+    db_session.expire_all()
+    sent = db_session.query(ApplyTaskItem).filter_by(task_id=task.id).one()
+    assert sent.greeting == "您好，我是自己写的那一条 SENTINEL_GREETING"
+
+
 def test_runner_records_a_tracker_row_for_each_successful_apply(db_session):
     """投出去的岗位要自动出现在「求职进度」里，否则用户还得手工再录一遍。"""
     task = _setup_task(db_session, 1)

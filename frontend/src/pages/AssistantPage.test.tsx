@@ -9,9 +9,13 @@ import type {
   AssistantSkill,
   AssistantStreamEvent,
 } from "../types";
-import { MessageAttachments } from "../features/assistant/components/AssistantMessageContent";
+import {
+  MessageAttachments,
+  MessageToolCalls,
+} from "../features/assistant/components/AssistantMessageContent";
 import AssistantPage, {
   AssistantMessageContent,
+  MessageReasoning,
   MessageSources,
   StreamingStatus,
 } from "./AssistantPage";
@@ -232,6 +236,17 @@ describe("助手深链", () => {
     expect(await screen.findByRole("heading", { name: "会话二" })).toBeInTheDocument();
   });
 
+  it("prefills the composer from the ask param without sending it", async () => {
+    // 工作台的「找求职助手制作」会带着 ?ask= 跳过来；这里只预填、不自动发送。
+    const ask = "帮我新建一个格式模板";
+    renderPage(`/assistant?ask=${encodeURIComponent(ask)}`);
+
+    const composer = await screen.findByPlaceholderText("输入求职、岗位、简历或项目经历相关问题");
+    expect(composer).toHaveValue(ask);
+    // 预填只是一份草稿：不能替用户自动发起一次模型调用。
+    await waitFor(() => expect(apiMocks.sendAssistantMessage).not.toHaveBeenCalled());
+  });
+
   it("does not drag the user back after they switch away", async () => {
     let listCalls = 0;
     apiMocks.listAssistantConversations.mockImplementation(() => {
@@ -272,6 +287,16 @@ describe("助手深链", () => {
 
     expect(apiMocks.getAssistantConversation).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("heading", { name: "会话一" })).toBeInTheDocument();
+  });
+});
+
+describe("助手新对话入口", () => {
+  it("?new=1 时新建空对话，而不是恢复最近会话或引导对话", async () => {
+    renderPage("/assistant?new=1");
+
+    await waitFor(() => expect(apiMocks.createAssistantConversation).toHaveBeenCalled());
+    // 新对话不带欢迎消息；也不能被「首次引导」逻辑抢走。
+    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalledWith("", { welcome: true });
   });
 });
 
@@ -511,6 +536,33 @@ describe("AssistantPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("正在生成回答");
   });
 
+  it("keeps the reasoning collapsed until the user expands it", () => {
+    render(<MessageReasoning reasoning="先看看岗位，再对比简历。" />);
+
+    // 默认折叠：不展开就看不到正文，只有「思考过程」这个标题。
+    expect(screen.queryByText("先看看岗位，再对比简历。")).not.toBeInTheDocument();
+    // 展开后才显示。用 aria-label 定位，避开 antd 对两字中文标签自动插空格的问题。
+    const toggle = screen.getByLabelText("思考过程");
+    expect(toggle).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByText("先看看岗位，再对比简历。")).toBeInTheDocument();
+  });
+
+  it("renders nothing when there is no reasoning", () => {
+    // 不开思考、或更早存下的历史消息里没有 reasoning 字段时，界面必须和加这个功能之前
+    // 完全一致——不能凭空多出一个空面板（安全降级）。
+    const { container } = render(<MessageReasoning reasoning="" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByLabelText("思考过程")).not.toBeInTheDocument();
+  });
+
+  it("marks a truncated reasoning so it is not passed off as the whole thing", () => {
+    render(<MessageReasoning reasoning="想了一部分…" truncated />);
+
+    fireEvent.click(screen.getByLabelText("思考过程"));
+    expect(screen.getByText(/只保留了前一部分/)).toBeInTheDocument();
+  });
+
   it("keeps web sources collapsed until the user expands them", () => {
     render(
       <MessageSources
@@ -520,10 +572,10 @@ describe("AssistantPage", () => {
 
     expect(screen.queryByRole("link", { name: "招聘官网" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /参考来源（1）/ }));
-    expect(screen.getByRole("link", { name: "招聘官网" })).toHaveAttribute(
-      "rel",
-      "noopener noreferrer",
-    );
+    const sourceLink = screen.getByRole("link", { name: "招聘官网" });
+    expect(sourceLink).toHaveAttribute("rel", "noopener noreferrer");
+    // 外链必须在新标签页打开，否则会把用户从助手页带走、丢掉当前对话上下文。
+    expect(sourceLink).toHaveAttribute("target", "_blank");
   });
 
   it("shows conversation management only after opening the more-actions menu", async () => {
@@ -730,6 +782,7 @@ describe("AssistantPage", () => {
           link: "/jobs",
           ok: true,
           error: "",
+          changed: true,
         });
         await stream.promise;
       },
@@ -741,7 +794,13 @@ describe("AssistantPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
-    // 助手改动了数据这件事必须直接可见，不需要用户点开折叠面板
+    // 助手改动了数据这件事必须一眼可见：现在记录默认折叠了，但改动项被提到折叠标题里，
+    // 所以不展开也能看到"改动了 1 项"——原来的"必须一眼可见"由标题摘要保住，而不是丢掉。
+    expect(await screen.findByText(/助手做了什么（1）/)).toBeInTheDocument();
+    expect(screen.getByText(/改动了 1 项/)).toBeInTheDocument();
+    // 逐条明细仍在折叠面板内，展开后可见，且「前往查看」跳转不变。
+    expect(screen.queryByText("新增岗位")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /助手做了什么（1）/ }));
     expect(await screen.findByText("新增岗位")).toBeInTheDocument();
     expect(screen.getByText("新增岗位「字节跳动后端实习」")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "前往查看" })).toHaveAttribute("href", "/jobs");
@@ -759,6 +818,7 @@ describe("AssistantPage", () => {
           link: "",
           ok: false,
           error: "岗位 999 不存在",
+          changed: false,
         });
         await stream.promise;
       },
@@ -770,8 +830,35 @@ describe("AssistantPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
+    // 失败不能被折叠藏起来：失败计数写在折叠标题里，不展开也能看到出了问题。
+    expect(await screen.findByText(/1 项失败/)).toBeInTheDocument();
+    // 展开后能看到具体是哪一条、为什么失败。
+    fireEvent.click(screen.getByRole("button", { name: /助手做了什么（1）/ }));
     expect(await screen.findByText(/失败：岗位 999 不存在/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "前往查看" })).not.toBeInTheDocument();
+  });
+
+  it("never claims data changed when a historical tool call has no changed flag", () => {
+    // changed 是随功能一起加的可选字段，更早存下的历史消息里没有。缺失必须按"没改动"处理，
+    // 否则折叠标题会凭空报出「改动了 1 项」——那是在替后端编造它没说过的改动。
+    render(
+      <MessageToolCalls
+        calls={[
+          {
+            name: "create_job",
+            arguments: { title: "历史岗位" },
+            summary: "新增岗位「历史岗位」",
+            link: "/jobs",
+            ok: true,
+            error: "",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/助手做了什么（1）/)).toBeInTheDocument();
+    expect(screen.queryByText(/改动了/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/项失败/)).not.toBeInTheDocument();
   });
 });
 

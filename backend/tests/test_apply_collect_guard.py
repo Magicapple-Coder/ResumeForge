@@ -175,3 +175,56 @@ def test_collect_uses_the_current_site_from_configuration(db_session):
     chosen = runner._collect_adapter(db_session, registry)
 
     assert chosen is other
+
+
+# ===== 记录层：把站点与失败类别落进 task.config（站点健康度的事后归因依据）=====
+
+
+def test_collect_records_the_site_key_even_when_it_finds_nothing(db_session):
+    """采集必须把"这次是哪个站点"记下来——否则事后无法把失败/详情缺失归因到站点，
+    而这正是"站点健康度"能成立的前提。No-op（空结果）也要记。"""
+    adapter = CollectAdapter(page=SearchPage(results=[], has_next=False))
+    apply_service.save_apply_config(db_session, ApplyConfigIn(site_key="boss"))
+    db_session.commit()
+    task = _collect_task(db_session)
+    runner = _runner(_registry(adapter))
+
+    runner.start(task.id)
+    _wait(runner)
+
+    db_session.expire_all()
+    stored = db_session.get(ApplyTask, task.id)
+    assert stored.status == "completed"
+    assert stored.config["site_key"] == "boss"
+
+
+def test_collect_failure_records_the_failure_category(db_session):
+    """失败时必须把 ``exc.category`` 一并记下（不只是给用户看的 message），站点健康度靠它
+    区分"站点改版"（selector_invalid）与"环境/用户侧"（需登录、验证码、超时）。"""
+    failure = SiteFailure("selector_invalid", "页面结构可能已变化：未找到岗位卡片")
+    task = _collect_task(db_session)
+    runner = _runner(_registry(CollectAdapter(failure=failure)))
+
+    runner.start(task.id)
+    _wait(runner)
+
+    db_session.expire_all()
+    stored = db_session.get(ApplyTask, task.id)
+    assert stored.status == "failed"
+    # message 文案原样保留（用户看的是它）。
+    assert "采集失败" in stored.message
+    assert stored.config["failure_category"] == "selector_invalid"
+
+
+def test_collect_without_an_adapter_records_an_explicit_failure_category(db_session):
+    """非 ``SiteFailure`` 的失败路径也要有**明确**取值，别留空让前端去猜。"""
+    task = _collect_task(db_session)
+    runner = _runner(_registry())  # 空注册表 → 没有可用适配器
+
+    runner.start(task.id)
+    _wait(runner)
+
+    db_session.expire_all()
+    stored = db_session.get(ApplyTask, task.id)
+    assert stored.status == "failed"
+    assert stored.config["failure_category"] == "unknown"

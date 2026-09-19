@@ -23,6 +23,9 @@ MAX_MATERIAL_TITLE_CHARS = 256
 MAX_MATERIAL_CONTENT_CHARS = 100_000
 MAX_MATERIAL_NOTE_CHARS = 4000
 MAX_CANDIDATE_JOB_TEXT_CHARS = 50_000
+# 一次批量导入最多处理多少条候选。超过这个数说明用户是"全选"而不是"挑选"，
+# 而挑选正是这个功能的用意；也顺带给单次请求一个明确的规模上限。
+MAX_CANDIDATE_IMPORT_BATCH = 200
 
 
 class MaterialFileInput(BaseModel):
@@ -126,6 +129,8 @@ class CandidateJobUpdate(BaseModel):
 
     title: str | None = Field(default=None, max_length=128)
     company: str | None = Field(default=None, max_length=128)
+    location: str | None = Field(default=None, max_length=64)
+    salary: str | None = Field(default=None, max_length=64)
     raw_text: str | None = Field(default=None, max_length=MAX_CANDIDATE_JOB_TEXT_CHARS)
     images: list[str] | None = Field(default=None, max_length=MAX_EXTRACTION_IMAGE_COUNT)
     note: str | None = Field(default=None, max_length=2000)
@@ -144,10 +149,17 @@ class CandidateJobOut(BaseModel):
     id: int
     title: str
     company: str
+    # 采集多带出来的两个字段（手动粘贴的候选留空）。
+    location: str = ""
+    salary: str = ""
     raw_text: str
     images: list[str] = Field(default_factory=list)
     note: str
     source: str
+    # 原始岗位链接：界面用它显示"回原站看"，也让用户看得出这条是从哪来的。
+    source_url: str = ""
+    # 产生这条候选的采集批次；为空表示不是采集来的。
+    collect_task_id: int | None = None
     status: Literal["pending", "imported"]
     imported_job_id: int | None = None
     created_at: datetime
@@ -160,3 +172,37 @@ class CandidateJobImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: int = Field(ge=1)
+
+
+class CandidateJobBulkImportRequest(BaseModel):
+    """把选中的候选岗位批量导入岗位广场（服务端建岗位并回填关联）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_ids: list[int] = Field(min_length=1, max_length=MAX_CANDIDATE_IMPORT_BATCH)
+
+
+class CandidateJobImportOutcome(BaseModel):
+    """单条候选的导入结果。
+
+    **逐条如实反馈**，而不是给一个"整体成功/失败"的含糊结论：用户勾了 10 条，其中 3 条
+    岗位广场里已经有了——他需要知道是哪 3 条，而不是只知道"导入了 7 条"。
+    """
+
+    candidate_id: int
+    title: str = ""
+    # imported：新建了岗位；duplicate：岗位广场里已有同链接或同公司同名的岗位，已直接指向它；
+    # trashed：同名岗位在岗位广场的**回收站**里（不去新建第二条，也不擅自恢复）；
+    # invalid：候选没有岗位名，成为不了一个正式岗位；missing：候选已不存在（可能在别处被删了）。
+    outcome: Literal["imported", "duplicate", "trashed", "invalid", "missing"]
+    job_id: int | None = None
+
+
+class CandidateJobBulkImportOut(BaseModel):
+    imported: int = 0
+    duplicate: int = 0
+    # 岗位广场的**回收站**里已有同名岗位：既没新建也没恢复，等用户去回收站处理。
+    trashed: int = 0
+    invalid: int = 0
+    missing: int = 0
+    results: list[CandidateJobImportOutcome] = Field(default_factory=list)

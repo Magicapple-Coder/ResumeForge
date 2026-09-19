@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
@@ -44,6 +45,7 @@ from ...models.apply import (
 from ...models.job import JOB_STATUS_APPLIED, JOB_STATUS_OPEN, Job
 from ...models.profile import utcnow
 from ...models.resume import ResumeRecord
+from .. import trash
 from ...models.setting import AppSetting
 from ...schemas.apply import (
     ApplyConfigIn,
@@ -55,6 +57,7 @@ from ...schemas.apply import (
     CollectConfigIn,
     CollectConfigOut,
     GREETING_RECORD_MAX_CHARS,
+    MAX_BACKFILL_JOBS,
     SiteListOut,
     SiteOptionOut,
 )
@@ -385,7 +388,7 @@ def resolve_resume(db: Session, job_id: int | None, resume_id: int | None) -> Re
         return None
     return (
         db.query(ResumeRecord)
-        .filter(ResumeRecord.job_id == job_id)
+        .filter(trash.live_only(ResumeRecord), ResumeRecord.job_id == job_id)
         .order_by(ResumeRecord.created_at.desc(), ResumeRecord.id.desc())
         .first()
     )
@@ -611,8 +614,14 @@ def create_apply_task(db: Session, payload: ApplyTaskCreate) -> ApplyTask:
     return task
 
 
-def create_collect_task(db: Session) -> ApplyTask:
-    """显式开始采集：用已保存的采集配置建一个 kind=collect 批次。"""
+def create_collect_task(db: Session, *, save_site_samples: bool = False) -> ApplyTask:
+    """显式开始采集：用已保存的采集配置建一个 kind=collect 批次。
+
+    ``save_site_samples`` 是**每次采集一次性**的开关（是否保存本次抓到的站点原文）。
+    它不属于采集配置，所以刻意**不放进** ``CollectConfigIn``（那是 ``extra="forbid"`` 的公开
+    配置模型）；只有为真时才写进 ``task.config``，为假就不放这个键——保持旧任务的 config 形状
+    不变（与 ``backfill_job_ids`` 同一套做法，见 ``task_runner._load_config`` 的 ``ignore``）。
+    """
     from . import task_runner
 
     runner = task_runner.get_task_runner()
@@ -623,11 +632,54 @@ def create_collect_task(db: Session) -> ApplyTask:
     if not config.keywords and not config.city.strip():
         raise ApplyBadRequest("请先设置采集关键词或城市后再开始采集")
 
+    task_config = config.model_dump()
+    if save_site_samples:
+        task_config["save_site_samples"] = True
+
     task = ApplyTask(
         kind=TASK_KIND_COLLECT,
         status=TASK_STATUS_PENDING,
         total=config.per_task_limit,
-        config=config.model_dump(),
+        config=task_config,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    runner.start(task.id)
+    return task
+
+
+def create_backfill_task(db: Session, job_ids: Sequence[int]) -> ApplyTask:
+    """按岗位 id 只补抓详情，修"当年采集时详情没抓到、JD 为空"的历史数据。
+
+    复用采集任务的一整套机制（浏览器会话、详情抓取、限速、暂停/停止、进度显示），所以它仍然是一个
+    ``kind=collect`` 批次，只是把"这一批岗位从哪儿来"从关键词翻页换成用户点名，写进
+    ``config['backfill_job_ids']``。
+    """
+    from . import task_runner
+
+    runner = task_runner.get_task_runner()
+    if runner.is_running():
+        raise ApplyConflict("已有任务正在进行中，请先停止或等待其完成")
+
+    # 去重并保序：用户可能重复勾选，前端分批提交时也可能出现重复 id。
+    ids = list(dict.fromkeys(int(job_id) for job_id in job_ids))
+    if not ids:
+        raise ApplyBadRequest("请先选择要补齐详情的岗位")
+    if len(ids) > MAX_BACKFILL_JOBS:
+        raise ApplyBadRequest(
+            f"一次最多补齐 {MAX_BACKFILL_JOBS} 个岗位的详情（当前选了 {len(ids)} 个）："
+            "补详情要逐个打开岗位页面，很慢，请分批操作。"
+        )
+
+    # 这里**不**预先过滤"描述为空的岗位"——是否真的需要补由采集器的 ``_backfill`` 统一判断
+    # （已有描述 / 没有投递链接 / 在回收站里都会跳过）。两处各判一次必然漂移。
+    config = get_collect_config(db)
+    task = ApplyTask(
+        kind=TASK_KIND_COLLECT,
+        status=TASK_STATUS_PENDING,
+        total=len(ids),
+        config={**config.model_dump(), "backfill_job_ids": ids},
     )
     db.add(task)
     db.commit()
@@ -866,6 +918,7 @@ __all__ = [
     "collect_config_out",
     "config_out",
     "create_apply_task",
+    "create_backfill_task",
     "create_collect_task",
     "current_site",
     "current_site_key",

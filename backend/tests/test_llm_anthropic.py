@@ -190,6 +190,57 @@ async def test_stream_parses_text_and_tool_blocks():
 
 
 @pytest.mark.asyncio
+async def test_stream_parses_thinking_delta_and_ignores_signature():
+    """extended thinking 的思考内容在 ``thinking_delta``；末尾的 ``signature_delta`` 不采集。
+
+    签名是加密串、唯一用途是原样回传给下一轮；我们当前不回传 thinking 块（见
+    ``_convert_messages`` 的说明），所以既不该把它当内容展示，也不该落进 reasoning。
+    """
+    events = [
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}},
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "先想"},
+        },
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "signature_delta", "signature": "SIGNED-bytes=="},
+        },
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "清楚了"},
+        },
+        {"type": "content_block_stop", "index": 0},
+        {"type": "content_block_start", "index": 1, "content_block": {"type": "text"}},
+        {
+            "type": "content_block_delta",
+            "index": 1,
+            "delta": {"type": "text_delta", "text": "答案"},
+        },
+        {"type": "content_block_stop", "index": 1},
+        {"type": "message_stop"},
+    ]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_sse(events))
+
+    provider = _provider(handler)
+    reasoning: list[str] = []
+    texts: list[str] = []
+    async for delta in provider.stream_chat_events([{"role": "user", "content": "hi"}]):
+        if delta.reasoning:
+            reasoning.append(delta.reasoning)
+        texts.append(delta.text)
+
+    assert "".join(reasoning) == "先想清楚了"
+    assert "".join(texts) == "答案"
+    assert "SIGNED" not in "".join(reasoning)
+
+
+@pytest.mark.asyncio
 async def test_reasoning_effort_maps_to_thinking_budget():
     captured: dict = {}
 
@@ -250,6 +301,79 @@ async def test_http_400_gives_actionable_message():
     provider = _provider(handler)
     with pytest.raises(LLMError, match="HTTP 400"):
         await provider.chat([{"role": "user", "content": "hi"}])
+
+
+@pytest.mark.asyncio
+async def test_thinking_with_tool_history_explains_the_real_cause():
+    """开了思考又在多轮工具调用里报 400：要指向真正的原因（thinking 块未回传），
+    而不是把用户支去改模型名 / max_tokens / 预算。
+
+    这一组合下的 400 几乎必然是协议层"没回传 thinking 块"；若给通用文案，用户会去改
+    一堆无关参数、白忙一场——比不提示更糟。
+    """
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "bad"}})
+
+    provider = AnthropicProvider(
+        _config(),
+        transport=httpx.MockTransport(handler),
+        request_overrides={"reasoning_effort": "high"},
+    )
+    messages = [
+        {"role": "user", "content": "查一下岗位"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "t1",
+                    "type": "function",
+                    "function": {"name": "list_jobs", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "t1", "content": "结果"},
+    ]
+    with pytest.raises(LLMError, match="思考强度") as excinfo:
+        async for _ in provider.stream_chat_events(messages):
+            pass
+
+    message = str(excinfo.value)
+    assert "回传" in message
+    # 不再把用户支去改模型名 / 预算——那才是要修掉的误导。
+    assert "检查模型名称" not in message
+
+
+@pytest.mark.asyncio
+async def test_plain_400_keeps_the_generic_message():
+    """普通 400 仍是通用提示：改那条文案不能波及其它场景（开思考但没工具、有工具但没开思考）。"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "bad"}})
+
+    # 开了思考但没有工具历史 → 通用提示
+    thinking_only = AnthropicProvider(
+        _config(),
+        transport=httpx.MockTransport(handler),
+        request_overrides={"reasoning_effort": "high"},
+    )
+    with pytest.raises(LLMError, match="检查模型名称") as first:
+        async for _ in thinking_only.stream_chat_events([{"role": "user", "content": "hi"}]):
+            pass
+    assert "回传" not in str(first.value)
+
+    # 有工具历史但没开思考 → 通用提示
+    tools_only = _provider(handler)
+    with pytest.raises(LLMError, match="检查模型名称") as second:
+        async for _ in tools_only.stream_chat_events(
+            [
+                {"role": "user", "content": "查一下"},
+                {"role": "tool", "tool_call_id": "t1", "content": "结果"},
+            ]
+        ):
+            pass
+    assert "回传" not in str(second.value)
 
 
 @pytest.mark.asyncio

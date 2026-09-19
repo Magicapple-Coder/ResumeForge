@@ -16,6 +16,7 @@ import {
   updateResumeTemplate,
 } from "../../api/resumeTemplates";
 import type { ResumeFontScale } from "../../types";
+import A4PreviewFrame from "./A4PreviewFrame";
 
 interface Props {
   open: boolean;
@@ -129,7 +130,9 @@ export default function StyleTemplateEditorModal({
       okText="保存模板"
       confirmLoading={saving}
       width="min(1120px, 96vw)"
-      styles={{ body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto" } }}
+      styles={{
+        body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto", overflowX: "hidden" },
+      }}
       destroyOnHidden
     >
       {loading ? (
@@ -180,12 +183,7 @@ export default function StyleTemplateEditorModal({
                 <Spin />
               </div>
             ) : preview ? (
-              <iframe
-                title="模板预览"
-                className="style-template-frame"
-                sandbox=""
-                srcDoc={preview}
-              />
+              <A4PreviewFrame html={preview} title="模板预览" maxHeight="66vh" />
             ) : (
               <Typography.Text type="secondary">还没有预览，点「刷新预览」试试。</Typography.Text>
             )}

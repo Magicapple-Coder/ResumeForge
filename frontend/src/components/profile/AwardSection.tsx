@@ -10,7 +10,6 @@ interface Props {
 export function AwardSection({ editable }: Props) {
   return (
     <ProfileSection
-      title="荣誉奖项"
       fieldName="awards"
       editable={editable}
       emptyValue={{ name: "", date: "", description: "" }}

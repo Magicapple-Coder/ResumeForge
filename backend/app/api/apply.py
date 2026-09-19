@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.apply import TASK_KIND_APPLY, ApplyQueueItem, ApplyTask, ApplyTaskItem
+from ..models.apply import (
+    TASK_KIND_APPLY,
+    TASK_KIND_COLLECT,
+    ApplyQueueItem,
+    ApplyTask,
+    ApplyTaskItem,
+)
 from ..models.job import Job
 from ..schemas.apply import (
     ApplyConfigIn,
@@ -25,10 +31,13 @@ from ..schemas.apply import (
     ApplyTaskItemOut,
     ApplyTaskOut,
     BrowserStatusOut,
+    CollectBackfillIn,
     CollectConfigIn,
     CollectConfigOut,
+    CollectTaskCreateIn,
     GreetingPreviewOut,
     GreetingPreviewRequest,
+    SiteHealthListOut,
     SiteListOut,
 )
 from ..schemas.common import Page
@@ -37,6 +46,7 @@ from ..services.job_match import generate_greeting, job_payload
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.settings_service import get_llm_config
+from ..services.site_health import site_health_overview
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +244,25 @@ def create_apply_task(payload: ApplyTaskCreate, db: Session = Depends(get_db)):
     return ApplyTaskOut.model_validate(task)
 
 
+@router.get("/tasks", response_model=list[ApplyTaskOut])
+def list_tasks(
+    kind: str = Query(default="", description="collect / apply；留空表示不限"),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """按时间**倒序**列出历史批次（默认最近 20 个）。
+
+    「采集记录」靠它回看每次采集：采集是个"跑完就看不见过程"的动作，没有这份记录，
+    用户第二天就不知道上次是按什么条件采的、采到了几条。
+    """
+    if kind and kind not in (TASK_KIND_APPLY, TASK_KIND_COLLECT):
+        raise HTTPException(status_code=422, detail="无效的批次类型")
+    query = db.query(ApplyTask)
+    if kind:
+        query = query.filter(ApplyTask.kind == kind)
+    return query.order_by(ApplyTask.id.desc()).limit(limit).all()
+
+
 @router.get("/tasks/current", response_model=ApplyTaskOut | None)
 def current_task(db: Session = Depends(get_db)):
     task = apply_service.current_task(db, kind=TASK_KIND_APPLY)
@@ -298,9 +327,31 @@ def retry_record(item_id: int, db: Session = Depends(get_db)):
 
 
 @collect_router.post("/tasks", response_model=ApplyTaskOut)
-def create_collect_task(db: Session = Depends(get_db)):
+def create_collect_task(payload: CollectTaskCreateIn | None = None, db: Session = Depends(get_db)):
+    """开始一次采集。
+
+    请求体可省略（保持既有调用方式不变）；给了 ``save_site_samples=true`` 才保存本次抓到的
+    站点原文——默认关闭，绝不默默记录。
+    """
+    save_site_samples = bool(payload.save_site_samples) if payload is not None else False
     try:
-        task = apply_service.create_collect_task(db)
+        task = apply_service.create_collect_task(db, save_site_samples=save_site_samples)
+    except apply_service.ApplyServiceError as exc:
+        _raise(exc)
+    except task_runner.TaskRunnerError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ApplyTaskOut.model_validate(task)
+
+
+@collect_router.post("/backfill", response_model=ApplyTaskOut)
+def create_backfill_task(payload: CollectBackfillIn, db: Session = Depends(get_db)):
+    """按岗位 id 只补抓详情：修"当年采集时详情没抓到、JD 为空"的历史数据。
+
+    复用采集任务（``kind=collect``）的整套运行器——浏览器会话、详情抓取、限速、暂停/停止与进度
+    显示都是现成的，这里只换掉"这一批岗位从哪儿来"（由用户点名，而不是关键词翻页）。
+    """
+    try:
+        task = apply_service.create_backfill_task(db, payload.job_ids)
     except apply_service.ApplyServiceError as exc:
         _raise(exc)
     except task_runner.TaskRunnerError as exc:
@@ -311,6 +362,16 @@ def create_collect_task(db: Session = Depends(get_db)):
 @collect_router.get("/tasks/{task_id}", response_model=ApplyTaskDetailOut)
 def collect_task_detail(task_id: int, db: Session = Depends(get_db)):
     return _task_detail(db, task_id)
+
+
+@collect_router.get("/site-health", response_model=SiteHealthListOut)
+def collect_site_health(db: Session = Depends(get_db)):
+    """每个招聘网站的采集健康度。
+
+    把"采集悄悄抓不到东西"（站点改版后能翻到列表却读不出岗位/详情）变成用户看得见的
+    ``degraded`` 标记与可操作原因。判据完全在后端（``services/site_health``），前端只展示。
+    """
+    return SiteHealthListOut(sites=site_health_overview(db))
 
 
 __all__ = ["collect_router", "router"]

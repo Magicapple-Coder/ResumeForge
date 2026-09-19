@@ -9,21 +9,34 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..models.claim import ClaimRecord, can_enter_final
 from ..models.interview import (
     INTERVIEW_STATUS_ACTIVE,
     INTERVIEW_STATUS_FINISHED,
     InterviewSession,
 )
 from ..models.job import Job
+from ..models.resume import ResumeRecord
 from ..schemas.interview import (
+    InterviewAnalysisOut,
+    InterviewAnalysisRequest,
     InterviewAnswerCreate,
     InterviewAnswerResult,
     InterviewBrief,
     InterviewCreate,
     InterviewDetail,
     InterviewMessageOut,
+    InterviewOptimizeOut,
+    InterviewOptimizeRequest,
+    InterviewQuestionAnswerRequest,
+    InterviewQuestionAnswerOut,
+    InterviewQuestionGenerateRequest,
+    QuestionBankOut,
 )
 from ..schemas.material import MaterialCreate, MaterialOut
+from ..schemas.resume import ResumeContent
+from ..services import interview_questions as interview_questions_service
+from ..services import trash
 from ..services.interview import (
     add_message,
     answered_rounds,
@@ -37,6 +50,7 @@ from ..services.llm.base import LLMError
 from ..services.materials import create_material as create_material_record
 from ..services.profile_relevance import build_job_prompt_text
 from ..services.profile_service import get_profile_detail, to_profile_out
+from ..services.resume_suggestions import serialize_resume_prompt_data
 from ..services.settings_service import get_llm_config
 
 logger = logging.getLogger(__name__)
@@ -148,6 +162,46 @@ async def _finish_with_report(
     mark_finished(session)
     db.commit()
     db.refresh(session)
+
+
+# ===== R-11 题库 / 答题思路 / 反向优化 的共用读取 =====
+
+
+def _resume_record_or_none(db: Session, resume_id: int) -> ResumeRecord | None:
+    record = db.get(ResumeRecord, resume_id)
+    if record is None or trash.is_deleted(record):
+        return None
+    return record
+
+
+def _claims_json(db: Session) -> str:
+    """已确认的事实台账基线，序列化后进题库/思路提示词。
+
+    只用 ``已确认`` 状态：它们是可以进入正式材料的唯一事实来源，与生成链路一致。
+    """
+    claims = [
+        item
+        for item in db.query(ClaimRecord).filter(trash.live_only(ClaimRecord)).all()
+        if can_enter_final(item.verification_status)
+    ]
+    if not claims:
+        return ""
+    return json.dumps(
+        [
+            {
+                "title": item.title,
+                "category": item.category,
+                "subject": item.subject,
+                "candidate_wording": item.candidate_wording,
+                "responsibility_level": item.responsibility_level,
+                "boundary": item.boundary,
+                "interview_details": item.interview_details or {},
+                "risk_notes": item.risk_notes or [],
+            }
+            for item in claims
+        ],
+        ensure_ascii=False,
+    )
 
 
 @router.get("", response_model=list[InterviewBrief])
@@ -326,4 +380,157 @@ def report_to_material(session_id: int, db: Session = Depends(get_db)):
             content=_report_markdown(session),
             note=f"来自模拟面试 #{session.id}",
         ),
+    )
+
+
+@router.post("/questions", response_model=QuestionBankOut)
+async def generate_question_bank(
+    payload: InterviewQuestionGenerateRequest, db: Session = Depends(get_db)
+):
+    """生成个性化题库（三类：基础/项目深挖/反问 HR），**即时计算、不落库**。"""
+    provider, _model = _require_provider(db)
+    job = db.get(Job, payload.job_id) if payload.job_id else None
+
+    resume_record = None
+    resume_json = ""
+    if payload.resume_id is not None:
+        resume_record = _resume_record_or_none(db, payload.resume_id)
+        if resume_record is None:
+            raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+        resume_json = serialize_resume_prompt_data(
+            ResumeContent.model_validate(resume_record.content or {})
+        )
+
+    job_text = (
+        build_job_prompt_text(job, MAX_JOB_CONTEXT_FOR_INTERVIEW)
+        if job is not None
+        else _job_text(db, resume_record.job_id if resume_record is not None else None)
+    )
+    claims_json = _claims_json(db)
+    db.close()
+    try:
+        result = await interview_questions_service.generate_question_bank(
+            provider,
+            job_text=job_text,
+            resume_json=resume_json,
+            claims_json=claims_json,
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"生成题库失败：{exc}") from exc
+    return QuestionBankOut(
+        job_id=job.id if job is not None else None,
+        job_title=job.title if job is not None else "",
+        company=job.company if job is not None else "",
+        resume_id=payload.resume_id,
+        groups=result["groups"],
+        llm_used=True,
+        notes=result["notes"],
+    )
+
+
+@router.post("/analyze", response_model=InterviewAnalysisOut)
+async def analyze_question(
+    payload: InterviewAnalysisRequest, db: Session = Depends(get_db)
+):
+    """输入一道真实问题，分析答题思路（框架/要点/追问/误区）。"""
+    provider, _model = _require_provider(db)
+
+    parts: list[str] = []
+    if payload.job_id is not None:
+        job = db.get(Job, payload.job_id)
+        if job is not None:
+            parts.append(f"## 目标岗位\n{build_job_prompt_text(job, MAX_JOB_CONTEXT_FOR_INTERVIEW)}")
+    if payload.resume_id is not None:
+        record = _resume_record_or_none(db, payload.resume_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+        parts.append(
+            "## 候选人简历\n"
+            + serialize_resume_prompt_data(ResumeContent.model_validate(record.content or {}))
+        )
+    claims_json = _claims_json(db)
+    if claims_json:
+        parts.append(f"## 事实台账\n{claims_json}")
+    if payload.context.strip():
+        parts.append(f"## 用户补充\n{payload.context.strip()}")
+
+    context = "\n\n".join(parts)
+    db.close()
+    try:
+        return await interview_questions_service.analyze_question(
+            provider, question=payload.question, context=context
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"分析答题思路失败：{exc}") from exc
+
+
+@router.post("/questions/answer", response_model=InterviewQuestionAnswerOut)
+async def generate_question_answer_entry(
+    payload: InterviewQuestionAnswerRequest, db: Session = Depends(get_db)
+):
+    """为单道题生成详细参考答案（正文 + 要点 + 话术），**即时计算、不落库**。"""
+    provider, _model = _require_provider(db)
+
+    job_payload = ""
+    if payload.job_id is not None:
+        job = db.get(Job, payload.job_id)
+        if job is not None:
+            job_payload = build_job_prompt_text(job, MAX_JOB_CONTEXT_FOR_INTERVIEW)
+
+    resume_text = ""
+    if payload.resume_id is not None:
+        record = _resume_record_or_none(db, payload.resume_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+        resume_text = serialize_resume_prompt_data(
+            ResumeContent.model_validate(record.content or {})
+        )
+
+    db.close()
+    try:
+        return await interview_questions_service.generate_question_answer(
+            provider,
+            question=payload.question,
+            job_payload=job_payload,
+            resume_text=resume_text,
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"生成参考答案失败：{exc}") from exc
+
+
+@router.post("/optimize-resume", response_model=InterviewOptimizeOut)
+async def optimize_resume(
+    payload: InterviewOptimizeRequest, db: Session = Depends(get_db)
+):
+    """把面试暴露的短板与高频追问反向转成简历改写建议（**只产出建议、不改正文**）。"""
+    provider, _model = _require_provider(db)
+    record = _resume_record_or_none(db, payload.resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    resume = ResumeContent.model_validate(record.content or {})
+
+    job = db.get(Job, payload.job_id) if payload.job_id else (
+        db.get(Job, record.job_id) if record.job_id else None
+    )
+    job_text = (
+        build_job_prompt_text(job, MAX_JOB_CONTEXT_FOR_INTERVIEW) if job is not None else ""
+    )
+    weaknesses = [str(item).strip() for item in payload.weaknesses if str(item).strip()]
+    follow_ups = [str(item).strip() for item in payload.follow_ups if str(item).strip()]
+    db.close()
+    try:
+        suggestions = await interview_questions_service.optimize_resume(
+            provider,
+            resume=resume,
+            job_text=job_text,
+            weaknesses=weaknesses,
+            follow_ups=follow_ups,
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"反向优化失败：{exc}") from exc
+    return InterviewOptimizeOut(
+        resume_id=payload.resume_id,
+        suggestions=suggestions,
+        llm_used=True,
+        notes=[],
     )

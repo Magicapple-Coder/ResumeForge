@@ -76,7 +76,13 @@ export default function UpdateCard() {
               {result.published_at && <span>发布时间：{result.published_at.slice(0, 10)}</span>}
               {result.notes && (
                 <Typography.Paragraph
-                  style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto" }}
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                  }}
                 >
                   {result.notes}
                 </Typography.Paragraph>

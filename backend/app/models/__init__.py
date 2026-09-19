@@ -42,7 +42,14 @@ from .interview import (
     InterviewMessage,
     InterviewSession,
 )
+from .interview_experience import (
+    EXPERIENCE_ROUND_TYPES,
+    EXPERIENCE_SOURCES,
+    InterviewExperience,
+)
+from .interview_review_record import InterviewReviewRecord
 from .job import Job
+from .knowledge_entry import KnowledgeEntry
 from .material import MATERIAL_CATEGORIES, CandidateJob, Material
 from .profile import (
     Award,
@@ -54,7 +61,15 @@ from .profile import (
     Skill,
     UserProfile,
 )
-from .resume import ResumeRecord
+from .question_bank_record import QuestionBankRecord
+from .referral import REFERRAL_STATUSES, Referral
+from .reminder import REMINDER_KINDS, REMINDER_STATUSES, Reminder
+from .resume import (
+    GENERATE_ACTIVE_STATUSES,
+    GENERATE_STATUSES,
+    ResumeGenerateTask,
+    ResumeRecord,
+)
 from .tracker import (
     SOURCES,
     STATUSES,
@@ -62,6 +77,7 @@ from .tracker import (
 )
 from .resume_template import TEMPLATE_KIND_FORMAT, TEMPLATE_KIND_STYLE, TEMPLATE_KINDS, ResumeTemplate
 from .setting import AppSetting, LLMConfigRecord
+from .share_package import SHARE_PERMISSIONS, SharePackage
 
 __all__ = [
     "Job",
@@ -78,6 +94,9 @@ __all__ = [
     "Skill",
     "Award",
     "ResumeRecord",
+    "ResumeGenerateTask",
+    "GENERATE_STATUSES",
+    "GENERATE_ACTIVE_STATUSES",
     "AppSetting",
     "LLMConfigRecord",
     "Material",
@@ -123,4 +142,17 @@ __all__ = [
     "REHEARSE_KINDS",
     "DRILL_STATUS_ACTIVE",
     "DRILL_STATUS_FINISHED",
+    "InterviewExperience",
+    "EXPERIENCE_SOURCES",
+    "EXPERIENCE_ROUND_TYPES",
+    "InterviewReviewRecord",
+    "KnowledgeEntry",
+    "QuestionBankRecord",
+    "Referral",
+    "REFERRAL_STATUSES",
+    "Reminder",
+    "REMINDER_KINDS",
+    "REMINDER_STATUSES",
+    "SharePackage",
+    "SHARE_PERMISSIONS",
 ]

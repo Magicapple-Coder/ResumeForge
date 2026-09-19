@@ -288,6 +288,43 @@ async def test_stream_events_finalizes_tool_calls_without_a_finish_reason():
     assert len([call for delta in deltas for call in delta.tool_calls]) == 1
 
 
+async def test_stream_events_emits_deepseek_reasoning_content():
+    """DeepSeek 系把思考内容放在 ``reasoning_content``，要单独产成 reasoning 帧。"""
+    frames = [
+        {"delta": {"reasoning_content": "先想"}},
+        {"delta": {"reasoning_content": "一下"}},
+        {"delta": {"content": "答案"}},
+    ]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider)
+
+    assert "".join(delta.reasoning for delta in deltas) == "先想一下"
+    # 思考内容与正文分属不同字段，不能互相污染。
+    assert "".join(delta.text for delta in deltas) == "答案"
+
+
+async def test_stream_events_tolerates_the_reasoning_field_name():
+    """字段名不统一是常态：有的网关用 ``reasoning``，同样要认。"""
+    frames = [{"delta": {"reasoning": "思考片段"}}, {"delta": {"content": "好"}}]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider)
+
+    assert "".join(delta.reasoning for delta in deltas) == "思考片段"
+
+
+async def test_stream_events_without_reasoning_produces_nothing():
+    """两个字段都缺失是常态（普通模型、未开思考）——什么都不产出，绝不臆造。"""
+    frames = [{"delta": {"content": "没有思考内容"}}]
+    provider = _provider(lambda _request: _stream_response(_sse(frames) + "data: [DONE]\n\n"))
+
+    deltas = await _collect_events(provider)
+
+    assert all(delta.reasoning == "" for delta in deltas)
+    assert "".join(delta.text for delta in deltas) == "没有思考内容"
+
+
 async def test_stream_events_sends_tools_only_when_asked():
     bodies: list[dict] = []
 

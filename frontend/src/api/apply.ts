@@ -13,6 +13,7 @@ import type {
   GreetingPreview,
   Page,
   QueueConflictDetail,
+  SiteHealthList,
   SiteList,
 } from "../types";
 import { ApiError, buildQuery, extractError, request } from "./client";
@@ -167,10 +168,51 @@ export function retryRecord(itemId: number): Promise<ApplyTask> {
 
 // ===== 采集 =====
 
-export function createCollectTask(): Promise<ApplyTask> {
-  return request("/collect/tasks", { method: "POST" });
+/**
+ * 开始一次采集。
+ *
+ * `saveSiteSamples` 为真时保存本次抓到的站点原文（搜索与详情两个接口的响应原文），
+ * 供排查解析问题 / 做真实样例回归用。**默认关闭**——往磁盘写站点数据必须由用户每次显式勾选，
+ * 且只在不勾选时也保持旧请求形状（不带 `save_site_samples` 字段）。
+ */
+export function createCollectTask(saveSiteSamples = false): Promise<ApplyTask> {
+  const body = saveSiteSamples ? { save_site_samples: true } : {};
+  return request("/collect/tasks", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * 按岗位 id 只补抓详情（修历史遗留的空 JD）。
+ *
+ * 与采集共用同一个任务机制：它同样是 `kind=collect` 的批次，进度 / 暂停 / 停止都出现在
+ * 「投递台 → 自动采集」的任务面板里，所以调用方必须告诉用户去那里看进度。
+ */
+export function startBackfill(jobIds: number[]): Promise<ApplyTask> {
+  return request("/collect/backfill", {
+    method: "POST",
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
 }
 
 export function getCollectTaskDetail(taskId: number): Promise<ApplyTaskDetail> {
   return request(`/collect/tasks/${taskId}`);
+}
+
+/**
+ * 站点健康度：把"采集悄悄抓不到东西"（站点改版后能翻到列表却读不出岗位/详情）
+ * 变成用户看得见的 degraded 标记。判据在后端，前端只展示。
+ */
+export function getSiteHealth(): Promise<SiteHealthList> {
+  return request("/collect/site-health");
+}
+
+/**
+ * 历史批次列表（按时间倒序）。「采集记录」用它回看每次采集的条件与结果。
+ *
+ * 采集是个"跑完就看不见过程"的动作：没有这份记录，第二天就不知道上次按什么条件采的、
+ * 采到了几条、跳过多少重复。
+ */
+export function listApplyTasks(
+  params: { kind?: "collect" | "apply"; limit?: number } = {},
+): Promise<ApplyTask[]> {
+  return request(`/apply/tasks${buildQuery(params)}`);
 }

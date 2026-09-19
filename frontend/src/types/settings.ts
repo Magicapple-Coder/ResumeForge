@@ -96,6 +96,11 @@ export interface DatasetInfo {
   exists: boolean;
 }
 
+/** 应用打开时是否弹出近期提醒（默认开）。 */
+export interface ReminderPopupSetting {
+  enabled: boolean;
+}
+
 /** 更新检查结果：只对比版本，不执行任何自动更新。 */
 export interface UpdateCheckResult {
   current_version: string;

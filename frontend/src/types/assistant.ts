@@ -51,6 +51,18 @@ export interface AssistantSource {
   snippet: string;
 }
 
+/**
+ * 一次回答里 [来源N] 的「编号 → url」映射条目。
+ *
+ * 后端在来源**首次收集时**分配全局单调递增编号并持久化到助手消息的
+ * `context.source_map`；前端渲染正文里的 [来源N] 时按这个映射解析链接，
+ * 而不是拿"去重后的参考来源"数组下标去对——那会跳错来源。
+ */
+export interface AssistantSourceNumber {
+  number: number;
+  url: string;
+}
+
 /** 助手调用过一次工具的记录；写在助手消息的 context 里，供历史回看。 */
 export interface AssistantToolCall {
   name: string;
@@ -59,6 +71,14 @@ export interface AssistantToolCall {
   link: string;
   ok: boolean;
   error: string;
+  /**
+   * 这次调用是否真的改动了用户的数据（后端 `ToolResult.changed`）。
+   *
+   * 可选是因为它随功能一起加的：更早存下的历史消息里没有这个字段，缺失按"没改动"处理，
+   * 不能据此**主动**声称改动过——这类信息只有后端说了才算数。折叠标题里的「改动了 N 项」
+   * 就靠它，所以前端不再自己按工具名猜哪些是写操作（猜一份就会与后端漂移）。
+   */
+  changed?: boolean;
 }
 
 /** 被引用的那条消息的快照：原消息删掉之后这里仍然可读。 */
@@ -82,7 +102,18 @@ export interface AssistantMessage {
     include_profile?: boolean;
     web_search?: boolean;
     sources?: AssistantSource[];
+    /** [来源N] 的「编号 → url」映射（可选：更早存下的历史消息里没有它）。 */
+    source_map?: AssistantSourceNumber[];
     tool_calls?: AssistantToolCall[];
+    /**
+     * 模型的思考过程（开启思考强度时才有），供用户点开查看。
+     *
+     * 后端对它有存储上限，超限会截断并把 `reasoning_truncated` 置真——界面据此在
+     * 结尾补一句"已截断"，不假装这就是全部。可选：更早存下的历史消息里没有它。
+     */
+    reasoning?: string;
+    /** 上面的思考过程是否因超过存储上限被截断。 */
+    reasoning_truncated?: boolean;
     quoted?: AssistantQuotedMessage;
   };
   status: "pending" | "complete" | "error" | "cancelled";
@@ -109,10 +140,16 @@ export type AssistantStreamEvent =
       conversation_title: string;
     }
   | { type: "progress"; message: string }
-  | { type: "sources"; sources: AssistantSource[]; error: string }
+  | {
+      type: "sources";
+      sources: AssistantSource[];
+      source_map?: AssistantSourceNumber[];
+      error: string;
+    }
   | ({
       type: "tool";
     } & AssistantToolCall)
   | { type: "delta"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "done"; message: AssistantMessage }
   | { type: "error"; message: string };

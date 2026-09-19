@@ -11,7 +11,6 @@ interface Props {
 export function ExperienceSection({ editable }: Props) {
   return (
     <ProfileSection
-      title="实习/工作经历"
       fieldName="experiences"
       editable={editable}
       emptyValue={{

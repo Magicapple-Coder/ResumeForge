@@ -19,6 +19,7 @@ from ..models.tracker import ACTIVE_STATUSES, ApplicationTrack
 from ..schemas.job import JobOut
 from ..schemas.resume import ResumeBrief
 from ..schemas.search import PendingClaimBrief, Stats
+from ..services import trash
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -31,14 +32,25 @@ _STALLED_DAYS = 7
 @router.get("", response_model=Stats)
 def get_stats(db: Session = Depends(get_db)):
     week_ago = utcnow() - timedelta(days=7)
-    latest_jobs = db.query(Job).order_by(Job.created_at.desc()).limit(_LATEST_LIMIT).all()
+    latest_jobs = (
+        db.query(Job)
+        .filter(trash.live_only(Job))
+        .order_by(Job.created_at.desc())
+        .limit(_LATEST_LIMIT)
+        .all()
+    )
     latest_resumes = (
-        db.query(ResumeRecord).order_by(ResumeRecord.created_at.desc()).limit(_LATEST_LIMIT).all()
+        db.query(ResumeRecord)
+        .filter(trash.live_only(ResumeRecord))
+        .order_by(ResumeRecord.created_at.desc())
+        .limit(_LATEST_LIMIT)
+        .all()
     )
 
     # 待确认的台账条目：首页点名它们，因为"这条还没核实"是用户自己能推进的事。
     pending_claims = (
         db.query(ClaimRecord)
+        .filter(trash.live_only(ClaimRecord))
         .filter(ClaimRecord.verification_status == VERIFICATION_PENDING)
         .order_by(ClaimRecord.updated_at.desc())
         .limit(_LATEST_LIMIT)
@@ -46,6 +58,7 @@ def get_stats(db: Session = Depends(get_db)):
     )
     pending_claim_count = (
         db.query(ClaimRecord)
+        .filter(trash.live_only(ClaimRecord))
         .filter(ClaimRecord.verification_status == VERIFICATION_PENDING)
         .count()
     )
@@ -53,7 +66,9 @@ def get_stats(db: Session = Depends(get_db)):
     # 进行中的投递：ACTIVE_STATUSES 是"还没走到终态"的那几个；其中久未更新的单独计数，
     # 因为"卡住了"比"在推进"更需要用户去看一眼。
     active_tracks = (
-        db.query(ApplicationTrack).filter(ApplicationTrack.status.in_(tuple(ACTIVE_STATUSES)))
+        db.query(ApplicationTrack)
+        .filter(trash.live_only(ApplicationTrack))
+        .filter(ApplicationTrack.status.in_(tuple(ACTIVE_STATUSES)))
     )
     stalled_cutoff = utcnow() - timedelta(days=_STALLED_DAYS)
     stalled_application_count = active_tracks.filter(ApplicationTrack.updated_at < stalled_cutoff).count()
@@ -69,13 +84,19 @@ def get_stats(db: Session = Depends(get_db)):
     )
 
     return Stats(
-        job_count=db.query(Job).count(),
-        open_job_count=db.query(Job).filter(Job.status == JOB_STATUS_OPEN).count(),
-        resume_count=db.query(ResumeRecord).count(),
-        week_resume_count=db.query(ResumeRecord).filter(ResumeRecord.created_at >= week_ago).count(),
+        job_count=db.query(Job).filter(trash.live_only(Job)).count(),
+        open_job_count=db.query(Job)
+        .filter(trash.live_only(Job), Job.status == JOB_STATUS_OPEN)
+        .count(),
+        resume_count=db.query(ResumeRecord).filter(trash.live_only(ResumeRecord)).count(),
+        week_resume_count=db.query(ResumeRecord)
+        .filter(trash.live_only(ResumeRecord), ResumeRecord.created_at >= week_ago)
+        .count(),
         latest_jobs=[JobOut.model_validate(row) for row in latest_jobs],
         latest_resumes=[ResumeBrief.model_validate(row) for row in latest_resumes],
-        favorite_job_count=db.query(Job).filter(Job.favorite.is_(True)).count(),
+        favorite_job_count=db.query(Job)
+        .filter(trash.live_only(Job), Job.favorite.is_(True))
+        .count(),
         pending_claim_count=pending_claim_count,
         pending_claims=[
             PendingClaimBrief(id=row.id, title=row.title or row.subject or "未命名主张")

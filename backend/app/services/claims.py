@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from . import trash
 from ..models.claim import (
     CLAIM_CATEGORIES,
     RESPONSIBILITY_PARTICIPATED,
@@ -56,7 +57,15 @@ _STRONG_WORDING_MARKERS = (
 
 
 def claim_or_none(db: Session, claim_id: int) -> ClaimRecord | None:
-    return db.get(ClaimRecord, claim_id)
+    """取一条台账；**已在回收站里的当作不存在**。
+
+    单条读取与修改都走这里，所以"回收站里的内容打不开、也不能再改"这条规则只写一次。
+    删除路径刻意不用它——否则进了回收站就再也动不了。
+    """
+    record = db.get(ClaimRecord, claim_id)
+    if record is None or trash.is_deleted(record):
+        return None
+    return record
 
 
 def list_claims(
@@ -67,7 +76,7 @@ def list_claims(
     keyword: str = "",
 ) -> list[ClaimRecord]:
     """按分类 / 核实状态 / 关键词检索；默认按最近更新排序。"""
-    query = db.query(ClaimRecord)
+    query = db.query(ClaimRecord).filter(trash.live_only(ClaimRecord))
     if category:
         query = query.filter(ClaimRecord.category == category)
     if status:
@@ -117,10 +126,11 @@ def update_claim(db: Session, record: ClaimRecord, payload: ClaimUpdate) -> Clai
 
 
 def delete_claim(db: Session, claim_id: int) -> bool:
+    """移入回收站（软删除）；彻底删除在「回收站」里单独提供。"""
     record = db.get(ClaimRecord, claim_id)
-    if record is None:
+    if record is None or trash.is_deleted(record):
         return False
-    db.delete(record)
+    trash.soft_delete(db, "claim", record)
     db.commit()
     return True
 

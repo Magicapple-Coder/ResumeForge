@@ -340,3 +340,46 @@ export interface GreetingPreview {
   greeting: string;
   source: "generated" | "queue" | "default";
 }
+
+// ===== ⑫ 站点健康度（degraded 标记）=====
+
+/**
+ * 站点健康度状态：`ok` 正常；`degraded` 疑似改版（采集悄悄抓不到东西）。
+ *
+ * 判据完全在后端（`app/services/site_health.py`）。前端**只读** `status` 与 `reasons`，
+ * 绝不在这里再判一次——否则两处判据迟早漂移。
+ */
+export type SiteHealthStatus = "ok" | "degraded";
+
+/** 一次采集运行的摘要（供界面展开对照「采集记录」）。 */
+export interface CollectRunSummary {
+  status: string;
+  failure_category: string;
+  succeeded: number;
+  detail_missing: number;
+  created_at: string;
+}
+
+export interface SiteHealth {
+  site_key: string;
+  display_name: string;
+  status: SiteHealthStatus;
+  /** 人类可读、可操作的中文原因（来自后端）。degraded 时非空。 */
+  reasons: string[];
+  sampled: number;
+  selector_failures: number;
+  detail_drift_runs: number;
+  recent: CollectRunSummary[];
+}
+
+export interface SiteHealthList {
+  sites: SiteHealth[];
+}
+
+/** 取当前站点的健康度；找不到时回退 undefined（前端不自行判定，只如实展示后端结论）。 */
+export function siteHealthFor(
+  list: SiteHealthList | undefined,
+  siteKey: string,
+): SiteHealth | undefined {
+  return list?.sites.find((site) => site.site_key === siteKey);
+}

@@ -3,6 +3,7 @@
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  ExportOutlined,
   FilePdfOutlined,
   FileTextOutlined,
   FileWordOutlined,
@@ -12,7 +13,12 @@ import {
 import { Collapse, Image, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AssistantAttachment, AssistantSource, AssistantToolCall } from "../../../types";
+import type {
+  AssistantAttachment,
+  AssistantSource,
+  AssistantSourceNumber,
+  AssistantToolCall,
+} from "../../../types";
 import {
   attachmentStyle,
   canPreviewImage,
@@ -27,7 +33,14 @@ function attachmentIcon(name: string, kind: string) {
   return name.toLowerCase().endsWith(".pdf") ? <FilePdfOutlined /> : <FileWordOutlined />;
 }
 
-export function AssistantMessageContent({ content }: { content: string }) {
+export function AssistantMessageContent({
+  content,
+  sourceMap,
+}: {
+  content: string;
+  /** [来源N] 的「编号 → url」映射；缺省时正文里的 [来源N] 保持纯文本。 */
+  sourceMap?: AssistantSourceNumber[];
+}) {
   const lines = content.split(/\r?\n/);
   const blocks: ReactNode[] = [];
 
@@ -48,7 +61,7 @@ export function AssistantMessageContent({ content }: { content: string }) {
             <thead>
               <tr>
                 {tableHeader.map((cell, cellIndex) => (
-                  <th key={`header-${cellIndex}`}>{renderInlineMarkdown(cell)}</th>
+                  <th key={`header-${cellIndex}`}>{renderInlineMarkdown(cell, sourceMap)}</th>
                 ))}
               </tr>
             </thead>
@@ -56,7 +69,9 @@ export function AssistantMessageContent({ content }: { content: string }) {
               {rows.map((row, rowIndex) => (
                 <tr key={`row-${rowIndex}`}>
                   {row.map((cell, cellIndex) => (
-                    <td key={`cell-${rowIndex}-${cellIndex}`}>{renderInlineMarkdown(cell)}</td>
+                    <td key={`cell-${rowIndex}-${cellIndex}`}>
+                      {renderInlineMarkdown(cell, sourceMap)}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -73,14 +88,14 @@ export function AssistantMessageContent({ content }: { content: string }) {
     const bullet = line.match(/^\s*[-*+]\s+(.+)$/);
     const ordered = line.match(/^\s*(\d+)[.)]\s+(.+)$/);
     if (heading) {
-      blocks.push(<h4 key={`heading-${index}`}>{renderInlineMarkdown(heading[1])}</h4>);
+      blocks.push(<h4 key={`heading-${index}`}>{renderInlineMarkdown(heading[1], sourceMap)}</h4>);
       continue;
     }
     if (bullet || ordered) {
       blocks.push(
         <div key={`list-${index}`} className="assistant-markdown-list-item">
           <span aria-hidden="true">{ordered ? `${ordered[1]}.` : "•"}</span>
-          <div>{renderInlineMarkdown(bullet?.[1] ?? ordered?.[2] ?? "")}</div>
+          <div>{renderInlineMarkdown(bullet?.[1] ?? ordered?.[2] ?? "", sourceMap)}</div>
         </div>,
       );
       continue;
@@ -89,7 +104,7 @@ export function AssistantMessageContent({ content }: { content: string }) {
       blocks.push(<div key={`space-${index}`} className="assistant-markdown-spacer" />);
       continue;
     }
-    blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(line)}</p>);
+    blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(line, sourceMap)}</p>);
   }
 
   return <div className="assistant-message-content assistant-message-content--rich">{blocks}</div>;
@@ -266,39 +281,136 @@ const TOOL_LABELS: Record<string, string> = {
   read_skill_knowledge: "查阅技能知识文件",
   // 简历版式与联网
   update_resume_layout: "调整简历版式",
+  create_format_template: "新建格式模板",
+  update_format_template: "修改格式模板",
   web_search: "联网搜索",
+  // 提醒 / 内推 / 面经 / 题库 / 复盘 / 知识库 / 统计 / 分享包（知识审计补齐）
+  list_reminders: "查询提醒",
+  list_referrals: "查询内推",
+  list_interview_experiences: "查询面经",
+  list_question_banks: "查询题库历史",
+  list_reviews: "查询复盘历史",
+  list_knowledge: "查询知识库",
+  get_knowledge: "查看知识条目",
+  create_knowledge: "新增知识条目",
+  update_knowledge: "修改知识条目",
+  get_analytics_overview: "查看求职统计",
+  list_share_packages: "查询分享包",
+  create_reminder: "新增提醒",
 };
 
 export function MessageToolCalls({ calls }: { calls: AssistantToolCall[] }) {
   if (!calls.length) return null;
-  // 刻意不做成折叠面板：助手动了用户的数据，这件事必须一眼可见，而不是藏起来
-  // 等用户点开（对比下面的参考来源，那才是可以折叠的次要信息）。
+  // 这里原来刻意**不折叠**，理由是"助手动了用户的数据，这件事必须一眼可见"。用户反馈
+  // 这串记录每回答一次就铺开一整列、太吵，所以改成默认折叠的折叠面板；但**原来的意图
+  // 用折叠标题承接下来**：标题永远可见，且直接写明「改动了 N 项」「N 项失败」——不展开
+  // 也能一眼看出它动没动数据、有没有出错，只是把逐条明细挪到展开之后。这样既安静，
+  // 又没有把"它改了我的数据"藏进折叠里。
+  const changedCount = calls.filter((call) => call.changed).length;
+  const failedCount = calls.filter((call) => !call.ok).length;
   return (
-    <ul className="assistant-tool-calls">
-      {calls.map((call, index) => (
-        <li key={`${call.name}-${index}`}>
-          {call.ok ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-          <Typography.Text strong style={{ marginLeft: 6 }}>
-            {TOOL_LABELS[call.name] ?? call.name}
-          </Typography.Text>
-          {call.ok ? (
-            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-              {call.summary}
-            </Typography.Text>
-          ) : (
-            <Typography.Text type="danger" style={{ marginLeft: 8 }}>
-              失败：{call.error}
-            </Typography.Text>
-          )}
-          {call.ok && call.link && (
-            // 用 href 而不是 router Link：这个组件也会被单独渲染在测试里。
-            <Typography.Link href={call.link} style={{ marginLeft: 8 }}>
-              前往查看
-            </Typography.Link>
-          )}
-        </li>
-      ))}
-    </ul>
+    <Collapse
+      className="assistant-tool-calls"
+      size="small"
+      items={[
+        {
+          key: "tool-calls",
+          label: (
+            <span className="assistant-tool-calls-label">
+              {`助手做了什么（${calls.length}）`}
+              {changedCount > 0 && (
+                <Typography.Text type="warning" className="assistant-tool-calls-flag">
+                  · 改动了 {changedCount} 项
+                </Typography.Text>
+              )}
+              {failedCount > 0 && (
+                <Typography.Text type="danger" className="assistant-tool-calls-flag">
+                  · {failedCount} 项失败
+                </Typography.Text>
+              )}
+            </span>
+          ),
+          children: (
+            <ul>
+              {calls.map((call, index) => (
+                <li key={`${call.name}-${index}`}>
+                  {call.ok ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+                  <Typography.Text strong style={{ marginLeft: 6 }}>
+                    {TOOL_LABELS[call.name] ?? call.name}
+                  </Typography.Text>
+                  {call.ok ? (
+                    <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                      {call.summary}
+                    </Typography.Text>
+                  ) : (
+                    <Typography.Text type="danger" style={{ marginLeft: 8 }}>
+                      失败：{call.error}
+                    </Typography.Text>
+                  )}
+                  {call.ok && call.link && (
+                    // 用 href 而不是 router Link：这个组件也会被单独渲染在测试里。
+                    <Typography.Link href={call.link} style={{ marginLeft: 8 }}>
+                      前往查看
+                    </Typography.Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ),
+        },
+      ]}
+    />
+  );
+}
+
+/**
+ * 模型的思考过程；开启思考强度后才有内容。
+ *
+ * 照抄 `MessageSources` 的折叠面板模式：**默认折叠**（不传 `defaultActiveKey`），
+ * 标题「思考过程」，用户点开即可查看。**没有内容时整块不渲染**——这是安全降级：
+ * 不开思考、或更早存下的历史消息里没有 `reasoning` 字段时，界面与加这个功能之前
+ * 完全一致，不会凭空多出一个空面板。
+ *
+ * 无障碍：折叠头由 antd 渲染成可聚焦的 `role="button"`，本身支持回车/空格开关；
+ * 这里额外挂 `aria-label` 固定名称、并用 `data-testid` 提供给测试，避免依赖会被
+ * antd 自动插入空格的中文可见文本（两字中文标签会被拆开，按文本查询会找不到）。
+ */
+export function MessageReasoning({
+  reasoning,
+  truncated = false,
+}: {
+  reasoning?: string;
+  truncated?: boolean;
+}) {
+  if (!reasoning || !reasoning.trim()) return null;
+  return (
+    <Collapse
+      className="assistant-reasoning"
+      size="small"
+      data-testid="message-reasoning"
+      items={[
+        {
+          key: "reasoning",
+          label: (
+            <span className="assistant-reasoning-label" aria-label="思考过程">
+              思考过程
+            </span>
+          ),
+          children: (
+            <div className="assistant-reasoning-body">
+              <div className="assistant-reasoning-text" style={{ whiteSpace: "pre-wrap" }}>
+                {reasoning}
+              </div>
+              {truncated && (
+                <Typography.Text type="secondary" className="assistant-reasoning-truncated">
+                  思考过程过长，这里只保留了前一部分。
+                </Typography.Text>
+              )}
+            </div>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -316,8 +428,17 @@ export function MessageSources({ sources }: { sources: AssistantSource[] }) {
             <ol>
               {sources.map((source) => (
                 <li key={source.url}>
-                  <Typography.Link href={source.url} target="_blank" rel="noopener noreferrer">
+                  <Typography.Link
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="assistant-source-title"
+                  >
                     {source.title || source.url}
+                    {/* 标题默认就是一段普通文字，用户不会想到能点。外链图标把"可跳转"摆在
+                        明面上；aria-hidden 是因为图标自带 aria-label（"export"），不隐藏
+                        会并进链接的无障碍名称，读屏时在"招聘官网"后面念一句"export"没意义。 */}
+                    <ExportOutlined aria-hidden className="assistant-source-icon" />
                   </Typography.Link>
                   {source.snippet && (
                     <Typography.Text type="secondary">{source.snippet}</Typography.Text>

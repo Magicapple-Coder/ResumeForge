@@ -1,4 +1,5 @@
 /** 简历内容、生成选项和简历建议类型。 */
+import type { TemplateMarketPreset } from "./templateMarket";
 
 export interface ResumeEducation {
   school: string;
@@ -89,6 +90,11 @@ export interface ResumeFontScaleOption {
   name: ResumeFontScale;
   label: string;
   description: string;
+  /**
+   * 该档位的基准字号（CSS 像素）。无级字号滑块以它为锚点：滑块给绝对 px，提交时
+   * 落到最近的档位、用 `font_scale_adjust` 系数补齐差值。由后端下发，前端不写死。
+   */
+  base_px: number;
 }
 
 /** 格式模板的一项可调参数（后端 FORMAT_FIELDS）。 */
@@ -126,6 +132,8 @@ export interface ResumeTemplateCatalog {
   };
   /** 系统里是否找到中文字体：决定「直接下载 PDF」是否可用。 */
   pdf_direct_available: boolean;
+  /** 模板市场预设（R-19）：映射既有样式模板 + 格式预设 + 建议字号。 */
+  market: TemplateMarketPreset[];
 }
 
 /**
@@ -273,3 +281,27 @@ export type StreamEvent =
   | { type: "done"; resume: ResumeContent; warnings: string[] }
   | { type: "saved"; record_id: number }
   | { type: "error"; message: string };
+
+/** 后台简历生成任务的终态/进行态（与后端 models.resume 顶部的生成状态常量一致）。 */
+export type ResumeGenerateTaskStatus = "pending" | "running" | "completed" | "cancelled" | "failed";
+
+/**
+ * 后台简历生成任务的状态（前端按 1.5s 轮询 GET /resumes/generate/tasks/{id}）。
+ *
+ * 生成改为后台任务后，前端不再直接消费 SSE 的 delta/progress，而是从这里拿：
+ * ``message`` 是后端最近一条 progress 文案（映射阶段条），``received_chars`` 是已接收
+ * 字数（只计数、不做百分比——总长未知）。``resume_id`` 仅在 completed 后回填。
+ */
+export interface ResumeGenerateTask {
+  id: number;
+  status: ResumeGenerateTaskStatus;
+  resume_id: number | null;
+  error: string;
+  message: string;
+  received_chars: number;
+  job_id: number | null;
+  title: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}

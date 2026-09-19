@@ -6,6 +6,7 @@
  * 这一页要表达的就是"每个阶段各有多少条"，用一个宽度成比例的横条已经说完了。
  */
 import {
+  BellOutlined,
   DownloadOutlined,
   FunnelPlotOutlined,
   ImportOutlined,
@@ -17,6 +18,7 @@ import {
   Dropdown,
   Empty,
   Input,
+  Modal,
   Select,
   Skeleton,
   Space,
@@ -25,8 +27,11 @@ import {
   Typography,
 } from "antd";
 import type { MenuProps } from "antd";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { listJobs } from "../api/jobs";
+import { listResumes } from "../api/resumes";
 import { deleteTrack, exportTracks, listTracks } from "../api/tracker";
+import ReminderPanel from "../components/ReminderPanel";
 import TrackCard from "../components/tracker/TrackCard";
 import TrackFormModal from "../components/tracker/TrackFormModal";
 import TrackImportModal from "../components/tracker/TrackImportModal";
@@ -42,6 +47,9 @@ export default function TrackerPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Track | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [jobOptions, setJobOptions] = useState<{ value: number; label: string }[]>([]);
+  const [resumeOptions, setResumeOptions] = useState<{ value: number; label: string }[]>([]);
 
   const { data, loading, error, reload } = useApi(
     () => listTracks({ status, keyword }),
@@ -49,14 +57,46 @@ export default function TrackerPage() {
   );
 
   const items = useMemo(() => data?.items ?? [], [data]);
+  const trackOptions = useMemo(
+    () =>
+      items.map((track) => ({
+        value: track.id,
+        label: `${track.company} · ${track.title}`,
+      })),
+    [items],
+  );
   const counts = data?.status_counts ?? {};
   // 漏斗条的宽度按"这条占最大那条的比例"算，这样条目少时也不会全是一小截。
   const funnelMax = Math.max(1, ...FUNNEL_STATUSES.map((key) => counts[key] ?? 0));
 
+  // 提醒面板需要绑定岗位 / 简历，这里只负责把可选项拉下来；失败静默，不影响进度页本身。
+  useEffect(() => {
+    listJobs({ page_size: 100 })
+      .then((page) =>
+        setJobOptions(
+          page.items.map((job) => ({
+            value: job.id,
+            label: `${job.title}${job.company ? ` · ${job.company}` : ""}`,
+          })),
+        ),
+      )
+      .catch(() => setJobOptions([]));
+    listResumes({ page_size: 100 })
+      .then((page) =>
+        setResumeOptions(
+          page.items.map((resume) => ({
+            value: resume.id,
+            label: resume.title || `简历 #${resume.id}`,
+          })),
+        ),
+      )
+      .catch(() => setResumeOptions([]));
+  }, []);
+
   const remove = async (track: Track) => {
     try {
       await deleteTrack(track.id);
-      message.success("已删除");
+      message.success("已移入回收站，可在「回收站」里恢复");
       await reload();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "删除失败");
@@ -90,6 +130,9 @@ export default function TrackerPage() {
           </Typography.Text>
         </Space>
         <Space>
+          <Button icon={<BellOutlined />} onClick={() => setReminderOpen(true)}>
+            提醒
+          </Button>
           <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
             从通知导入
           </Button>
@@ -211,6 +254,20 @@ export default function TrackerPage() {
         onClose={() => setImportOpen(false)}
         onImported={() => void reload()}
       />
+
+      <Modal
+        title="日历提醒"
+        open={reminderOpen}
+        onCancel={() => setReminderOpen(false)}
+        footer={null}
+        width={720}
+      >
+        <ReminderPanel
+          trackOptions={trackOptions}
+          jobOptions={jobOptions}
+          resumeOptions={resumeOptions}
+        />
+      </Modal>
     </div>
   );
 }

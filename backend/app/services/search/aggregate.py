@@ -16,6 +16,7 @@ from ...schemas.setting import SearchConfig
 from ..assistant_web_search import (
     AssistantSearchError,
     _deduplicate,
+    build_search_query,
     filter_relevant_results,
     official_like_score,
     search_web as bing_search,
@@ -74,14 +75,20 @@ async def _enrich_with_page_text(results: list[dict[str, str]], count: int) -> N
 async def aggregate_search(query: str, config: SearchConfig) -> list[dict[str, str]]:
     """按配置聚合搜索；所有来源都没有结果时抛 ``AssistantSearchError``。"""
     sources = list(dict.fromkeys(config.sources or ["bing"]))
+    # 在聚合层统一改写一次查询：DDG / SearXNG 拿到的是改写后的关键词，而不是用户整句。
+    # 否则整句（「帮我把…」）会被搜索引擎分词成首字（「帮」），返回一堆无关结果。
+    search_query = build_search_query(query)
     tasks = []
     for source in sources:
         if source == "bing":
+            # Bing 走 ``search_web``，它内部**自己**会调 ``build_search_query``，所以这里传
+            # 原句：把已改写好的关键词再喂给它会被二次改写成别的（``build_search_query`` 对
+            # 已是关键词列表的输入并不幂等——「互联网大厂 + 招聘」会被再判成"招聘发现类"）。
             tasks.append(_from_bing(query))
         elif source == "duckduckgo":
-            tasks.append(_from_duckduckgo(query))
+            tasks.append(_from_duckduckgo(search_query))
         elif source == "searxng" and config.searxng_url:
-            tasks.append(_from_searxng(query, config.searxng_url))
+            tasks.append(_from_searxng(search_query, config.searxng_url))
 
     if not tasks:
         tasks.append(_from_bing(query))

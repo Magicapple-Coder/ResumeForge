@@ -225,6 +225,28 @@ def test_job_list_search_and_pagination(client):
     assert response.json()["total"] == 2 and len(response.json()["items"]) == 1
 
 
+def test_job_list_source_kind_filter(client):
+    """来源筛选只按「自动采集 / 手动添加」二分，而不是去猜 source 站点名。
+
+    采集写入的 recognition_source 是固定值「岗位采集」，手动录入则是一串五花八门的
+    值（含空串），所以用「等于岗位采集」判定采集、其余都算手动，才是稳定口径。
+    """
+    client.post(
+        "/api/jobs",
+        json={"title": "采集岗", "company": "X公司", "recognition_source": "岗位采集"},
+    )
+    client.post("/api/jobs", json={"title": "手动岗", "company": "Y公司"})
+
+    collected = client.get("/api/jobs", params={"source_kind": "collected"}).json()
+    assert collected["total"] == 1 and collected["items"][0]["title"] == "采集岗"
+
+    manual = client.get("/api/jobs", params={"source_kind": "manual"}).json()
+    assert manual["total"] == 1 and manual["items"][0]["title"] == "手动岗"
+
+    # 不传该参数时仍是全量。
+    assert client.get("/api/jobs").json()["total"] == 2
+
+
 def test_search_across_jobs(client):
     client.post(
         "/api/jobs", json={"title": "算法工程师", "company": "C公司", "description": "机器学习"}

@@ -16,6 +16,7 @@ from ..services.assistant_service import (
     current_user_message_for_model,
     history_messages_for_model,
 )
+from ..services.assistant_sources import SourceNumberer
 from ..services.assistant_tools import execute_tool_async, tool_definitions
 from ..services.assistant_web_search import AssistantSearchError
 from ..services.llm.base import BaseLLMProvider, LLMError
@@ -29,6 +30,22 @@ MAX_TOOL_ROUNDS = 5
 # "最多 3 次"，这里把它变成真的：此前只有提示词里那句话，代码侧真正的约束是 5 轮工具
 # 调用，而且每轮可以并行发多个搜索——用户按文档预期 3 次，实际可能多花好几倍。
 MAX_WEB_SEARCHES = 3
+
+# 思考内容写进助手消息 `context` 的上限（字符数）。**为什么必须限长**：
+#   1) 思考内容常常比正文长一个量级（高强度思考尤甚），而 context 是随每条历史消息
+#      一起被批量加载的 JSON；不设限会让单条消息无限膨胀，历史列表的内存与带宽都会失控。
+#   2) 它**不参与后续对话**（见下面流循环里的说明），所以保存得完整与否不影响回答质量，
+#      它是"给用户回看的解释"，按上限截断即可。
+# 超限时**如实截断并打标记**（context 里 `reasoning_truncated=True`），不静默丢弃。
+MAX_REASONING_CONTEXT_CHARS = 20_000
+
+
+def _truncate_reasoning(text: str) -> tuple[str, bool]:
+    """把思考内容裁到存储上限，返回 ``(文本, 是否被截断)``。"""
+    if len(text) <= MAX_REASONING_CONTEXT_CHARS:
+        return text, False
+    return text[:MAX_REASONING_CONTEXT_CHARS], True
+
 
 
 def _parse_tool_arguments(raw: str) -> dict[str, Any]:
@@ -47,11 +64,12 @@ def _is_web_search(call: dict[str, Any]) -> bool:
     return ((call.get("function") or {}).get("name") or "") == "web_search"
 
 
-async def _run_tool_call(call: dict[str, Any]) -> dict[str, Any]:
+async def _run_tool_call(call: dict[str, Any], numberer: SourceNumberer) -> dict[str, Any]:
     """执行一次工具调用。
 
     任何失败都转成结构化的"工具结果"回给模型，而不是抛出去中断整轮对话——模型
-    往往能据此换个参数重试，或者在回答里如实说明没做到。
+    往往能据此换个参数重试，或者在回答里如实说明没做到。``numberer`` 是本次回答
+    跨所有联网搜索共享的来源编号器。
     """
     function = call.get("function") or {}
     name = function.get("name") or ""
@@ -72,7 +90,7 @@ async def _run_tool_call(call: dict[str, Any]) -> dict[str, Any]:
         # 和本模块其它写回一样自开会话：不把连接跨整个流持有。
         with SessionLocal() as db:
             # 搜索类工具要 await（联网请求），所以走异步入口。
-            result = await execute_tool_async(db, name, arguments)
+            result = await execute_tool_async(db, name, arguments, numberer=numberer)
         record["summary"] = result.summary
         record["link"] = result.link
         record["result_text"] = result.text
@@ -173,6 +191,15 @@ async def stream_message_events(
     parts: list[str] = []
     metadata = dict(context_metadata)
     model_context = list(context_blocks)
+    # 助手这条消息的 context：思考内容与工具记录都挂在这里，供历史回看。
+    # 用**同一个** dict 累积再整体写回——`update_message_context` 是整体替换而非合并，
+    # 分开写会把先写进去的字段冲掉。
+    assistant_context: dict[str, Any] = {}
+    # 思考内容跨轮累积（模型可能每轮都先想一段再调用工具）。
+    reasoning_parts: list[str] = []
+    # 本次回答里所有联网来源的全局编号器：自动预搜与后续的 web_search 工具共用，
+    # 保证正文里的 [来源N] 能对应到模型当时看到的那条 URL（跨两个入口不重号）。
+    numberer = SourceNumberer()
     try:
         yield format_sse(
             {
@@ -188,7 +215,7 @@ async def stream_message_events(
             try:
                 sources = await search_web_fn(query)
                 metadata["sources"] = sources
-                model_context.append(web_context(sources))
+                model_context.append(web_context(sources, numberer))
             except AssistantSearchError as exc:
                 metadata["search_error"] = str(exc)
                 model_context.append(f"[联网搜索状态]\n{exc}，请勿声称已获得联网资料。")
@@ -197,6 +224,7 @@ async def stream_message_events(
                 {
                     "type": "sources",
                     "sources": metadata.get("sources", []),
+                    "source_map": numberer.mapping(),
                     "error": metadata.get("search_error", ""),
                 }
             )
@@ -221,12 +249,29 @@ async def stream_message_events(
         web_searches_used = 1 if metadata.get("sources") else 0
         for _round in range(MAX_TOOL_ROUNDS):
             calls: list[dict[str, Any]] = []
+            round_reasoning: list[str] = []
             async for delta in provider.stream_chat_events(messages, tools):
                 if delta.text:
                     parts.append(delta.text)
                     yield format_sse({"type": "delta", "text": delta.text})
+                if delta.reasoning:
+                    # 思考内容单独成一个事件下发前端；它**只用于展示**，绝不塞回
+                    # `messages`——把它当正文回灌给模型会让它把自己的草稿当成事实，
+                    # 并且（对 Anthropic）会触发"必须原样回传 thinking 块"的协议要求，
+                    # 那是另一套改动（见 `anthropic._convert_messages` 的说明）。
+                    reasoning_parts.append(delta.reasoning)
+                    round_reasoning.append(delta.reasoning)
+                    yield format_sse({"type": "reasoning", "text": delta.reasoning})
                 if delta.tool_calls:
                     calls.extend(delta.tool_calls)
+            if round_reasoning:
+                # 把"到目前为止的全部思考"写进 context 并立刻落库，这样即使这一轮之后
+                # 流被中断，已经产生的思考历史回看仍能看到。
+                stored, truncated = _truncate_reasoning("".join(reasoning_parts))
+                assistant_context["reasoning"] = stored
+                if truncated:
+                    assistant_context["reasoning_truncated"] = True
+                update_message_context(assistant_message_id, dict(assistant_context))
             if not calls:
                 break
 
@@ -249,7 +294,7 @@ async def stream_message_events(
                     continue
                 if _is_web_search(call):
                     web_searches_used += 1
-                record = await _run_tool_call(call)
+                record = await _run_tool_call(call, numberer)
                 tool_records.append(record)
                 messages.append(
                     {
@@ -267,6 +312,9 @@ async def stream_message_events(
                         "link": record["link"],
                         "ok": record["ok"],
                         "error": record["error"],
+                        # 透传"是否真的改了数据"：前端折叠标题要用它写「改动了 N 项」。
+                        # 让后端说了算，前端就不必再按工具名猜哪些是写操作（猜一份必然漂移）。
+                        "changed": record["changed"],
                     }
                 )
                 new_sources = [
@@ -282,17 +330,29 @@ async def stream_message_events(
                     # 来源属于用户那条消息：它说明"这次回答参考了哪些公开来源"。
                     update_message_context(user_message_id, metadata)
                     yield format_sse(
-                        {"type": "sources", "sources": collected_sources, "error": ""}
+                        {
+                            "type": "sources",
+                            "sources": collected_sources,
+                            "source_map": numberer.mapping(),
+                            "error": "",
+                        }
                     )
             # 工具记录属于**助手这条消息**：它描述的是助手做了什么，历史回看时挂在
             # 助手回复下最自然（来源则属于用户那条消息，见上面的联网分支）。
-            update_message_context(assistant_message_id, {"tool_calls": tool_records})
+            assistant_context["tool_calls"] = tool_records
+            update_message_context(assistant_message_id, dict(assistant_context))
         else:
             # 到达轮次上限：停止继续调用工具，让用户看到已经做了什么。
             parts.append(
                 f"\n\n（已经连续执行了 {MAX_TOOL_ROUNDS} 轮工具调用，为避免失控先停在这里，"
                 "你可以继续追问。）"
             )
+
+        # 来源编号映射随助手这条消息一起落库：前端渲染正文里的 [来源N] 时按它解析，
+        # 而不是拿"去重后的参考来源"下标去对——那会跳错来源。即使这轮没有工具调用/
+        # 思考，只要预搜命中过，也要在结束前写回。
+        assistant_context["source_map"] = numberer.mapping()
+        update_message_context(assistant_message_id, dict(assistant_context))
 
         content = "".join(parts)
         if not content.strip():

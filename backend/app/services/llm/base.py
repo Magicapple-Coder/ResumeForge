@@ -20,12 +20,18 @@ class LLMDelta:
 
     一帧要么是正文片段，要么是一组**已经拼接完整**的工具调用（协议里工具调用的
     参数是碎片化到达的，拼接由 provider 负责，调用方拿到的一定是可直接 json 解析
-    的字符串）。
+    的字符串），要么是模型的**思考内容**片段。
+
+    ``reasoning`` 单独成字段、默认空串，是为了保持向后兼容：不支持思考内容的服务商
+    与测试里的假 Provider 都只产出 ``text``，行为与新增该字段之前完全一致。思考内容
+    是"给用户看的解释"，**不参与后续对话**（见 stream 层与 provider 的说明）——把它
+    当正文回灌给模型会让它把自己的草稿当成事实，还可能超长。
     """
 
     text: str = ""
     tool_calls: list[dict] = field(default_factory=list)
     finish_reason: str | None = None
+    reasoning: str = ""
 
 
 class BaseLLMProvider(ABC):

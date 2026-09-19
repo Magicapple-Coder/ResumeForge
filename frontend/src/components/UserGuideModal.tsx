@@ -92,7 +92,9 @@ export default function UserGuideModal({ open, onClose, onNavigate }: UserGuideM
           </div>
           <div className="user-guide-step-copy">
             <Typography.Title level={4}>{step.heading}</Typography.Title>
-            <Typography.Paragraph>{step.description}</Typography.Paragraph>
+            <Typography.Paragraph className="user-guide-description">
+              {step.description}
+            </Typography.Paragraph>
             <ul className="user-guide-points">
               {step.points.map((point) => (
                 <li key={point}>{point}</li>

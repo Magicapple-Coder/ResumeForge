@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { AssistantAttachmentInput } from "../../types";
+import type { AssistantAttachmentInput, AssistantSourceNumber } from "../../types";
 
 // 附件限值、类型判定与读取和岗位/资料识别共用，实现在 utils 里；这里保留
 // 原有导入路径，助手侧调用方不必跟着改。
@@ -44,9 +44,27 @@ export function safeExternalUrl(value: string): string | null {
   }
 }
 
-export function renderInlineMarkdown(value: string): ReactNode[] {
+/**
+ * 按「编号 → url」映射解析 [来源N] 的链接地址。
+ *
+ * 解析不到（映射缺失、编号越界、URL 不是 http/https）一律返回 null，让调用方退化成
+ * 纯文本——"一个能点却跳错地方的链接，比没有链接更糟"，宁可不可点也不跳错。
+ */
+export function resolveSourceUrl(
+  sourceMap: AssistantSourceNumber[] | undefined,
+  number: number,
+): string | null {
+  if (!sourceMap) return null;
+  const entry = sourceMap.find((item) => item.number === number);
+  return entry ? safeExternalUrl(entry.url) : null;
+}
+
+export function renderInlineMarkdown(
+  value: string,
+  sourceMap?: AssistantSourceNumber[],
+): ReactNode[] {
   const tokenPattern =
-    /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<，。！？、）】〉》]+))/g;
+    /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\[来源(\d+)\]|(https?:\/\/[^\s<，。！？、）】〉》]+))/g;
   const nodes: ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -57,8 +75,25 @@ export function renderInlineMarkdown(value: string): ReactNode[] {
       nodes.push(createElement("strong", { key: `strong-${match.index}` }, match[2]));
     } else if (match[3]) {
       nodes.push(createElement("code", { key: `code-${match.index}` }, match[3]));
+    } else if (match[6]) {
+      // [来源N]：按持久化的编号映射解析，编号对不上就保持纯文本。
+      const url = resolveSourceUrl(sourceMap, Number(match[6]));
+      nodes.push(
+        url
+          ? createElement(
+              "a",
+              {
+                key: `source-${match.index}`,
+                href: url,
+                target: "_blank",
+                rel: "noopener noreferrer",
+              },
+              match[0],
+            )
+          : match[0],
+      );
     } else {
-      const url = safeExternalUrl(match[5] ?? match[6]);
+      const url = safeExternalUrl(match[5] ?? match[7]);
       nodes.push(
         url
           ? createElement(
@@ -69,9 +104,9 @@ export function renderInlineMarkdown(value: string): ReactNode[] {
                 target: "_blank",
                 rel: "noopener noreferrer",
               },
-              match[4] ?? match[6],
+              match[4] ?? match[7],
             )
-          : (match[4] ?? match[6]),
+          : (match[4] ?? match[7]),
       );
     }
     cursor = tokenPattern.lastIndex;

@@ -39,7 +39,9 @@ describe("UserGuideModal", () => {
     // 是在这里维护的，也就用不上"导出被拦下"那条保护。
     expect(screen.getAllByText(/事实台账/).length).toBeGreaterThan(0);
     // 用户得知道它在侧栏的哪儿，否则这一条等于没说。
-    expect(screen.getByText(/侧栏「我的资料」之后/)).toBeInTheDocument();
+    // 断言的是"最下方、设置上面"这种**相对位置**而不是某一项的名字：侧栏顺序会随
+    // 使用流程调整，写死"在某某之后"会让一次纯排序改动把这条测试弄红。
+    expect(screen.getByText(/侧栏最下方、「设置」上面/)).toBeInTheDocument();
     expect(screen.getByText(/只有标成「已确认」的条目/)).toBeInTheDocument();
     // 深挖是台账的延伸，入口在台账页里——不写清用户找不到。
     expect(screen.getByText(/拿去深挖/)).toBeInTheDocument();
@@ -61,7 +63,11 @@ describe("UserGuideModal", () => {
     // 新增能力必须在指南里说出来，否则用户不知道可以用——这是本轮扩写这一步的全部理由。
     expect(screen.getByText(/匹配度分析/)).toBeInTheDocument();
     expect(screen.getByText(/投递专用浏览器/)).toBeInTheDocument();
-    expect(screen.getByText(/未生效/)).toBeInTheDocument();
+    // 采集条件那一段的措辞：薪资 / 经验 / 学历以前标的是「未生效」，现在它们真的会生效
+    // （采集后按岗位字段筛掉不符合的），所以指南也必须跟着改口——**指南说错比不说更糟**。
+    expect(screen.getByText(/采集之后按岗位字段筛掉不符合的/)).toBeInTheDocument();
+    // 采集结果进暂存区（而不是直接入库）是用户最容易误解的一步，必须在指南里写明。
+    expect(screen.getByText(/不会直接进岗位广场/)).toBeInTheDocument();
   });
 
   it("explains how to track progress after applying", () => {
@@ -150,5 +156,19 @@ describe("GUIDE_STEPS", () => {
       expect(step.points.length).toBeGreaterThan(0);
       expect(step.actionLabel.length).toBeGreaterThan(0);
     }
+  });
+
+  it("breaks long copy into scannable bullets instead of one wall of text", () => {
+    // 超长单点会被渲染成"一整段"、用户一眼扫不出重点（截图反馈"导入岗位与投递"整屏
+    // 密密麻麻）。这里钉住拆分后的形态：这一步要点数明显变多，且全局没有任何一条要点
+    // 还是一堵墙——400 字上限既挡住"一长串"，又给未来补措辞留足空间。
+    const jobStep = GUIDE_STEPS.find((step) => step.title === "导入岗位与投递");
+    expect(jobStep).toBeDefined();
+    expect(jobStep!.points.length).toBeGreaterThan(10);
+
+    const longestPoint = Math.max(
+      ...GUIDE_STEPS.flatMap((step) => step.points.map((point) => point.length)),
+    );
+    expect(longestPoint).toBeLessThan(400);
   });
 });

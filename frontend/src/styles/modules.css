@@ -136,6 +136,51 @@
   flex: 1;
 }
 
+/* ===== 知识库 ===== */
+
+.knowledge-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.knowledge-card {
+  height: 100%;
+}
+
+.knowledge-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.knowledge-card-tags {
+  margin-bottom: 8px;
+}
+
+.knowledge-card-content {
+  margin-bottom: 8px !important;
+  white-space: pre-wrap;
+}
+
+.knowledge-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+}
+
 /* ===== 技能工作台 ===== */
 
 .skills-intro-card {
@@ -423,6 +468,59 @@
   margin-bottom: 4px;
 }
 
+/* 内置样式缩略图墙：每个内置样式一张真实渲染的 A4 缩略图，点开看大图。
+   缩略图是缩放的 iframe（不是截图），所以永远和真实模板一致。 */
+.builtin-style-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.builtin-style-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: var(--rf-surface, #fff);
+  border: 1px solid var(--rf-border, #f0f0f0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.builtin-style-card:hover,
+.builtin-style-card:focus-visible {
+  border-color: #91caff;
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.12);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.builtin-style-thumb {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-radius: 4px;
+}
+
+.builtin-style-frame {
+  display: block;
+  border: 0;
+  /* 缩略图只作展示：让点击/滚动都落到外层按钮上，否则 iframe 会把事件吃掉。 */
+  pointer-events: none;
+}
+
+.builtin-style-name {
+  font-size: 13px;
+  color: #262626;
+}
+
 /* 包住"导入 HTML"按钮的 label：让点击落到里面的按钮上。 */
 .template-upload-button {
   display: inline-flex;
@@ -462,22 +560,34 @@
   min-height: 420px;
 }
 
-/* A4 逻辑宽度 794px，缩放到列宽里显示完整一页。 */
-.style-template-frame {
-  width: 794px;
-  height: 1123px;
-  border: 0;
-  background: #ffffff;
-  transform: scale(0.54);
-  transform-origin: top center;
-}
-
-.template-preview-frame {
-  width: 100%;
-  height: min(72vh, 900px);
+/*
+ * A4 预览画布（A4PreviewFrame 组件用）。
+ *
+ * 取代了此前两套各写一半的写法：`.style-template-frame` 写死 `scale(0.54)`（列宽是可变的，
+ * 于是要么没铺满、要么被裁掉 —— 用户反馈"没有一次性展示全"），`.template-preview-frame`
+ * 则把 iframe 拉成"容器宽 × 72vh"（A4 的比例荡然无存）。现在两种场景共用一张按实测尺寸
+ * 等比缩放的 A4 纸，完整一页永远可见。
+ */
+.a4-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #f0f2f5;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+}
+
+.a4-preview-paper {
+  overflow: hidden;
   background: #ffffff;
+  box-shadow: 0 2px 12px rgb(15 23 42 / 12%);
+}
+
+.a4-preview-frame {
+  display: block;
+  border: 0;
+  transform-origin: top left;
 }
 
 .format-color-input {
@@ -841,4 +951,31 @@
   color: #8c8c8c;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 全局搜索扩域后，结果区与"更多结果"分组要收紧，避免首页搜索区越拉越长。 */
+.home-search-results {
+  margin-top: 12px;
+}
+
+.home-more-group + .home-more-group {
+  margin-top: 6px;
+}
+
+.home-more-heading {
+  margin: 4px 0 2px;
+  color: #8c8c8c;
+}
+
+/* 求职统计页：缩小字号让一屏装下更多指标，避免四张卡 + 两张图被撑得太高。 */
+.analytics-page .ant-statistic-title {
+  font-size: 13px;
+}
+
+.analytics-page .ant-statistic-content {
+  font-size: 20px;
+}
+
+.analytics-page .ant-typography-secondary {
+  font-size: 12px;
 }

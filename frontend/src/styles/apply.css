@@ -71,6 +71,13 @@
   margin-bottom: 12px;
 }
 
+/* 投递队列勾选行：覆盖 antd 默认的灰底（.ant-table-row-selected），
+   换成品牌浅蓝，选中态与悬停态一致，避免"勾一下就变成一坨灰"。 */
+.apply-queue-panel .ant-table-tbody > tr.ant-table-row-selected > td,
+.apply-queue-panel .ant-table-tbody > tr.ant-table-row-selected:hover > td {
+  background: #eaf1f8 !important;
+}
+
 .apply-collect-unmapped {
   margin-top: 12px;
 }
@@ -106,6 +113,43 @@
   margin: 0;
   padding-left: 20px;
   color: rgba(0, 0, 0, 0.65);
+}
+
+/* ===== 采集闭环：流程说明 / 本次采集结果 / 采集记录 ===== */
+
+/* 采集之后还有两步才轮到投递——这段说明是用户明确反馈"不知道下一步做什么"的回应，
+   所以给它一点存在感（浅色底 + 与表单之间留白），但不用弹窗，避免每次都要关一次。 */
+.apply-collect-flow {
+  margin-bottom: 16px;
+}
+
+.apply-collect-flow ol {
+  line-height: 1.9;
+}
+
+.apply-collect-flow-em {
+  font-weight: 600;
+  color: #1554ad;
+}
+
+/* 「本次采集结果」：与上面的条件表单明确分开，避免被当成"又一次输入"。 */
+.apply-collect-result {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eef0f3;
+}
+
+/* 本地筛选的账目（筛掉几条 / 几条没判断成 / 条件有没有被识别）。 */
+.apply-collect-filtered {
+  margin-top: 12px;
+}
+
+.apply-collect-result .ant-typography {
+  margin-bottom: 0;
+}
+
+.apply-collect-records .ant-collapse-header {
+  align-items: center !important;
 }
 
 @media (max-width: 768px) {

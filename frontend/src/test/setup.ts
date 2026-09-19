@@ -3,9 +3,15 @@ import { configure } from "@testing-library/react";
 
 // `findBy*` 的默认等待窗口只有 1 秒，而这些页面要挂载 antd 的整套组件、再等几个 mock 接口
 // 依次 resolve；机器一忙就会在"还没渲染完"的时候超时，表现为随机失败（同一个文件里不同的用例
-// 轮流失败）。vitest.config.ts 里把 testTimeout 提到 15 秒也是为这件事，但那只放宽了单个用例的
-// 总时长，没有放宽断言自己的等待窗口。这里对齐两者：断言等应用稳定，而不是等一个固定的 1 秒。
-configure({ asyncUtilTimeout: 5000 });
+// 轮流失败）。
+//
+// 15 秒这个值是按**全量并行时的实测**定的，不是拍脑袋：vitest 默认按 CPU 数开线程（本机 32 核
+// → 30 多个 jsdom 实例抢 CPU），重页面（设置页六张卡 + 消息列表）单个用例实测要 8~12 秒，
+// 5 秒必然在满负载下随机超时——这正是"单跑全过、全量随机挂 3 个"的来源。
+//
+// 上限刻意**低于** vitest.config.ts 的 `testTimeout: 30000`：断言窗口和用例总预算取同一个值的话，
+// 一次真正的"元素找不到"要等满 30 秒才报出来，失败的反馈速度会明显变差。
+configure({ asyncUtilTimeout: 15000 });
 
 const jsdomGetComputedStyle = window.getComputedStyle.bind(window);
 Object.defineProperty(window, "getComputedStyle", {

@@ -27,10 +27,12 @@ import {
   Select,
   Space,
   Spin,
+  Tabs,
   Tag,
   Typography,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   createInterview,
   deleteInterview,
@@ -41,6 +43,10 @@ import {
   submitInterviewAnswer,
 } from "../api/interview";
 import { listJobs } from "../api/jobs";
+import { listResumes } from "../api/resumes";
+import InterviewExperiencePanel from "../components/InterviewExperiencePanel";
+import InterviewReviewPanel from "../components/InterviewReviewPanel";
+import QuestionBankPanel from "../components/QuestionBankPanel";
 import type {
   InterviewBrief,
   InterviewDetail,
@@ -151,6 +157,7 @@ function ReportCard({
 
 export default function InterviewPage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState<InterviewBrief[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [active, setActive] = useState<InterviewDetail | null>(null);
@@ -159,6 +166,8 @@ export default function InterviewPage() {
   const [answer, setAnswer] = useState("");
   const [savingReport, setSavingReport] = useState(false);
   const [jobOptions, setJobOptions] = useState<{ value: number; label: string }[]>([]);
+  const [resumeOptions, setResumeOptions] = useState<{ value: number; label: string }[]>([]);
+  const [activeTab, setActiveTab] = useState("session");
   const [form] = Form.useForm<SetupForm>();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -185,6 +194,16 @@ export default function InterviewPage() {
         ),
       )
       .catch(() => setJobOptions([]));
+    listResumes({ page_size: 100 })
+      .then((page) =>
+        setResumeOptions(
+          page.items.map((resume) => ({
+            value: resume.id,
+            label: resume.title || `简历 #${resume.id}`,
+          })),
+        ),
+      )
+      .catch(() => setResumeOptions([]));
   }, [loadList]);
 
   // 新消息进来后滚到底部，用户不用自己找。
@@ -290,6 +309,14 @@ export default function InterviewPage() {
     }
   };
 
+  // 题库「开始模拟面试」：把题目带入面试的考察重点，并切回模拟面试页。
+  const startFromBank = (questions: string[]) => {
+    const focus = questions.slice(0, 6).join("；").slice(0, 255);
+    form.setFieldsValue({ focus });
+    setActiveTab("session");
+    message.info("题目已带入「考察重点」，调整后即可开始面试");
+  };
+
   const answered = active?.answered_rounds ?? 0;
   const finished = active?.status === "finished";
 
@@ -312,8 +339,16 @@ export default function InterviewPage() {
       </div>
 
       {!active ? (
-        <div className="interview-setup">
-          <Card size="small" className="settings-card">
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: "session",
+              label: "模拟面试",
+              children: (
+                <div className="interview-setup">
+                  <Card size="small" className="settings-card">
             <Typography.Title level={5} style={{ marginTop: 0 }}>
               面试官设定
             </Typography.Title>
@@ -440,7 +475,38 @@ export default function InterviewPage() {
               />
             )}
           </Card>
-        </div>
+                </div>
+              ),
+            },
+            {
+              key: "bank",
+              label: "题库",
+              children: (
+                <QuestionBankPanel
+                  jobOptions={jobOptions}
+                  resumeOptions={resumeOptions}
+                  onStartSession={startFromBank}
+                />
+              ),
+            },
+            {
+              key: "experiences",
+              label: "面经",
+              children: <InterviewExperiencePanel jobOptions={jobOptions} />,
+            },
+            {
+              key: "review",
+              label: "面试复盘",
+              children: (
+                <InterviewReviewPanel
+                  jobOptions={jobOptions}
+                  resumeOptions={resumeOptions}
+                  onGoToResume={() => navigate("/resumes")}
+                />
+              ),
+            },
+          ]}
+        />
       ) : (
         <div className="interview-room">
           <div className="interview-room-head">

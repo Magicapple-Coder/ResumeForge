@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,11 +62,16 @@ def _decode_body(event: dict[str, Any]) -> Any | None:
         return None
 
 
-def response_urls(events: list[dict[str, Any]], *, marker: str) -> list[str]:
-    """从 ``Network.responseReceived`` 事件里挑出 URL 含 ``marker`` 的那些。
+def response_urls(events: list[dict[str, Any]], *, markers: Sequence[str]) -> list[str]:
+    """从 ``Network.responseReceived`` 事件里挑出 URL 含任一 ``markers`` 的那些。
 
     返回的是**响应 id → URL** 的候选清单，调用方据此决定要取哪个响应体。
     按出现顺序返回，因为"点击卡片后第一个回来的详情请求"往往就是刚点的那条。
+
+    ``markers`` 是一组片段、命中任一即可：站点给接口路径加版本后缀（``joblist.json`` →
+    ``joblistV2.json``）时，只认整串会让这条通路**整体失效**，而它的失败方式恰恰是静默退回
+    DOM。宽松一点的 URL 匹配由调用方的**结构判定**兜住（``looks_like_search`` 等），
+    所以这里放宽是安全的。
     """
     urls: list[str] = []
     for event in events:
@@ -78,7 +84,7 @@ def response_urls(events: list[dict[str, Any]], *, marker: str) -> list[str]:
         if not isinstance(response, dict):
             continue
         url = str(response.get("url") or "")
-        if marker and marker not in url:
+        if markers and not any(marker and marker in url for marker in markers):
             continue
         if url and url not in urls:
             urls.append(url)
@@ -88,7 +94,7 @@ def response_urls(events: list[dict[str, Any]], *, marker: str) -> list[str]:
 def collect_bodies(
     events: list[dict[str, Any]],
     *,
-    marker: str = "",
+    markers: Sequence[str] = (),
     limit: int = MAX_PARSED_RESPONSES,
 ) -> list[CapturedResponse]:
     """把一批事件里"已取回响应体"的那些解析出来。
@@ -115,7 +121,7 @@ def collect_bodies(
             continue
         request_id = str(event.get("requestId") or "")
         url = by_request.get(request_id, "")
-        if marker and marker not in url:
+        if markers and not any(marker and marker in url for marker in markers):
             continue
         body = _decode_body(event)
         if body is None:

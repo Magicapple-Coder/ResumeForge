@@ -23,6 +23,7 @@ import type {
 
 export {
   AssistantMessageContent,
+  MessageReasoning,
   MessageSources,
   StreamingStatus,
 } from "../features/assistant/components/AssistantMessageContent";
@@ -41,7 +42,9 @@ export default function AssistantPage() {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [content, setContent] = useState("");
+  // 从工作台等页面跳转过来时可用 ?ask=... 预填提问（例如「帮我把格式模板调松一点」）。
+  // 只预填、**不自动发送**：用户能改完再点发送，避免一个链接就替用户发起一次模型调用。
+  const [content, setContent] = useState(() => (searchParams.get("ask") ?? "").slice(0, 4000));
   const [jobId, setJobId] = useState<number | undefined>(() =>
     positiveId(searchParams.get("job_id")),
   );
@@ -61,7 +64,10 @@ export default function AssistantPage() {
   /** 深链已经定位过的会话 id：只认一次，之后列表怎么刷新都不再抢焦点。 */
   const deepLinkAppliedRef = useRef<number | null>(null);
   const requestedConversationId = positiveId(searchParams.get("conversation"));
-  const conversationsState = useAssistantConversations({ message });
+  // ?new=1：从简历详情等入口进来时默认新开一个空对话，而不是续接/恢复上次会话。
+  const startNew = searchParams.get("new") === "1";
+  const newConversationAppliedRef = useRef(false);
+  const conversationsState = useAssistantConversations({ message, startNew });
   const {
     activeId,
     activeIdRef,
@@ -191,7 +197,9 @@ export default function AssistantPage() {
     pendingSentAt,
     pendingUserAttachments,
     streamingText,
+    streamingReasoning,
     streamingSources,
+    streamingSourceMap,
     streamingTools,
     progressText,
     streamError,
@@ -231,9 +239,17 @@ export default function AssistantPage() {
     selectConversation(requestedConversationId);
   }, [conversations, conversationsLoading, message, requestedConversationId, selectConversation]);
 
+  // ?new=1：进入页面即新建一个空会话（含 ?ask=/?resume_id= 预填仍照常生效，互不冲突）。
+  useEffect(() => {
+    if (!startNew || conversationsLoading || conversations === undefined) return;
+    if (newConversationAppliedRef.current) return;
+    newConversationAppliedRef.current = true;
+    void createConversation();
+  }, [startNew, conversationsLoading, conversations, createConversation]);
+
   // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
   useEffect(() => {
-    if (conversationsLoading || conversationsError || requestedConversationId !== undefined) {
+    if (startNew || conversationsLoading || conversationsError || requestedConversationId !== undefined) {
       return;
     }
     // 列表还没回来时 `conversations` 是 undefined，"空"和"没加载"必须分开——
@@ -251,6 +267,7 @@ export default function AssistantPage() {
     conversationsLoading,
     ensureWelcomeConversation,
     requestedConversationId,
+    startNew,
   ]);
 
   const historyMessages = detail?.messages ?? [];
@@ -317,6 +334,7 @@ export default function AssistantPage() {
     sending,
     streamError,
     streamingSources,
+    streamingReasoning,
     streamingTools,
     streamingText,
   ]);
@@ -338,7 +356,7 @@ export default function AssistantPage() {
         onFork={(conversation) => void forkConversation(conversation.id)}
         onMoveToGroup={openGroupModal}
       />
-      <section className="assistant-workspace">
+      <section className={`assistant-workspace${selecting ? " is-selecting" : ""}`}>
         <header className="assistant-header">
           <div className="assistant-header-titles">
             <Typography.Title level={3} ellipsis={{ tooltip: true }}>
@@ -395,7 +413,9 @@ export default function AssistantPage() {
           pendingSentAt={pendingSentAt}
           pendingUserAttachments={pendingUserAttachments}
           streamingText={streamingText}
+          streamingReasoning={streamingReasoning}
           streamingSources={streamingSources}
+          streamingSourceMap={streamingSourceMap}
           streamingTools={streamingTools}
           progressText={progressText}
           streamError={streamError}

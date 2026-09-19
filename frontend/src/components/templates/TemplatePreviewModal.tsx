@@ -3,6 +3,7 @@ import { Alert, Modal, Segmented, Space, Spin, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { previewResumeTemplate } from "../../api/resumes";
 import type { ResumeFontScale, ResumeFormatPreset, ResumeTemplateDetail } from "../../types";
+import A4PreviewFrame from "./A4PreviewFrame";
 
 interface Props {
   template: ResumeTemplateDetail | null;
@@ -58,7 +59,9 @@ export default function TemplatePreviewModal({ template, formatPresets, onClose 
       onCancel={onClose}
       footer={null}
       width="min(1000px, 96vw)"
-      styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
+      styles={{
+        body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", overflowX: "hidden" },
+      }}
       destroyOnHidden
     >
       <Space wrap style={{ marginBottom: 12 }}>
@@ -90,7 +93,7 @@ export default function TemplatePreviewModal({ template, formatPresets, onClose 
           <Spin />
         </div>
       ) : (
-        <iframe title="模板预览" className="template-preview-frame" sandbox="" srcDoc={html} />
+        <A4PreviewFrame html={html} title="模板预览" />
       )}
     </Modal>
   );

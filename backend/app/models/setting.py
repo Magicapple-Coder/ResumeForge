@@ -28,7 +28,9 @@ class LLMConfigRecord(Base):
     model: Mapped[str] = mapped_column(String(128), default="")
     temperature: Mapped[float] = mapped_column(Float, default=0.1)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
-    max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
+    # 0 = 不限制（与 schemas.setting.UNLIMITED_MAX_TOKENS 一致）。服务层保存记录时总是从
+    # Pydantic 模型显式带入该字段，这里的默认值只在直接构造 ORM 行时兜底，保持一致即可。
+    max_tokens: Mapped[int] = mapped_column(Integer, default=0)
     # 接口协议：openai = Chat Completions 兼容；anthropic = Claude Messages 原生。
     api_style: Mapped[str] = mapped_column(String(16), default="openai", server_default="openai")
     # 高级调整（可选）：为空表示不发送该字段，沿用服务商默认值。

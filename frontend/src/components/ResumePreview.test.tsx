@@ -2,9 +2,24 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ResumePreview from "./ResumePreview";
 
+// jsdom 不做真实排版，要让"内容溢出"能被确定地触发，只能把测量函数打桩成指定结果。
+// 用一个可变量控制返回值：默认为 null（等同于"没量到"），各用例按需改成"装得下/装不下"。
+const measureState = vi.hoisted(() => ({
+  value: null as { usedHeight: number; pageContentHeight: number; pageLimit: number } | null,
+}));
+
+vi.mock("../utils/resumeLayoutMeasure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/resumeLayoutMeasure")>();
+  return {
+    ...actual,
+    measureResumeLayout: () => measureState.value,
+  };
+});
+
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
+  measureState.value = null;
 });
 
 function getPreviewFrame(): HTMLIFrameElement {
@@ -89,5 +104,85 @@ describe("ResumePreview", () => {
     fireEvent.click(target);
 
     expect(onEditTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe("ResumePreview 溢出时的多页视图", () => {
+  it("内容装得下时不切页、不显示近似分页标注，行为与之前一致", () => {
+    render(
+      <ResumePreview html="<!doctype html><html><body></body></html>" warnings={[]} pages={1} />,
+    );
+    const iframe = getPreviewFrame();
+    fireEvent.load(iframe);
+
+    expect(screen.queryByText(/近似分页/)).toBeNull();
+    expect(screen.queryByText(/约需/)).toBeNull();
+    expect(screen.queryByText(/第 2 页/)).toBeNull();
+    // 单页时 iframe 仍是一张 A4 的高度，不会被改成"连续流总高"。
+    expect(iframe.getAttribute("height")).toBe("1123");
+  });
+
+  it("超出时显示真实页数与超出量，而不是静默", () => {
+    measureState.value = { usedHeight: 1300, pageContentHeight: 1000, pageLimit: 1 };
+    render(
+      <ResumePreview html="<!doctype html><html><body></body></html>" warnings={[]} pages={1} />,
+    );
+    fireEvent.load(getPreviewFrame());
+
+    expect(screen.getByText(/约需 2 页/)).toBeTruthy();
+    expect(screen.getByText(/上限 1 页/)).toBeTruthy();
+    expect(screen.getByText(/正文还多出约 30%/)).toBeTruthy();
+  });
+
+  it("多页视图出现且带「近似」标注（去掉标注会红）", () => {
+    measureState.value = { usedHeight: 1300, pageContentHeight: 1000, pageLimit: 1 };
+    render(
+      <ResumePreview html="<!doctype html><html><body></body></html>" warnings={[]} pages={1} />,
+    );
+    fireEvent.load(getPreviewFrame());
+
+    expect(screen.getByText(/第 2 页 \/ 共 2 页（近似）/)).toBeTruthy();
+    expect(screen.getByText(/按 A4 高度切分的近似分页/)).toBeTruthy();
+  });
+
+  it("多页展示不改动 page_limit：上报的 pages 仍是用户设的上限", () => {
+    measureState.value = { usedHeight: 1300, pageContentHeight: 1000, pageLimit: 1 };
+    const onLayoutStatus = vi.fn();
+    render(
+      <ResumePreview
+        html="<!doctype html><html><body></body></html>"
+        warnings={[]}
+        pages={1}
+        onLayoutStatus={onLayoutStatus}
+      />,
+    );
+    fireEvent.load(getPreviewFrame());
+
+    const lastCall = onLayoutStatus.mock.calls.slice(-1)[0]?.[0];
+    expect(lastCall?.pages).toBe(1); // 视觉切成 2 页，但上报的页数仍是用户设的上限
+    expect(lastCall?.overflow).toBe(true);
+  });
+
+  it("溢出时多页视图是横向并排（columns），而不是纵向堆叠", () => {
+    measureState.value = { usedHeight: 1300, pageContentHeight: 1000, pageLimit: 1 };
+    const { container } = render(
+      <ResumePreview html="<!doctype html><html><body></body></html>" warnings={[]} pages={1} />,
+    );
+    const iframe = getPreviewFrame();
+    fireEvent.load(iframe);
+
+    // 注入的样式用 CSS columns 横向铺开（单流、单一 fit-scale），而不是把 iframe 拉高后纵向堆叠。
+    const injected = iframe.contentDocument?.getElementById("resume-preview-style")?.textContent;
+    expect(injected).toContain("column-width");
+    expect(injected).toContain("column-fill");
+    expect(injected).not.toContain("overflow-y:visible");
+
+    // 页分隔线是竖直的：定位用 left（水平），不再用 top（垂直）。
+    const separator = container.querySelector(
+      ".resume-preview-page-separator",
+    ) as HTMLElement | null;
+    expect(separator).toBeTruthy();
+    expect(separator?.style.left).toBeTruthy();
+    expect(separator?.style.top).toBe("");
   });
 });

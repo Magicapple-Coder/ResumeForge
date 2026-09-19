@@ -408,7 +408,7 @@ export default function LLMConfigCard({
         <List
           size="small"
           dataSource={modelOptions}
-          style={{ maxHeight: 360, overflowY: "auto" }}
+          style={{ maxHeight: 360, overflowY: "auto", overflowX: "hidden" }}
           renderItem={(model) => (
             <List.Item
               actions={[

@@ -60,11 +60,95 @@
 ```powershell
 $env:PYTHONUTF8 = "1"
 .venv\Scripts\python.exe -m ruff check .
-.venv\Scripts\python.exe -m pytest --cov=app --cov-config=..\pyproject.toml
+.venv\Scripts\python.exe -m pytest -n auto --cov=app --cov-config=..\pyproject.toml
 .venv\Scripts\python.exe -m pip check
 ```
 
+`-n auto` 走 `pytest-xdist`（在 `requirements-dev.txt` 里）并行执行。**这不是可选的美化**：全量
+1000+ 个用例串行要 ~8 分钟，并行后降到 ~3 分钟，而"改一次要等八分钟"正是协作最贵的一环。
+`conftest.py` 的测试库与数据集目录按 PID 隔离，因此 worker 之间本来就不会互相踩；**新增测试时
+不要引入跨进程共享的固定路径**（写进仓库目录、固定临时文件名、`os.chdir`），那会让并行从
+"更快"变成"偶发不可复现的失败"。
+
+并行有两个已经踩过的坑，改这块配置时别退回去：
+
+- **`[tool.coverage.run] parallel = true` 是必需的**。否则每个 worker 抢写同一个 `.coverage`
+  文件，会在**所有用例都通过之后**的收尾阶段抛 `attempt to write a readonly database`
+  ——最坏的一类失败位置（看起来像测试挂了，其实是覆盖率写盘冲突）。
+- **退出码不能单独作为判据，而且并行跑可能根本没检查覆盖率门槛**。本机沙箱的
+  `sitecustomize.py` 包装了 `shutil.rmtree`，pytest 清理自己的临时目录时会触发它的
+  "批量删除守卫"并 `SystemExit(1)`——worker 猝死，xdist 控制器随之抛
+  `INTERNALERROR ... KeyError: <WorkerController>`。此时**汇总行仍然是 `N passed, 0 failed`**，
+  但**覆盖率报告那一步还没跑到**，所以 80% 的门槛在并行跑里可能压根没执行。
+  因此分清楚用途：**日常内循环**用并行，看汇总行的失败数（必须为 0）；**交付判定**必须再跑
+  一次全量，确认覆盖率报告与门槛真的过了——但注意**串行的退出码同样可能被污染**，见下一条。
+  反过来，汇总行出现 failed 就一定是真的坏了，不要用"可能是并行的问题"搪塞过去。
+
+- **但"串行就没事"这个结论并不成立**（2026-09-18 实测）：本机沙箱下**串行** `pytest --cov`
+  同样会在 `pytest-cov` 收尾的 `cov.combine()` 删 `.coverage.*` 时命中批量删除守卫 →
+  `SystemExit(1)`、**退出码 3，而且覆盖率报告那一步整段跑不到**。根因是 coverage 会向上找到
+  仓库根的 `pyproject.toml`（那里 `parallel = true`），所以**即使串行也照样产生 `.coverage.*`**；
+  给 pytest 传 `parallel=false` 也挡不住。**拿到干净覆盖率的办法**是绕开 pytest-cov：
+
+  ```powershell
+  .venv\Scripts\python.exe -m coverage run -m pytest -q
+  .venv\Scripts\python.exe -m coverage combine --keep
+  .venv\Scripts\python.exe -m coverage report --fail-under=80
+  ```
+
+  判定时**以汇总行 + 覆盖率报告为准**；只有两者都正常打印，退出码才可信。
+
+- **`vite build` 在本机沙箱下会以 exit 1 失败**，但**不是构建错误**：模块已经全部 transform 成功，
+  死在 `prepareOutDir/emptyDir` 清理 `frontend/dist/assets` 时被同一个批量删除守卫拦下
+  （日志形如 `SAFE_DELETE_BULK_CONFIRM_REQUIRED count=170 threshold=100`）。
+  指定一个**仓库外**的输出目录即可正常跑通：
+
+  ```powershell
+  npx vite build --outDir D:\rf_build_tmp --emptyOutDir
+  ```
+
+另外别忘了一条：**`--cov` 不能和"只跑几个文件"混用**。覆盖率门槛是 80%，子集跑出来必然只有
+二三十，于是 pytest 以失败退出——那是个假失败，不是代码坏了。子集只跑不加 `--cov` 的命令。
+
+### 分层验证（改动时按此顺序，最后一步不能省）
+
+1. **先跑改动直接相关的用例**（`pytest -q <相关文件>`，通常几秒到几十秒）——快速确认方向对不对；
+2. 再跑 `ruff check .`（秒级）；
+3. **交付前跑一次全量 + 覆盖率**（上面那条命令）。覆盖率门槛是 80%，只在全量时开 `--cov`
+   ——`--cov` 自身有明显开销，在只跑几个文件的第 1 步加它没有意义。
+4. 前端同理：改动相关的 `.test.tsx` 先跑，`prettier --check` / `eslint` / `tsc --noEmit` /
+   `vite build` 在全量前跑。
+
+**提速只能来自流程，不能来自降低标准**：不许为了跑得快而跳过全量、跳过 `pip check`、
+降低覆盖率门槛、删掉"跑得慢但守着关键性质"的用例、或把断言改松。慢的用例要**优化**（拆出
+纯函数、把网络与时钟注入进去、缩小夹具），不是删掉。若某个用例确实必须慢（真的要等超时），
+把它的等待参数注入成毫秒级而不是改断言。
+
+### 缩小改动半径（省时间也省 token）
+
+- **先精确检索、再读最小必要片段**：用 `Grep` 定位到文件与行号后再读那一段，不要整目录通读、
+  也不要在已知位置的情况下重复读同一文件。
+- **一次改一处、就近验证**：不要攒一大堆改动最后一起跑，那样失败时无法定位是哪一处引入的。
+- **改之前先确认"这份逻辑是否已经有唯一实现"**：仓库多处刻意保持"一处逻辑一份实现"
+  （如投递准入、状态白名单），遇到重复实现优先复用而不是再写一份。
+- **不要拿"函数签名行"当编辑锚点**，除非把那一行原样写回去。本项目已经因为这件事**三次**
+  误删既有代码：`def note_with_source(...)`（把下一个函数的签名并进了注释）、
+  `def meta_line(...)`（并成一行导致语法错）、`def test_import_path_is_registered():`
+  （签名被吞掉、函数体变成悬空代码）。用签名行做锚点时，`new_string` 的第一行必须是同一个签名。
+- **每次 Edit 之后立刻 `grep` 复查被改处**（`grep -n "被改的关键字" -A 3 文件`）。上面三次都是
+  几分钟内就能看出来的错误，代价只是看一眼；而它们若溜进测试运行，会表现成"语法错/某个用例
+  莫名消失"，排查成本高得多。
+
 涉及数据库结构时，还要检查 Alembic 升级/降级、旧库兼容、备份完整性和关键记录数；不得直接用 `create_all` 掩盖迁移问题。数据库迁移前应保留可恢复备份。
+
+**新增一个迁移后，先 grep 上一个 revision 号再跑测试**：
+
+```powershell
+# 在 backend 目录执行：把 00XX_xxx 换成**上一个** head 的 revision 字面量
+Select-String -Path tests\*.py -Pattern "00XX_xxx" | Select-Object Path, LineNumber
+```
+
+具体地：把新迁移的 `revision` 写进 `migrations/versions/` 之后，搜一下**旧 head 的字面量**在测试里出现过几次——至少 `tests/test_database.py`、`tests/test_backup_apply_tables.py`、`tests/test_apply_migration_qa.py`、`tests/test_assistant_search.py` 各钉着一处 "head revision 应当是 X"。不更新它们，一次纯加列的迁移就会带出十几个失败，而失败信息（`assert '0015_…' == '0014_…'`）看起来像迁移本身坏了。新增迁移的情形还要确认：**只加表 / 只加列**（这是"旧备份仍可导入"成立的前提，`test_migration_00XX.py` 里要有"表集合前后不变"的断言）、**表不存在时跳过而不是报错**（迁移链也会跑在"只有部分业务表"的历史库上）、以及**完整可用的 `downgrade`**。
 
 ### 前端
 

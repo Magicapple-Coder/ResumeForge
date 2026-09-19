@@ -8,7 +8,7 @@ import {
   Modal,
   Segmented,
   Space,
-  Spin,
+  Steps,
   Switch,
   Tag,
   Tooltip,
@@ -17,19 +17,33 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  cancelResumeGenerateTask,
   fetchResumeTemplates,
-  generateResume,
+  getResume,
+  getResumeGenerateTask,
   renderResume,
+  startResumeGeneration,
   updateResume,
   updateResumeLayout,
 } from "../api/resumes";
 import { getLLMConfig } from "../api/settings";
 import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
-import type { EnhancementLevel, Job, ResumeContent, ResumeLayout, StreamEvent } from "../types";
+import type {
+  EnhancementLevel,
+  Job,
+  ResumeContent,
+  ResumeGenerateTask,
+  ResumeLayout,
+} from "../types";
 import ExportButtons from "./ExportButtons";
 import ResumeEditorModal from "./ResumeEditorModal";
+import {
+  RESUME_GENERATION_STAGES,
+  stageForProgressMessage,
+  stageIndexOf,
+} from "./resumeGenerationStages";
 import ResumeLayoutControls from "./ResumeLayoutControls";
-import ResumePreview from "./ResumePreview";
+import ResumePreview, { type ResumePreviewHandle } from "./ResumePreview";
 import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
 
 /** 自定义提示词上限，与后端 GenerateOptions.custom_instruction 一致。 */
@@ -53,7 +67,7 @@ interface GenerateResult {
 }
 
 export default function GenerateResumeModal({ job, open, initialTitle = "", onClose }: Props) {
-  const { message } = App.useApp();
+  const { message, notification } = App.useApp();
   const navigate = useNavigate();
 
   const [stage, setStage] = useState<Stage>("config");
@@ -77,8 +91,9 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   const [relayouting, setRelayouting] = useState(false);
   const [modelName, setModelName] = useState("");
   const [llmReady, setLlmReady] = useState(true);
-  const [progress, setProgress] = useState<string[]>([]);
-  const [streamText, setStreamText] = useState("");
+  // 生成改为后台任务：taskId 驱动轮询，task 是最近一次轮询到的状态。
+  const [taskId, setTaskId] = useState<number | null>(null);
+  const [task, setTask] = useState<ResumeGenerateTask | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [previewHtml, setPreviewHtml] = useState("");
@@ -88,17 +103,38 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const streamBoxRef = useRef<HTMLDivElement>(null);
-  const generationVersion = useRef(0);
-  const streamTextBuffer = useRef("");
-  const streamFrame = useRef<number | null>(null);
+  // 生成开始时的版式快照：后台完成后用它渲染预览，避免完成后用户又改了配置导致
+  // 预览参数与生成参数不一致。
+  const generationLayoutRef = useRef<ResumeLayout>(layout);
+  // 预览句柄：拖动字号时用它把探针 CSS 即时注入预览（本地缩放，无网络往返）。
+  const previewRef = useRef<ResumePreviewHandle>(null);
+
+  // 后台生成是否仍在进行：决定"重新打开弹窗"时是接着看进度，还是回到配置页。
+  // 生成中关掉弹窗（后台继续）不 reset，所以 stage 会留在 generating；等它跑到终态
+  // （completed/cancelled/failed）后 taskId 被清空、stage 被改写，这里跟着变 false。
+  const generatingInBackground = stage === "generating" && taskId != null;
+  const generatingRef = useRef(generatingInBackground);
+  useEffect(() => {
+    generatingRef.current = generatingInBackground;
+  }, [generatingInBackground]);
 
   // 打开时把资料页填的名称带进来。reset() 只在关闭时跑，不补这一步的话
   // 名称输入框永远是空的。
   useEffect(() => {
     if (open) setTitle(initialTitle);
   }, [open, initialTitle]);
+
+  // 重新打开弹窗时回到配置页；唯一例外是上次的生成还在后台跑（生成中关掉的），
+  // 此时保持 generating 让用户接着看进度——否则"生成中关掉 → 后台完成 → 再打开"
+  // 会看到一份过期/错位的预览。
+  useEffect(() => {
+    if (!open) return;
+    if (generatingRef.current) return;
+    setStage("config");
+    setResult(null);
+    setPreviewHtml("");
+    setErrorMsg("");
+  }, [open]);
 
   // 打开弹窗时检查 LLM 配置并展示当前模型
   useEffect(() => {
@@ -132,34 +168,11 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
       });
   }, [open]);
 
-  // 流式文本自动滚到底部
-  useEffect(() => {
-    if (stage === "generating" && streamBoxRef.current) {
-      streamBoxRef.current.scrollTop = streamBoxRef.current.scrollHeight;
-    }
-  }, [streamText, stage]);
-
-  // 关闭时中止未完成的请求，并清理尚未提交到 React 的流式文本帧。
-  useEffect(
-    () => () => {
-      generationVersion.current += 1;
-      abortRef.current?.abort();
-      if (streamFrame.current !== null) cancelAnimationFrame(streamFrame.current);
-    },
-    [],
-  );
-
   const reset = useCallback(() => {
-    generationVersion.current += 1;
-    streamTextBuffer.current = "";
-    if (streamFrame.current !== null) {
-      cancelAnimationFrame(streamFrame.current);
-      streamFrame.current = null;
-    }
     setStage("config");
     setTitle(initialTitle);
-    setProgress([]);
-    setStreamText("");
+    setTaskId(null);
+    setTask(null);
     setErrorMsg("");
     setResult(null);
     setPreviewHtml("");
@@ -172,118 +185,125 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     setCustomInstruction("");
   }, [initialTitle]);
 
+  const loadPreview = useCallback(async (resumeId: number) => {
+    try {
+      const detail = await getResume(resumeId);
+      const html = await renderResume(detail.content, generationLayoutRef.current);
+      setResult({ resume: detail.content, warnings: detail.warnings, recordId: resumeId });
+      setPreviewHtml(html);
+      setStage("preview");
+    } catch (err) {
+      setStage("error");
+      setErrorMsg(err instanceof Error ? err.message : "生成完成，但加载结果失败");
+    }
+  }, []);
+
   const startGenerate = async () => {
     if (!open) return;
-    abortRef.current?.abort();
-    const currentGeneration = ++generationVersion.current;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    streamTextBuffer.current = "";
-    if (streamFrame.current !== null) {
-      cancelAnimationFrame(streamFrame.current);
-      streamFrame.current = null;
-    }
+    generationLayoutRef.current = layout;
     setStage("generating");
-    setProgress([]);
-    setStreamText("");
+    setTaskId(null);
+    setTask(null);
     setErrorMsg("");
     setResult(null);
     setEditorOpen(false);
     setEditorTarget(null);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
-    // 事件回调里只更新状态；最终结果收集在闭包变量中，流结束后统一处理
-    const final: {
-      resume: ResumeContent | null;
-      warnings: string[];
-      recordId: number | null;
-      error: string;
-    } = {
-      resume: null,
-      warnings: [],
-      recordId: null,
-      error: "",
-    };
-    const handleEvent = (event: StreamEvent) => {
-      if (currentGeneration !== generationVersion.current) return;
-      switch (event.type) {
-        case "progress":
-          setProgress((prev) => [...prev, event.message]);
-          break;
-        case "delta":
-          streamTextBuffer.current += event.text;
-          if (streamFrame.current === null) {
-            streamFrame.current = requestAnimationFrame(() => {
-              streamFrame.current = null;
-              if (currentGeneration === generationVersion.current) {
-                setStreamText(streamTextBuffer.current);
-              }
-            });
-          }
-          break;
-        case "done":
-          final.resume = event.resume;
-          final.warnings = event.warnings;
-          break;
-        case "saved":
-          final.recordId = event.record_id;
-          break;
-        case "error":
-          final.error = event.message;
-          setErrorMsg(event.message);
-          break;
-      }
-    };
-
     try {
-      await generateResume(
-        {
-          job_id: job?.id ?? null,
-          title: job ? "" : title.trim(),
-          options: {
-            enhance,
-            enhancement_level: enhancementLevel,
-            page_limit: layout.page_limit,
-            font_scale: layout.font_scale,
-            template: layout.template,
-            format_name: layout.format_name,
-            custom_instruction: customInstruction.trim(),
-          },
+      const started = await startResumeGeneration({
+        job_id: job?.id ?? null,
+        title: job ? "" : title.trim(),
+        options: {
+          enhance,
+          enhancement_level: enhancementLevel,
+          page_limit: layout.page_limit,
+          font_scale: layout.font_scale,
+          template: layout.template,
+          format_name: layout.format_name,
+          custom_instruction: customInstruction.trim(),
         },
-        handleEvent,
-        controller.signal,
-      );
-      if (currentGeneration !== generationVersion.current) return;
-      if (streamFrame.current !== null) {
-        cancelAnimationFrame(streamFrame.current);
-        streamFrame.current = null;
-      }
-      setStreamText(streamTextBuffer.current);
-      if (final.resume) {
-        const html = await renderResume(final.resume, layout);
-        if (currentGeneration !== generationVersion.current) return;
-        setResult({ resume: final.resume, warnings: final.warnings, recordId: final.recordId });
-        setPreviewHtml(html);
-        setStage("preview");
-        message.success("简历已生成并自动保存到简历中心");
-      } else {
-        setStage("error");
-        setErrorMsg(final.error || "生成失败：未收到有效结果");
-      }
+      });
+      setTaskId(started.id);
+      setTask(started);
     } catch (err) {
-      if (currentGeneration !== generationVersion.current) return;
-      // 用户主动取消不报错
-      if (!(err instanceof DOMException && err.name === "AbortError")) {
-        setStage("error");
-        setErrorMsg(err instanceof Error ? err.message : "生成失败，请重试");
+      setStage("error");
+      setErrorMsg(err instanceof Error ? err.message : "启动生成失败，请重试");
+    }
+  };
+
+  // 轮询后台任务：进入终态前每 1.5s 拉一次状态（与 useTaskPolling 同一套轮询模型）。
+  useEffect(() => {
+    if (taskId == null) return;
+    let disposed = false;
+    const poll = async () => {
+      try {
+        const updated = await getResumeGenerateTask(taskId);
+        if (!disposed) setTask(updated);
+      } catch {
+        // 轮询失败（后端短暂不可用）不打断，等下一轮自愈。
       }
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+    };
+    void poll();
+    const timer = window.setInterval(poll, 1500);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [taskId]);
+
+  // 任务进入终态后的收尾：完成→取简历进预览并提醒；取消→回配置；失败→错误。
+  useEffect(() => {
+    if (!task) return;
+    if (task.status === "completed") {
+      const resumeId = task.resume_id;
+      setTaskId(null);
+      setTask(null);
+      if (resumeId == null) {
+        // 完成却没回填记录 id：理论上不会发生（完成一定先落库），防御性当作失败处理，
+        // 避免卡在"完成"状态却永远拿不到预览。
+        setErrorMsg("生成完成，但结果记录缺失，请重试");
+        setStage("error");
+        return;
+      }
+      notification.success({
+        message: "简历已生成",
+        description: "已自动保存到简历中心，可以继续微调或导出。",
+        actions: (
+          <Button size="small" onClick={() => navigate("/resumes")}>
+            查看简历
+          </Button>
+        ),
+      });
+      void loadPreview(resumeId);
+    } else if (task.status === "cancelled") {
+      setTaskId(null);
+      setTask(null);
+      setStage("config");
+      message.info("已取消生成");
+    } else if (task.status === "failed") {
+      setTaskId(null);
+      setErrorMsg(task.error || "生成失败，请重试");
+      setStage("error");
+    }
+  }, [task, notification, message, navigate, loadPreview]);
+
+  const handleCancelGenerate = async () => {
+    if (taskId == null) return;
+    try {
+      const cancelled = await cancelResumeGenerateTask(taskId);
+      setTask(cancelled);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "取消失败，请重试");
     }
   };
 
   const handleClose = () => {
-    abortRef.current?.abort();
+    // 生成中关弹窗 = 后台继续（不是取消）：任务继续跑，完成后提醒；其余阶段照旧复位。
+    if (stage === "generating" && taskId != null) {
+      onClose();
+      return;
+    }
     reset();
     onClose();
   };
@@ -331,8 +351,6 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
       onCancel={handleClose}
       width={860}
       footer={null}
-      maskClosable={stage !== "generating"}
-      closable={stage !== "generating"}
       destroyOnHidden
     >
       {stage === "config" && (
@@ -349,7 +367,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
-              message={`当前模型：${modelName || "未知"}。生成过程约需 1-2 分钟，请勿关闭弹窗。`}
+              message={`当前模型：${modelName || "未知"}。生成过程约需 1-2 分钟，生成在后台进行，期间可关闭弹窗，完成后会自动提醒。`}
               description={
                 job
                   ? "系统会根据目标岗位的 JD，从完整个人资料与经历总结文件中筛选并排序相关信息；原始资料不会被修改。"
@@ -444,31 +462,28 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
 
       {stage === "generating" && (
         <div>
-          {progress.map((item, index) => (
-            <div key={`${index}-${item}`} style={{ marginBottom: 6 }}>
-              <Spin size="small" style={{ marginRight: 8 }} />
-              <Typography.Text>{item}</Typography.Text>
-            </div>
-          ))}
-          <div
-            ref={streamBoxRef}
-            className="stream-text"
-            style={{
-              marginTop: 12,
-              padding: 12,
-              background: "#fafafa",
-              borderRadius: 6,
-              maxHeight: 320,
-              overflowY: "auto",
-              border: "1px solid #f0f0f0",
-            }}
-          >
-            {streamText || "等待模型输出…"}
-          </div>
+          <Steps
+            size="small"
+            current={stageIndexOf(stageForProgressMessage(task?.message ?? ""))}
+            items={RESUME_GENERATION_STAGES.map((item) => ({ title: item.title }))}
+            style={{ marginBottom: 8 }}
+          />
+          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+            {task?.message || "正在准备…"} · 已接收 {task?.received_chars ?? 0} 字
+          </Typography.Text>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="生成已在后台开始：现在关闭弹窗不会中断，完成后会自动提醒并打开结果。"
+          />
           <div style={{ marginTop: 16, textAlign: "right" }}>
-            <Button danger onClick={handleClose}>
-              取消生成
-            </Button>
+            <Space>
+              <Button onClick={handleClose}>后台继续（关闭弹窗）</Button>
+              <Button danger disabled={taskId == null} onClick={() => void handleCancelGenerate()}>
+                取消生成
+              </Button>
+            </Space>
           </div>
         </div>
       )}
@@ -481,6 +496,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
               layout={layout}
               resumeId={result.recordId ?? undefined}
               disabled={relayouting}
+              previewRef={previewRef}
               onChange={(next) => void applyLayout(next)}
             />
             {relayouting && <Typography.Text type="secondary">正在按新版式渲染…</Typography.Text>}
@@ -518,6 +534,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
             />
           )}
           <ResumePreview
+            ref={previewRef}
             html={previewHtml}
             pages={layout.page_limit}
             warnings={result.warnings}

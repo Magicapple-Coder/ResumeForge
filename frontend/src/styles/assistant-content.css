@@ -223,20 +223,91 @@
 .assistant-sources ol {
   display: grid;
   width: 100%;
-  gap: 6px;
+  gap: 0;
   margin: 0;
   padding-left: 20px;
 }
 
+/* 每条来源之间用一条分隔线断开：以前条目贴在一起，用户会误以为标题和摘要是同一条来源的
+   两部分，其实它们是不同来源。分隔线 + 上下留白让"一条到这儿就完了"变得显然。 */
 .assistant-sources li {
-  padding-left: 2px;
+  padding: 8px 2px;
+  border-top: 1px solid #eef2f7;
 }
 
+.assistant-sources li:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+
+.assistant-sources li:last-child {
+  padding-bottom: 2px;
+}
+
+/* 外链图标 + hover 下划线：标题默认看起来就是普通文字，用户不会想到能点开原网页。
+   图标把"这是链接"摆在明面上，下划线是悬停时的二次确认。 */
+.assistant-source-title.ant-typography {
+  font-weight: 500;
+}
+
+.assistant-source-title:hover {
+  text-decoration: underline;
+}
+
+.assistant-source-title .assistant-source-icon {
+  margin-left: 4px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+/* 摘要最多两行，超出省略：满宽铺两行会把每条来源拉得很长、几条叠在一起又挤又难扫。
+   省略掉的只是"预览"，点标题就能到原网页看完整内容。 */
 .assistant-sources li .ant-typography-secondary {
-  display: block;
-  margin-top: 1px;
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
   font-size: 12px;
   line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 「助手做了什么」默认折叠：逐条记录太吵，但折叠标题承接了原设计"改动必须一眼可见"
+   的意图——标题里直接写「改动了 N 项」「N 项失败」。标题永远显示，所以不展开也看得见。 */
+.assistant-tool-calls.ant-collapse {
+  margin-top: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.assistant-tool-calls .ant-collapse-header {
+  align-items: center !important;
+  padding: 8px 10px !important;
+  color: #52606f !important;
+  font-size: 13px;
+}
+
+.assistant-tool-calls .ant-collapse-content {
+  border-top: 1px solid #e2e8f0 !important;
+  background: #fff;
+}
+
+.assistant-tool-calls .ant-collapse-content-box {
+  padding: 10px 12px !important;
+}
+
+.assistant-tool-calls ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* 标题里的「改动了 N 项 / N 项失败」：紧跟在计数后面，用颜色区分"改了数据"与"出错了"。 */
+.assistant-tool-calls-flag {
+  margin-left: 2px;
+  font-size: 13px;
 }
 
 .assistant-streaming-status {

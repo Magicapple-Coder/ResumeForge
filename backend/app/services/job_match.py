@@ -48,6 +48,12 @@ _MARKDOWN_JSON_RE = re.compile(r"\A```(?:json)?\s*(.*?)\s*```\Z", re.IGNORECASE 
 _NO_EVIDENCE_HINTS = ("未提供", "无相关", "资料中未", "简历中未")
 _MAX_LOCAL_CONDITIONS = 20
 
+# 证据核对的子句级容错参数：实质子句的字符 3-gram 包含率需不低于该阈值。
+_CLAUSE_SPLIT_RE = re.compile(r"[。；;！!？?，,、]")
+_MIN_CLAUSE_CHARS = 6
+_NGRAM_SIZE = 3
+_INCLUSION_THRESHOLD = 0.7
+
 
 def _load_prompt(name: str) -> str:
     return (PROMPTS_DIR / name).read_text(encoding="utf-8")
@@ -71,8 +77,41 @@ def _jd_source(payload: dict[str, Any]) -> str:
     return "\n".join(str(value) for value in payload.values() if value)
 
 
+def _plain_source(text: str) -> str:
+    """把 ``json.dumps`` 出来的资料/简历展开成便于逐字核对的纯文本。
+
+    ``api/job_match.py`` 的 ``profile_text``/``resume_text`` 是 ``json.dumps`` 产物：
+    换行是字面 ``\\n``、字段边界是 ``","``/``":"``。直接做整段子串匹配会把跨行/跨字段的
+    证据误杀。这里尽力反序列化，只收集字符串叶子值并用换行连接；失败则原样返回。
+    """
+    if not text:
+        return ""
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    values: list[str] = []
+
+    def collect(node: Any) -> None:
+        if isinstance(node, str):
+            if node.strip():
+                values.append(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                collect(value)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+        # 其它标量（int/bool/None）不参与文本核对。
+
+    collect(data)
+    return "\n".join(values)
+
+
 def _personal_source(profile_text: str, resume_text: str) -> str:
-    return f"{profile_text}\n{resume_text}".strip()
+    return "\n".join(
+        part for part in (_plain_source(profile_text), _plain_source(resume_text)) if part
+    )
 
 
 def _fit_payload(payload: dict[str, Any], prefix: str, suffix: str, max_chars: int) -> str:
@@ -146,6 +185,54 @@ def _has_no_evidence_hint(evidence: str) -> bool:
     return any(hint in evidence for hint in _NO_EVIDENCE_HINTS)
 
 
+def _char_ngrams(text: str, n: int = _NGRAM_SIZE) -> set[str]:
+    """字符 n-gram 集合；长度不足 n 时退回整体作为一个 gram，便于短串也参与核对。"""
+    if not text:
+        return set()
+    if len(text) < n:
+        return {text}
+    return {text[i : i + n] for i in range(len(text) - n + 1)}
+
+
+def _clause_inclusion_ok(clause: str, normalized_source: str, threshold: float) -> bool:
+    """单个实质子句能否在来源里核对到：先整段子串，再退到字符 3-gram 包含率。"""
+    if not clause or not normalized_source:
+        return False
+    if clause in normalized_source:
+        return True
+    clause_grams = _char_ngrams(clause)
+    source_grams = _char_ngrams(normalized_source)
+    if not clause_grams or not source_grams:
+        return False
+    return len(clause_grams & source_grams) / len(clause_grams) >= threshold
+
+
+def _candidate_in_sources(
+    normalized_candidate: str, normalized_sources: list[str], threshold: float
+) -> bool:
+    """判断候选片段（证据 / 招聘原文摘录）能否在来源里核对到。
+
+    防虚构护栏保留，但放宽匹配方式：整段子串命中即放行；否则按子句拆分，对每个
+    实质子句用字符 3-gram 包含率容错（容纳模型轻度改写）。任一实质子句核对不上仍拒绝。
+    """
+    if not normalized_candidate:
+        return True
+    if any(normalized_candidate in source for source in normalized_sources):
+        return True
+    clauses = [
+        clause
+        for clause in re.split(_CLAUSE_SPLIT_RE, normalized_candidate)
+        if len(clause) >= _MIN_CLAUSE_CHARS
+    ]
+    probes = clauses or [normalized_candidate]
+    for probe in probes:
+        if not any(
+            _clause_inclusion_ok(probe, source, threshold) for source in normalized_sources
+        ):
+            return False
+    return True
+
+
 def validate_evidence(
     result: JobMatchResult, jd_source: str, personal_source: str
 ) -> None:
@@ -155,15 +242,20 @@ def validate_evidence(
     conditions = [*result.hard_conditions, *result.core_abilities, *result.bonus_items]
     for condition in conditions:
         quote = condition.jd_quote.strip()
-        if quote and _normalize(quote) not in normalized_jd:
+        if quote and not _candidate_in_sources(
+            _normalize(quote), [normalized_jd], _INCLUSION_THRESHOLD
+        ):
             raise LLMError("模型返回的匹配结论缺少招聘原文依据，请重试")
         evidence = condition.evidence.strip()
         if not evidence:
             continue
         if _has_no_evidence_hint(evidence):
             continue
-        normalized_evidence = _normalize(evidence)
-        if normalized_evidence not in normalized_personal and normalized_evidence not in normalized_jd:
+        if not _candidate_in_sources(
+            _normalize(evidence),
+            [normalized_personal, normalized_jd],
+            _INCLUSION_THRESHOLD,
+        ):
             raise LLMError("模型返回的匹配证据无法在资料或简历中核对，请重试")
 
 

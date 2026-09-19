@@ -1,4 +1,4 @@
-/** 我的资料页：通用简历入口的接线（这个页面此前没有任何测试）。 */
+/** 我的资料页：通用简历入口 + 分区折叠的接线（这个页面此前没有任何测试）。 */
 
 import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -75,16 +75,23 @@ afterEach(() => {
 });
 
 describe("ProfilePage 通用简历", () => {
-  it("renders the general-resume card outside of edit mode", async () => {
+  it("renders the general-resume card outside of edit mode, above the profile sections", async () => {
     renderPage();
 
-    // 资料页很长，卡片在底部：头部要给一个直达入口
-    expect(await screen.findByRole("button", { name: /通用简历/ })).toBeInTheDocument();
     // 非编辑状态也要能用：写简历不是改资料
-    expect(screen.getByLabelText("通用简历名称")).toBeEnabled();
+    expect(await screen.findByLabelText("通用简历名称")).toBeEnabled();
     expect(screen.getByRole("button", { name: /AI 生成/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /从头手写/ })).toBeEnabled();
     expect(await screen.findByText("还没有通用简历")).toBeInTheDocument();
+
+    // 「通用简历」不再沉在资料最底部：它要出现在资料分区（基本信息）之前。
+    const general = document.getElementById("general-resume-section");
+    const basicSectionToggle = screen.getByRole("button", { name: "展开基本信息" });
+    expect(general).not.toBeNull();
+    expect(
+      (general as HTMLElement).compareDocumentPosition(basicSectionToggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("carries the typed name into the generate modal", async () => {
@@ -110,5 +117,39 @@ describe("ProfilePage 通用简历", () => {
     fireEvent.click(screen.getByRole("button", { name: /从头手写/ }));
 
     expect(await screen.findByText("从头编写通用简历")).toBeInTheDocument();
+  });
+});
+
+describe("ProfilePage 分区折叠", () => {
+  it("默认折叠每个分区，点标题可展开", async () => {
+    renderPage();
+    await screen.findByLabelText("通用简历名称");
+
+    // 默认折叠：标题按钮标成「展开」。
+    const basicToggle = screen.getByRole("button", { name: "展开基本信息" });
+    expect(basicToggle).toHaveAttribute("aria-expanded", "false");
+
+    // 点标题展开后，按钮翻转成「收起」。
+    fireEvent.click(basicToggle);
+    const collapsedToggle = screen.getByRole("button", { name: "收起基本信息" });
+    expect(collapsedToggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("「全部展开」一键展开，再点「全部收起」一键收回", async () => {
+    renderPage();
+    await screen.findByLabelText("通用简历名称");
+
+    // 页头按钮带图标，可访问名是「图标名 + 文字」，用正则匹配文字部分即可。
+    const expandAll = screen.getByRole("button", { name: /全部展开/ });
+    fireEvent.click(expandAll);
+
+    // 全部展开后：每个分区标题都变成「收起」，页头按钮变成「全部收起」。
+    expect(screen.getByRole("button", { name: "收起基本信息" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收起教育经历" })).toBeInTheDocument();
+    const collapseAll = screen.getByRole("button", { name: /全部收起/ });
+
+    fireEvent.click(collapseAll);
+    expect(screen.getByRole("button", { name: "展开基本信息" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /全部展开/ })).toBeInTheDocument();
   });
 });

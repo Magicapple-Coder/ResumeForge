@@ -1,16 +1,19 @@
 /** 简历中心：生成历史列表、收藏、预览与导出。 */
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { App, Button, Input, Modal, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { App, Button, Input, Modal, Select, Space, Spin, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { deleteResume, listResumes, renameResume, updateResumeFavorite } from "../api/resumes";
+import { diffResume } from "../api/resumeWriting";
 import { RowActions, RowContextMenu, type RowActionItem } from "../components/common/RowActions";
 import ResumeDetailModal from "../components/ResumeDetailModal";
+import ResumeDiffView from "../components/ResumeDiffView";
 import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
 import { useApi } from "../hooks/useApi";
 import type { ResumeBrief } from "../types";
+import type { ResumeDiff } from "../types/resumeWriting";
 import { formatDateTime } from "../utils/format";
 
 export default function ResumesPage() {
@@ -26,6 +29,10 @@ export default function ResumesPage() {
   const [renameTarget, setRenameTarget] = useState<ResumeBrief | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [diffBase, setDiffBase] = useState<ResumeBrief | null>(null);
+  const [diffAgainstId, setDiffAgainstId] = useState<number | null>(null);
+  const [diffResult, setDiffResult] = useState<ResumeDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
   const jobIdParam = searchParams.get("job_id");
   const jobId = jobIdParam && /^\d+$/.test(jobIdParam) ? Number(jobIdParam) : undefined;
 
@@ -42,7 +49,7 @@ export default function ResumesPage() {
     async (id: number) => {
       try {
         await deleteResume(id);
-        message.success("已删除");
+        message.success("已移入回收站，可在「回收站」里恢复");
         void reload();
       } catch (err) {
         message.error(err instanceof Error ? err.message : "删除失败");
@@ -194,6 +201,15 @@ export default function ResumesPage() {
       },
     },
     {
+      key: "diff",
+      label: "版本对比",
+      onClick: () => {
+        setDiffBase(record);
+        setDiffAgainstId(null);
+        setDiffResult(null);
+      },
+    },
+    {
       key: "favorite",
       label: record.favorite ? "取消收藏" : "收藏",
       onClick: () => void toggleFavorite(record),
@@ -233,6 +249,19 @@ export default function ResumesPage() {
     }
   };
 
+  const selectDiffAgainst = async (againstId: number) => {
+    setDiffAgainstId(againstId);
+    if (!diffBase) return;
+    setDiffLoading(true);
+    try {
+      setDiffResult(await diffResume(diffBase.id, againstId));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "版本对比失败");
+    } finally {
+      setDiffLoading(false);
+    }
+  };
+
   return (
     <div>
       {jobId && (
@@ -257,7 +286,6 @@ export default function ResumesPage() {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
-        scroll={{ x: 1024 }}
         components={{
           body: {
             // 整行右键即可重命名、收藏或删除，不必先找到右侧的按钮。
@@ -302,6 +330,41 @@ export default function ResumesPage() {
           placeholder="简历名称"
           onChange={(event) => setRenameValue(event.target.value)}
         />
+      </Modal>
+      <Modal
+        title="版本对比"
+        open={diffBase !== null}
+        width="min(880px, calc(100vw - 24px))"
+        footer={null}
+        onCancel={() => {
+          if (!diffLoading) setDiffBase(null);
+        }}
+      >
+        {diffBase && (
+          <Space direction="vertical" style={{ width: "100%" }} size="middle">
+            <Space wrap>
+              <Typography.Text>基准版本：</Typography.Text>
+              <Typography.Text strong>{diffBase.title}</Typography.Text>
+              <Typography.Text type="secondary">对比：</Typography.Text>
+              <Select
+                style={{ minWidth: 240 }}
+                placeholder="选择要对比的版本"
+                value={diffAgainstId ?? undefined}
+                onChange={(value) => void selectDiffAgainst(value)}
+                options={(data?.items ?? [])
+                  .filter((item) => item.id !== diffBase.id)
+                  .map((item) => ({ value: item.id, label: item.title }))}
+              />
+            </Space>
+            {diffLoading && <Spin />}
+            {!diffLoading && diffResult && <ResumeDiffView diff={diffResult} />}
+            {!diffLoading && !diffResult && (
+              <Typography.Text type="secondary">
+                选择一份其它简历后展示三态差异。
+              </Typography.Text>
+            )}
+          </Space>
+        )}
       </Modal>
     </div>
   );

@@ -21,11 +21,20 @@ import logging
 import re
 from typing import Any
 
+from .boss_text import normalize_text, split_job_sections, split_title_salary
+
 logger = logging.getLogger(__name__)
 
 # 接口路径里用来识别"这是岗位列表 / 岗位详情"的片段。
 SEARCH_MARKER = "/wapi/zpgeek/search/joblist.json"
 DETAIL_MARKER = "/wapi/zpgeek/job/detail.json"
+
+# 宽松候选：站点给接口路径加版本后缀、改一段命名（`joblist.json` → `joblistV2.json`）时，
+# 只认整串路径会让网络这条路**整体失效**（而它的失败方式是静默退回 DOM）。
+# 因此同时接受几个更短的片段，最终由结构判定（`looks_like_search` / `looks_like_detail`）把关：
+# URL 宽松 + 结构严格，比"路径写死"既稳又不至于取错数据。
+SEARCH_MARKERS = (SEARCH_MARKER, "/search/joblist", "joblist")
+DETAIL_MARKERS = (DETAIL_MARKER, "/job/detail", "job/detail")
 
 # 接口里的薪资是数字（单位：元/月，或天）。超过这个数就当作"按天"而不是"按月"，
 # 因为月薪几十万在实习与校招场景里几乎不存在，而日薪 300~800 很常见。
@@ -35,7 +44,12 @@ _MAX_TEXT_CHARS = 20_000
 
 
 def _text(value: Any, limit: int = _MAX_TITLE_CHARS) -> str:
-    return str(value if value is not None else "").strip()[:limit]
+    """取一段文本：先还原反爬混淆，再截断。
+
+    **顺序不能反**：混淆字符（``boss`` 水印、康熙部首）也占长度，先截断会把还没还原的内容
+    切掉半个，之后无论怎么清洗都补不回来。
+    """
+    return normalize_text(value)[:limit]
 
 
 def _strip_html(value: Any, limit: int = _MAX_TEXT_CHARS) -> str:
@@ -43,6 +57,8 @@ def _strip_html(value: Any, limit: int = _MAX_TEXT_CHARS) -> str:
 
     岗位描述在接口里是 HTML 片段（``<br>``、``<p>``）。直接塞进 JD 里会让匹配分析
     与关键词提取读到一堆标签，所以这里把标签换成换行并压掉多余空行。
+    最后再过一遍反爬还原（水印 token / 部首 / 私用区数字）——真实数据里 JD 正文被塞了
+    ``boss`` / ``kanzhun`` / ``直聘`` 三种水印，不清掉会一路进到匹配分析里。
     """
     raw = str(value if value is not None else "")
     if not raw:
@@ -56,8 +72,7 @@ def _strip_html(value: Any, limit: int = _MAX_TEXT_CHARS) -> str:
         .replace("&lt;", "<")
         .replace("&gt;", ">")
     )
-    lines = [line.strip() for line in text.splitlines()]
-    return "\n".join(line for line in lines if line)[:limit]
+    return normalize_text(text)[:limit]
 
 
 def format_salary(low: Any, high: Any, months: Any = None) -> str:
@@ -110,6 +125,15 @@ def _skill_tags(values: Any) -> list[str]:
     return result[:12]
 
 
+def _int_or_none(value: Any) -> int | None:
+    """接口里的数字字段：解不出来返回 ``None``，绝不编一个 0（那会被下游当成"月薪 0 元"）。"""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
 def _job_items(payload: Any) -> list[dict[str, Any]]:
     """从列表响应里取出岗位数组；结构不认识时返回空列表。"""
     if not isinstance(payload, dict):
@@ -136,14 +160,25 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
         return None
 
     results: list[dict[str, Any]] = []
+    untitled = 0
     for item in items:
         job_id = _text(item.get("encryptJobId"))
         # BOSS 的详情页地址可以从 encryptJobId 拼出来；拼不出来时留空，
         # 上层会退回"点开卡片拿 href"那条路。
         url = f"https://www.zhipin.com/job_detail/{job_id}.html" if job_id else ""
+        # 岗位名与薪资在**接口里也可能粘在一起**（新版列表把两者放在同一个节点里），
+        # 所以统一过一遍拆分：标题只留岗位名；拆出来的薪资只在接口没给数字时兜底。
+        title, title_salary = split_title_salary(item.get("jobName"))
+        if not title:
+            # **读不出岗位名的卡片不算一条结果**。这一条是"站点改版"的报警器：
+            # 卡片内字段一旦改名（`jobName` → 别的名字），以前会安静地解析出 `title=""` 的
+            # "岗位"——上层看到的是"采到了 N 条"，而数据是废的，用户既不报错也拿不到东西。
+            # 全空卡片同理（例如接口把列表多套了一层，每个 item 变成 `{"jobList": [...]}`）。
+            untitled += 1
+            continue
         results.append(
             {
-                "title": _text(item.get("jobName")),
+                "title": title,
                 "company": _text(item.get("brandName")),
                 "location": _text(item.get("cityName"))
                 or _text(item.get("areaDistrict")),
@@ -151,7 +186,8 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
                 "salary": format_salary(
                     item.get("lowSalary"), item.get("highSalary"), item.get("salaryMonth")
                 )
-                or _text(item.get("salaryDesc")),
+                or _text(item.get("salaryDesc"))
+                or title_salary,
                 "url": url,
                 "extra": {
                     "encrypt_job_id": job_id,
@@ -164,10 +200,26 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
                     "skills": _skill_tags(item.get("skills")),
                     "hr_active": _text(item.get("bossOnline") or "") == "true"
                     or _text(item.get("bossActiveTimeDesc")),
+                    # 原始数字（元/月）：界面上的"15-25K"是格式化结果，做薪资区间筛选要原始值。
+                    "salary_low": _int_or_none(item.get("lowSalary")),
+                    "salary_high": _int_or_none(item.get("highSalary")),
                 },
             }
         )
-    return results or None
+    if not results:
+        # `jobList` 在、但里面的卡片一条也读不出岗位名 → 这是**结构不认识**，不是"真的没搜到"。
+        # 返回 None 让上层按"抓不到"处理（会明确报出来、并退回 DOM 那条路），
+        # 而不是拿一堆空标题的卡片去假装采到了岗位。
+        if untitled:
+            logger.warning(
+                "岗位列表结构不认识：%s 条卡片都读不出岗位名（字段可能被改名），已按抓不到处理",
+                untitled,
+            )
+        return None
+    if untitled:
+        # 部分卡片读不出来：保留能用的那部分（宁多勿少），但把丢了几条记下来便于排障。
+        logger.warning("岗位列表里有 %s 条卡片没有岗位名，已跳过（可能站点改了字段）", untitled)
+    return results
 
 
 def parse_detail_response(payload: Any) -> dict[str, Any] | None:
@@ -188,9 +240,13 @@ def parse_detail_response(payload: Any) -> dict[str, Any] | None:
     if not isinstance(detail, dict):
         return None
 
-    description = _strip_html(detail.get("postDescription"))
-    if not description:
+    description_html = _strip_html(detail.get("postDescription"))
+    if not description_html:
         return None
+    # 接口只给一整段 ``postDescription``，而界面/模型上「职位描述」与「任职要求」是两个字段。
+    # 以前一律整段塞进描述、要求留空，用户看到的就是"两件事混在一起"；这里按真实存在的小标题
+    # 切分（切不出来就不切，把全文留在描述里，绝不造一个空的描述字段）。
+    description, requirements = split_job_sections(description_html)
     boss = data.get("bossInfo") if isinstance(data.get("bossInfo"), dict) else {}
     brand = data.get("brandInfo") if isinstance(data.get("brandInfo"), dict) else {}
 
@@ -198,9 +254,9 @@ def parse_detail_response(payload: Any) -> dict[str, Any] | None:
         "job_title": _text(detail.get("jobName")),
         "company": _text(brand.get("brandName")) or _text(boss.get("brandName")),
         "description": description,
-        # 接口没有把"任职要求"单列出来，它在描述里；留空让上层用描述兜底，
-        # 不要为了凑字段把描述复制一遍（那会让匹配分析读到两份同样的文本）。
-        "requirements": "",
+        # 切不出独立的要求段时留空是**如实**的：接口本来就没有把它单列出来，
+        # 该段内容仍然完整地留在描述里，不会丢。
+        "requirements": requirements,
         "url": f"https://www.zhipin.com/job_detail/{_text(detail.get('encryptJobId'))}.html"
         if detail.get("encryptJobId")
         else "",
@@ -223,6 +279,25 @@ def looks_like_search(payload: Any) -> bool:
     return bool(_job_items(payload))
 
 
+def search_has_more(payload: Any) -> bool | None:
+    """列表响应里的"还有下一页"标志；结构里没有这个字段时返回 ``None``。
+
+    调用方拿到 ``None`` 才去退回其它来源。**不要**默认让它退回页面探针报的
+    ``has_next``：那个探针只回答"页面能不能采集"，根本不报翻页信息，一路取它会让
+    分页永远停在第 1 页。
+    """
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("zpData")
+    if not isinstance(data, dict):
+        return None
+    for key in ("hasMore", "has_more"):
+        value = data.get(key)
+        if isinstance(value, bool):
+            return value
+    return None
+
+
 def looks_like_detail(payload: Any) -> bool:
     """这个响应体是不是岗位详情。"""
     if not isinstance(payload, dict):
@@ -238,10 +313,13 @@ def looks_like_detail(payload: Any) -> bool:
 
 __all__ = [
     "DETAIL_MARKER",
+    "DETAIL_MARKERS",
     "SEARCH_MARKER",
+    "SEARCH_MARKERS",
     "format_salary",
     "looks_like_detail",
     "looks_like_search",
     "parse_detail_response",
     "parse_search_response",
+    "search_has_more",
 ]

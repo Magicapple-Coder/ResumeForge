@@ -122,13 +122,15 @@ export default function FavoritesPage() {
       title: "岗位",
       dataIndex: "title",
       render: (_, job) => (
-        <Button
-          type="link"
-          className="table-text-link"
-          onClick={() => navigate(`/jobs?job_id=${job.id}`)}
-        >
-          {job.title}
-        </Button>
+        <Tooltip title={`导入于 ${formatDateTime(job.created_at)}`}>
+          <Button
+            type="link"
+            className="table-text-link"
+            onClick={() => navigate(`/jobs?job_id=${job.id}`)}
+          >
+            {job.title}
+          </Button>
+        </Tooltip>
       ),
     },
     { title: "公司", dataIndex: "company", width: 180, render: (value) => value || "-" },
@@ -238,7 +240,9 @@ export default function FavoritesPage() {
         locale={{
           emptyText: <Empty description={kind === "jobs" ? "暂无收藏岗位" : "暂无收藏简历"} />,
         }}
-        scroll={{ x: 760 }}
+        // 简历列的固定宽度加起来约 620px，比岗位列更窄，在普通窗口里根本不会横向溢出；
+        // 硬套 `x: 760` 会在「简历」页签下画出一条用不上的横向滚动条。岗位列更宽，仍保留兜底。
+        scroll={kind === "jobs" ? { x: 760 } : undefined}
         components={{
           body: {
             row: (props: HTMLAttributes<HTMLTableRowElement>) => {

@@ -17,9 +17,15 @@ from ..models.profile import UserProfile, utcnow
 from ..models.resume import ResumeRecord
 from ..schemas.job_match import JobMatchOut, JobMatchResult
 from ..services.apply import apply_service
-from ..services.job_match import analyze_match, job_payload, local_match_result
+from ..services.job_match import (
+    analyze_match,
+    finalize_match_result,
+    job_payload,
+    local_match_result,
+)
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
+from ..services.match_scoring import score_match_result
 from ..services.profile_service import get_profile_detail, to_profile_out
 from ..services.settings_service import get_llm_config
 
@@ -131,8 +137,20 @@ def get_match_analysis(job_id: int, db: Session = Depends(get_db)):
             model="",
             created_at=now,
             updated_at=now,
+            reference_score=None,
         )
-    return JobMatchOut.model_validate(row)
+    out = JobMatchOut.model_validate(row)
+    # 参考分是派生值：只读、仅展示、不落库。每次现算，且用 admission_of 重推结论后再算，
+    # 与准入逻辑完全解耦（参考分不参与、也不改变五类结论与准入闸门）。
+    result = finalize_match_result(JobMatchResult.model_validate(row.result))
+    _profile, profile_text, _resume, resume_text = _source_texts(db, job)
+    out.reference_score = score_match_result(
+        result,
+        job_payload(job),
+        profile_text,
+        resume_text,
+    )
+    return out
 
 
 @router.delete("/{job_id}/match-analysis", status_code=204)

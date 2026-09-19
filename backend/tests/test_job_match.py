@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.schemas.job_match import JobMatchResult, MatchCondition
 from app.schemas.setting import LLMConfig
 from app.services.job_match import (
     analyze_match,
@@ -14,6 +15,7 @@ from app.services.job_match import (
     local_match_result,
     parse_greeting,
     parse_match_result,
+    validate_evidence,
 )
 from app.services.llm.base import BaseLLMProvider, LLMError
 
@@ -195,3 +197,79 @@ def test_build_match_messages_declares_untrusted_boundary():
 
     assert messages[0]["role"] == "system"
     assert "不可信数据" in messages[1]["content"]
+
+
+# ===== B1：证据核对误杀回归 =====
+
+
+@pytest.mark.asyncio
+async def test_analyze_match_accepts_cross_line_evidence_from_json_source():
+    """资料是 json.dumps 产物（换行为字面 \\n）时，跨行/跨字段证据不再被误杀。"""
+    profile_text = json.dumps(
+        {"summary": "负责后端服务开发\n精通 Python 与 Django", "skills": ["Python"]},
+        ensure_ascii=False,
+    )
+    resume_text = json.dumps({"content": "主导过高并发网关项目"}, ensure_ascii=False)
+    payload = _valid_result()
+    payload["core_abilities"][0]["evidence"] = "负责后端服务开发，精通 Python 与 Django"
+    payload["core_abilities"][0]["jd_quote"] = "熟悉 Python"
+
+    analyzed = await analyze_match(
+        ScriptedProvider(json.dumps(payload, ensure_ascii=False)),
+        _payload(),
+        profile_text,
+        resume_text,
+    )
+
+    assert analyzed.core_abilities[0].evidence == "负责后端服务开发，精通 Python 与 Django"
+
+
+def test_validate_evidence_accepts_light_paraphrase():
+    """模型对原文做轻度改写（换词序/近义词）时，子句级 3-gram 容错应放行。"""
+    personal_source = "精通 Python 后端开发；熟悉 Spring Cloud 微服务与消息队列"
+    result = JobMatchResult(
+        core_abilities=[
+            MatchCondition(
+                label="后端",
+                status="matched",
+                jd_quote="",
+                evidence="擅长 Python 后端开发，熟悉 Spring Cloud 微服务体系",
+            )
+        ]
+    )
+
+    # 不抛异常即通过。
+    validate_evidence(result, jd_source="", personal_source=personal_source)
+
+
+def test_validate_evidence_rejects_fabricated_clause_among_real_ones():
+    """一条真实子句 + 一条纯编造子句：防虚构护栏仍要拒绝整条证据。"""
+    personal_source = "精通 Python 后端开发"
+    result = JobMatchResult(
+        core_abilities=[
+            MatchCondition(
+                label="后端",
+                status="matched",
+                jd_quote="",
+                evidence="擅长 Python 后端开发，具备 Kubernetes 集群运维经验",
+            )
+        ]
+    )
+
+    with pytest.raises(LLMError, match="无法在资料或简历中核对"):
+        validate_evidence(result, jd_source="", personal_source=personal_source)
+
+
+def test_validate_evidence_handles_evidence_with_no_substantial_clauses():
+    """全部子句都短于实质子句阈值时，退化为整段核对：短证据不崩溃、不误放行。"""
+    present = JobMatchResult(
+        core_abilities=[MatchCondition(label="学历", status="matched", jd_quote="", evidence="本科")]
+    )
+    # 短证据但仍是整段子串 → 放行。
+    validate_evidence(present, jd_source="", personal_source="最高学历：本科")
+
+    fabricated = JobMatchResult(
+        core_abilities=[MatchCondition(label="学历", status="matched", jd_quote="", evidence="博士")]
+    )
+    with pytest.raises(LLMError, match="无法在资料或简历中核对"):
+        validate_evidence(fabricated, jd_source="", personal_source="最高学历：本科")

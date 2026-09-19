@@ -83,14 +83,50 @@ export interface CandidateJob {
   id: number;
   title: string;
   company: string;
+  /** 采集多带出来的两个字段；手动粘贴的候选为空串。 */
+  location: string;
+  salary: string;
   raw_text: string;
   images: string[];
   note: string;
-  source: CandidateJobSource;
+  /**
+   * 来源。手动录入的是 `CANDIDATE_JOB_SOURCE_LABELS` 里的那几种；**投递台采集进来的是
+   * 站点名**（由后端站点注册表给出，前端不写死具体名字），所以读取侧不能收窄成枚举——
+   * 收窄会让后端多注册一个站点就把界面类型检查搞红。
+   */
+  source: string;
+  /** 采集带回来的 JD 两段（已在服务端按小标题切好）；手动粘贴的候选为空串。 */
+  description: string;
+  requirements: string;
+  /** 原始岗位链接（采集来的才有）：界面上用它显示「回原站看」。 */
+  source_url: string;
+  /** 产生这条候选的采集批次；为空表示不是采集来的。 */
+  collect_task_id: number | null;
   status: CandidateJobStatus;
   imported_job_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export type CandidateJobImportOutcomeKind =
+  "imported" | "duplicate" | "trashed" | "invalid" | "missing";
+
+/** 单条候选的导入结果：**逐条**反馈，用户才知道是哪几条没进去、为什么。 */
+export interface CandidateJobImportOutcome {
+  candidate_id: number;
+  title: string;
+  outcome: CandidateJobImportOutcomeKind;
+  job_id?: number | null;
+}
+
+export interface CandidateJobImportResult {
+  imported: number;
+  duplicate: number;
+  /** 岗位广场的回收站里已有同名岗位：既没新建也没恢复，等你去回收站处理。 */
+  trashed: number;
+  invalid: number;
+  missing: number;
+  results: CandidateJobImportOutcome[];
 }
 
 export interface CandidateJobPayload {

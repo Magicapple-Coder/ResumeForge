@@ -60,6 +60,42 @@
   gap: 8px;
 }
 
+/* 分区标题栏：卡片本体不再自带标题，标题由这里统一给，查看态点标题即可展开/收起。 */
+.profile-section-collapse-toggle,
+.profile-section-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.profile-section-collapse-toggle {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.profile-section-collapse-toggle:hover {
+  background: #f3f6fa;
+}
+
+.profile-section-collapse-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: #1677ff;
+  font-size: 12px;
+}
+
+.profile-section-content.is-collapsed {
+  display: none;
+}
+
 .profile-section-sortable {
   position: relative;
   min-width: 0;

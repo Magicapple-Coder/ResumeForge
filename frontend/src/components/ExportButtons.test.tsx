@@ -121,4 +121,14 @@ describe("ExportButtons", () => {
     await waitFor(() => expect(downloadMocks.downloadBlob).toHaveBeenCalledTimes(1));
     expect(apiMocks.exportResume).toHaveBeenNthCalledWith(2, 7, "md", true);
   });
+
+  it("提示浏览器打印的分页可能与屏幕近似分页略有不同", async () => {
+    renderButtons();
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /更多格式/ }));
+    const printItem = await screen.findByText("浏览器打印 / 另存为 PDF");
+
+    // 只补一句、就地提示，不夸大也不长篇。
+    expect(printItem).toHaveAttribute("title", expect.stringContaining("分页以浏览器为准"));
+  });
 });

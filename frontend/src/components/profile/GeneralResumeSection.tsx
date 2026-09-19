@@ -93,7 +93,7 @@ export default function GeneralResumeSection({ onGenerate, onWrite }: Props) {
     try {
       await deleteResume(record.id);
       setItems((current) => current.filter((item) => item.id !== record.id));
-      message.success(`已删除「${record.title}」`);
+      message.success(`已移入回收站：「${record.title}」`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "删除失败");
     } finally {

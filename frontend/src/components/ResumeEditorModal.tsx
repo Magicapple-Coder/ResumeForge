@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { ResumeContent } from "../types";
+import ResumeWritingPanel from "./ResumeWritingPanel";
 
 interface Props {
   open: boolean;
@@ -29,6 +30,8 @@ interface Props {
   referencePanel?: ReactNode;
   /** 从预览点击进入时使用的结构化字段路径，如 projects.0.description.1。 */
   initialTarget?: string | null;
+  /** 提供后启用「写作增强」标签页（STAR/润色/翻译/话术，结果回填个人总结）。 */
+  resumeId?: number;
 }
 
 import {
@@ -50,6 +53,7 @@ export default function ResumeEditorModal({
   saveLabel = "保存并更新预览",
   referencePanel,
   initialTarget,
+  resumeId,
 }: Props) {
   const { message } = App.useApp();
   const [form] = Form.useForm<ResumeContent>();
@@ -127,8 +131,23 @@ export default function ResumeEditorModal({
       { key: "projects", label: "项目", children: <ProjectEditor /> },
       { key: "skills", label: "技能", children: <SkillEditor /> },
       { key: "awards", label: "荣誉", children: <AwardEditor /> },
+      ...(resumeId
+        ? [
+            {
+              key: "writing",
+              label: "写作增强",
+              children: (
+                <ResumeWritingPanel
+                  resumeId={resumeId}
+                  initialText={content?.summary ?? ""}
+                  onApply={(text) => form.setFieldValue("summary", text)}
+                />
+              ),
+            },
+          ]
+        : []),
     ],
-    [],
+    [resumeId, content, form],
   );
 
   const handleFinish = async (values: ResumeContent) => {
@@ -172,7 +191,9 @@ export default function ResumeEditorModal({
           </Button>
         </Space>
       }
-      styles={{ body: { maxHeight: "calc(100vh - 180px)", overflowY: "auto" } }}
+      styles={{
+        body: { maxHeight: "calc(100vh - 180px)", overflowY: "auto", overflowX: "hidden" },
+      }}
     >
       <div
         className={`resume-editor-layout${referencePanel ? " resume-editor-layout--with-reference" : ""}`}

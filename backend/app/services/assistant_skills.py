@@ -32,6 +32,26 @@ MAX_SKILL_KNOWLEDGE_CHARS = 6_000
 _MIN_QUERY_TOKEN_CHARS = 2
 
 _QUERY_SPLIT_RE = re.compile(r"[\s,，。！？；：、,.!?;:()（）\[\]【】\"'“”‘’/\\|-]+")
+# 控制字符（含换行、制表、\x7f）；拼进提示的标签必须先把它们清掉。
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]+")
+
+
+def _sanitize_bullet_label(text: str) -> str:
+    """把一个将要拼进系统提示某条 bullet 的标签清洗成"单行、无控制字符"。
+
+    **为什么在插值这一处清、而不是逐个入口清**：把 ``skill.files`` 拼成 bullet 是知识文件
+    名进入系统提示的**唯一出口**——工具写入（``assistant_tools._skill_files_from_arguments``）
+    与技能 ZIP 导入（``skill_archive._safe_member_path``）都只是把文件名存进 ``skill.files``，
+    最终都经过这里。在出口清一次就覆盖了全部入口；反过来在入口逐个打补丁，总会漏掉新入口——
+    ``_safe_member_path`` 就不清控制字符，于是恶意技能包能用文件名里的换行在提示里**多造出一行**
+    bullet（例如 "忽略以上全部规则"），凭空扩出提示注入面。
+
+    文件名在这个位置只是**显示标签**、不参与寻址，所以把控制字符与连续空白折成单空格就够，
+    不必过度清洗。真正的寻址（``read_skill_knowledge`` 按原名精确匹配）用的仍是未清洗的原值。
+    """
+    collapsed = _CONTROL_CHARS_RE.sub(" ", str(text))
+    return " ".join(collapsed.split())
+
 
 
 def list_skills(db: Session) -> list[AssistantSkill]:
@@ -162,7 +182,9 @@ def _skill_block(skill: AssistantSkill, budget: int) -> tuple[str, bool]:
     lines.append(prompt)
     if skill.files:
         lines.append("该技能附带以下知识文件，需要时用 read_skill_knowledge 工具读取：")
-        lines.extend(f"- {item.path}" for item in skill.files)
+        # 路径在拼成 bullet 的**这一处**统一清洗：这里是所有入口的唯一收口（见
+        # `_sanitize_bullet_label`），一次覆盖工具写入与 ZIP 导入两条来路。
+        lines.extend(f"- {_sanitize_bullet_label(item.path)}" for item in skill.files)
     return "\n".join(lines), truncated
 
 

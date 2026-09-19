@@ -19,6 +19,8 @@ import type { AssistantConversationDetail, AssistantConversationBrief } from "..
 
 interface Options {
   message: ReturnType<typeof App.useApp>["message"];
+  /** 为真时进入「新对话」模式：不自动恢复最近会话（由页面负责新建空会话）。 */
+  startNew?: boolean;
 }
 
 /** 会话可以被单独修改的字段（置顶/收藏/归档/分组名）。 */
@@ -26,7 +28,7 @@ export type ConversationPatch = Partial<
   Pick<AssistantConversationBrief, "pinned" | "favorite" | "archived" | "group_name">
 >;
 
-export function useAssistantConversations({ message }: Options) {
+export function useAssistantConversations({ message, startNew = false }: Options) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AssistantConversationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -78,9 +80,10 @@ export function useAssistantConversations({ message }: Options) {
   }, [conversationsError, message]);
 
   useEffect(() => {
+    if (startNew) return; // 新对话模式不自动恢复最近会话，避免先闪一下旧会话再切走。
     if (activeId || !conversations?.length) return;
     selectConversation(conversations[0].id);
-  }, [activeId, conversations, selectConversation]);
+  }, [activeId, conversations, selectConversation, startNew]);
 
   useEffect(() => {
     if (!activeId) {

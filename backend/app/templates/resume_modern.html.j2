@@ -13,7 +13,7 @@
     --accent: #0f766e;
     --accent-soft: #e6f4f1;
     --bg: #ffffff;
-    --fs: {{ base_px }}px;
+    --fs: calc({{ base_px }}px * var(--fit-scale, 1));
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -49,8 +49,11 @@
   .skill-list li { list-style: none; display: inline-block; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 0 calc(var(--fs) * 0.8); margin: 0 calc(var(--fs) * 0.57) calc(var(--fs) * 0.57) 0; font-size: calc(var(--fs) * 0.93); }
   @page { size: A4; margin: 0; }
   @media print {
-    body { width: 210mm; height: {{ page_limit * 297 }}mm; padding: 14mm; }
     .section, .entry { break-inside: avoid; }
+    /* 让背景色与边框在打印时保留：技能标签的底色/左侧色条就靠这句。
+       浏览器默认**不打印背景图形**，这正是"预览里有小框、打印出来没有"的原因；
+       `print-color-adjust: exact` 会强制按屏幕样式绘制，不依赖用户在打印对话框里勾选。 */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>

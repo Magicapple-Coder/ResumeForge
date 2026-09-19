@@ -11,7 +11,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DATABASE_URL = f"sqlite:///{(BACKEND_DIR / 'data' / 'resume_forge.db').as_posix()}"
+# 数据目录：数据库、备份、导出、样例等本地产物都落在它下面。其它模块一律从这里推导子目录，
+# 不各自去拼相对路径（拼错一处就会写到仓库里、被误提交）。
+DATA_DIR = BACKEND_DIR / "data"
+DEFAULT_DATABASE_URL = f"sqlite:///{(DATA_DIR / 'resume_forge.db').as_posix()}"
+
+
+def captures_dir() -> Path:
+    """站点原文样例的根目录：``<数据目录>/captures``。
+
+    与 ``DEFAULT_DATABASE_URL`` 同源推导（都从 ``DATA_DIR`` 来），而不是在别处再拼一个
+    相对路径。``backend/data/`` 已被 ``.gitignore`` 忽略，样例因此天然**不进仓库、不进备份**，
+    也**不属于任何 dataset 目录**——它是排查产物，不该跟着数据集切换，更不该和投递浏览器的
+    登录态（``backend/data/browser-profile/``）混在一起。
+    """
+    return DATA_DIR / "captures"
 
 # 投递专用浏览器的 CDP 调试端口默认值。这是**唯一**的常量来源：
 # schemas 的配置出厂默认与 browser_manager 的兜底默认都从这里取，避免两处各写一个 9333

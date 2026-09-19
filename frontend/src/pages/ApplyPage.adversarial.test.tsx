@@ -35,6 +35,7 @@ const apiMocks = vi.hoisted(() => ({
   updateCollectConfig: vi.fn(),
   createCollectTask: vi.fn(),
   listSites: vi.fn(),
+  getSiteHealth: vi.fn(),
 }));
 
 vi.mock("../api/apply", () => ({
@@ -122,6 +123,7 @@ beforeEach(() => {
   apiMocks.getApplyConfig.mockResolvedValue({});
   apiMocks.getCollectConfig.mockResolvedValue({ defaults: {} });
   apiMocks.listSites.mockResolvedValue(SITES);
+  apiMocks.getSiteHealth.mockResolvedValue({ sites: [] });
 });
 
 afterEach(() => {

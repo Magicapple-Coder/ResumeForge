@@ -1,16 +1,20 @@
 /** 我的资料：基础信息 + 各分区动态列表，整体保存。 */
 import {
   CloseOutlined,
+  DownOutlined,
   EditOutlined,
   FileSearchOutlined,
   HolderOutlined,
   SaveOutlined,
+  UpOutlined,
 } from "@ant-design/icons";
 import { Button, Form, Input, Skeleton, Typography } from "antd";
 import { useState } from "react";
 import GenerateResumeModal from "../components/GenerateResumeModal";
 import ManualResumeModal from "../components/ManualResumeModal";
 import GeneralResumeSection from "../components/profile/GeneralResumeSection";
+import { DEFAULT_SECTION_ORDER } from "../components/profile/ProfileSectionConfig";
+import type { ProfileSectionKey } from "../components/profile/ProfileSectionConfig";
 import ProfileSectionStack from "../components/profile/ProfileSectionStack";
 import ProfileTextModal from "../components/profile/ProfileTextModal";
 import { useProfilePage } from "../features/profile/useProfilePage";
@@ -20,6 +24,25 @@ export default function ProfilePage() {
   const [generalTitle, setGeneralTitle] = useState("");
   const [generateOpen, setGenerateOpen] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
+  // 查看态默认折叠每个分区，只留标题；点标题展开、页头按钮一键全部展开/收起。
+  // 编辑态需要看全字段，因此折叠只在非编辑态生效（ProfileSectionStack 里按 `!editing` 取用）。
+  const [collapsedSections, setCollapsedSections] = useState<Set<ProfileSectionKey>>(
+    () => new Set(DEFAULT_SECTION_ORDER),
+  );
+  const allExpanded = collapsedSections.size === 0;
+
+  const toggleSection = (sectionKey: ProfileSectionKey) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(sectionKey)) next.delete(sectionKey);
+      else next.add(sectionKey);
+      return next;
+    });
+  };
+
+  const toggleExpandAll = () => {
+    setCollapsedSections(allExpanded ? new Set(DEFAULT_SECTION_ORDER) : new Set());
+  };
   const {
     form,
     loading,
@@ -100,17 +123,12 @@ export default function ProfilePage() {
             </>
           ) : (
             <>
-              {/* 资料分区很长，通用简历卡片在页面底部；给一个直达入口，
-                  否则用户得滚过全部资料才看得到它。 */}
+              {/* 资料分区默认折叠，这里给一个一键开关；标签随当前状态翻转。 */}
               <Button
-                icon={<FileSearchOutlined />}
-                onClick={() =>
-                  document
-                    .getElementById("general-resume-section")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
+                icon={allExpanded ? <UpOutlined /> : <DownOutlined />}
+                onClick={toggleExpandAll}
               >
-                通用简历
+                {allExpanded ? "全部收起" : "全部展开"}
               </Button>
               <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
                 编辑资料
@@ -119,6 +137,18 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* 通用简历放在资料分区之前：它不属于资料表单，以前沉在页面最底下，资料一多就得滚到底才看得到。 */}
+      <GeneralResumeSection
+        onGenerate={(title) => {
+          setGeneralTitle(title);
+          setGenerateOpen(true);
+        }}
+        onWrite={(title) => {
+          setGeneralTitle(title);
+          setWriteOpen(true);
+        }}
+      />
 
       <Form form={form} layout="vertical" disabled={!editing || saving || photoReading}>
         <Form.Item name="photo" hidden>
@@ -132,22 +162,13 @@ export default function ProfilePage() {
           saving={saving}
           photo={photo}
           dragOverSection={dragOverSection}
+          collapsedSections={collapsedSections}
+          onToggleCollapsed={toggleSection}
           onPhotoSelect={(dataUrl) => form.setFieldValue("photo", dataUrl)}
           onHandlePointerDown={handleSectionPointerDown}
           onMoveByOffset={moveSectionByOffset}
         />
       </Form>
-
-      <GeneralResumeSection
-        onGenerate={(title) => {
-          setGeneralTitle(title);
-          setGenerateOpen(true);
-        }}
-        onWrite={(title) => {
-          setGeneralTitle(title);
-          setWriteOpen(true);
-        }}
-      />
 
       <GenerateResumeModal
         job={null}

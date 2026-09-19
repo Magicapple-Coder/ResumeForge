@@ -32,6 +32,12 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [previewScale, setPreviewScale] = useState<ResumeFontScale>(layout.font_scale);
+  // 用户当前真实设定的格式覆盖（含 `font_scale_adjust` 字号系数）。缩略图必须带上它，
+  // 否则"用户把字号拖到 14.3px、缩略图却仍是 14px"，选出来才发现不一样。
+  const formatConfig = layout.format_config;
+  // `format_config` 每次父渲染都是新对象引用，直接放进依赖会让预览随父组件任意重渲染
+  // 而反复请求；用序列化签名判断"内容真的变了"。对象本身在闭包里读取。
+  const formatConfigKey = JSON.stringify(formatConfig ?? {});
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -46,8 +52,8 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
     if (open) void loadTemplates();
   }, [open, loadTemplates]);
 
-  // 预览跟着"字号 + 格式模板"走：换字号或换版式后，缩略图应该一起变，
-  // 否则用户按缩略图选出来的效果和实际生成的不一致。
+  // 预览跟着"字号 + 格式覆盖"走：换档位、换版式、或在外面拖过字号系数后，缩略图
+  // 都要一起变，否则用户按缩略图选出来的效果和实际生成的不一致。
   useEffect(() => {
     if (!open || templates.length === 0) return;
     let cancelled = false;
@@ -63,6 +69,9 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
             next[item.name] = await previewResumeTemplate({
               template_name: item.name,
               format_name: layout.format_name,
+              // 把当前格式覆盖（含字号系数）一并传出：后端把 format_name 的基础版式
+              // 与这份 format_config 叠加后再渲染，缩略图因此与用户实际生成的简历同口径。
+              format_config: formatConfig,
               page_limit: 1,
               font_scale: previewScale,
               resume_id: resumeId,
@@ -80,7 +89,9 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
     return () => {
       cancelled = true;
     };
-  }, [open, templates, layout.format_name, previewScale, resumeId]);
+    // format_config 用序列化签名 formatConfigKey 做依赖，避免对象引用每次渲染都变。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, templates, layout.format_name, formatConfigKey, previewScale, resumeId]);
 
   const selectedName = layout.template;
   const body = useMemo(
@@ -88,8 +99,14 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
       <div className="template-gallery">
         <div className="template-gallery-toolbar">
           <Typography.Text type="secondary">
-            预览用的是{resumeId ? "你选中的这份简历" : "内置示例内容"}，可以换字号看效果。
+            预览用的是{resumeId ? "你选中的这份简历" : "内置示例内容"}
+            ，已带上你当前的版式与字号系数；上面的档位只作对比用。
           </Typography.Text>
+          {/* 这个档位 Segmented 是**只读对比**入口：它不写回 layout.font_scale，也不自带
+              系数，只决定缩略图用哪个基准档渲染。用户真实设定的字号系数
+              （format_config.font_scale_adjust）由外面的滑块独占——两条路径不会各存一份
+              字号，避免出现第二个"字号口径"。默认档位就是用户当前档位，所以缩略图默认
+              显示的就是用户真实字号；换档位只是拿同一份系数去看另一个基准档。 */}
           <Segmented
             size="small"
             value={previewScale}
@@ -152,7 +169,9 @@ export default function TemplateGalleryModal({ open, layout, resumeId, onSelect,
       onCancel={onClose}
       footer={null}
       width="min(1080px, 96vw)"
-      styles={{ body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto" } }}
+      styles={{
+        body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto", overflowX: "hidden" },
+      }}
       destroyOnHidden
     >
       {templates.length === 0 && !loading ? <Empty description="还没有可选模板" /> : body}

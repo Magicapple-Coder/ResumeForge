@@ -190,6 +190,94 @@ def test_export_downloads_a_dataset_as_a_zip(client, tmp_path):
     assert manifest["api_key_included"] is False
 
 
+def test_a_round_trip_preserves_every_kind_of_content_including_the_trash(
+    client, db_session, tmp_path
+):
+    """导出 → 导入 → 切过去：**每一类**内容都要原样还在，**包括"哪些东西在回收站里"**。
+
+    现有测试只核对了岗位标题这一种实体。而一份备份要真的能"把数据带走"，就得覆盖简历
+    （含正文与版式）、资料、台账、投递记录、助手会话与备选岗位。
+
+    尤其是**回收站状态**：如果导出/导入把 `deleted_at` 丢了，用户导入备份后会发现自己
+    **删掉的东西又回来了**——而这类差别不专门核对根本发现不了（列表里多一条少一条，
+    谁也不会去数）。
+    """
+    from app.models.assistant import ChatConversation
+    from app.models.claim import ClaimRecord
+    from app.models.material import CandidateJob, Material
+    from app.models.resume import ResumeRecord
+    from app.models.tracker import ApplicationTrack
+
+    # ① 每一类都放一条"有辨识度"的数据（用哨兵串，方便导入后核对）。
+    _add_job(client, "要留下的岗位")
+    trashed = client.post(
+        "/api/jobs", json={"title": "要删掉的岗位", "description": "职责", "requirements": "要求"}
+    ).json()
+
+    db_session.add_all(
+        [
+            ResumeRecord(
+                title="哨兵简历",
+                content={"name": "张三", "summary": "SUMMARY_SENTINEL"},
+                template="technical",
+                page_limit=2,
+                format_config={"accent": "#0f766e"},
+            ),
+            Material(title="哨兵资料", category="项目", content="MATERIAL_SENTINEL"),
+            ClaimRecord(title="哨兵台账", source_fact="CLAIM_SENTINEL"),
+            ApplicationTrack(title="哨兵投递", company="某公司", status="applied"),
+            ChatConversation(title="哨兵会话"),
+            CandidateJob(title="哨兵候选岗位", status="pending"),
+        ]
+    )
+    db_session.commit()
+
+    # ② 删掉一条岗位：它的"已删除"状态也必须一起被带走。
+    assert client.delete(f"/api/jobs/{trashed['id']}").status_code == 204
+
+    # ③ 导出当前数据 → 导入成新数据集 → 切过去。
+    payload = _archive_bytes(tmp_path)
+    created = _import(client, payload, name="闭环备份").json()
+    assert client.post(f"/api/settings/datasets/{created['id']}/activate").status_code == 200
+
+    # ④ 逐类核对：活着的还在，删掉的不在列表里、但在回收站里。
+    assert _job_titles(client) == {"要留下的岗位"}
+    assert "哨兵简历" in {item["title"] for item in client.get("/api/resumes").json()["items"]}
+    resume_id = next(
+        item["id"]
+        for item in client.get("/api/resumes").json()["items"]
+        if item["title"] == "哨兵简历"
+    )
+    rendered = client.get(f"/api/resumes/{resume_id}").json()
+    # 正文与版式都要原样带过来（版式丢了的话，导入回来的简历会长得不一样）。
+    assert rendered["content"]["summary"] == "SUMMARY_SENTINEL"
+    assert rendered["template"] == "technical"
+    assert rendered["page_limit"] == 2
+    assert rendered["format_config"] == {"accent": "#0f766e"}
+
+    assert "哨兵资料" in {item["title"] for item in client.get("/api/materials").json()}
+    assert "哨兵投递" in {item["title"] for item in client.get("/api/tracker").json()["items"]}
+    assert "哨兵会话" in {item["title"] for item in client.get("/api/assistant/conversations").json()}
+    assert "哨兵候选岗位" in {
+        item["title"] for item in client.get("/api/candidate-jobs").json()
+    }
+    claim_titles = {
+        item["title"] for item in client.get("/api/claims").json().get("items", [])
+    }
+    assert "哨兵台账" in claim_titles
+
+    # ⑤ **回收站状态一起被带走**：删掉的那条不该复活，且仍列在回收站里。
+    trashed_now = client.get("/api/trash").json()
+    assert [
+        item["title"] for item in trashed_now["items"] if item["type"] == "job"
+    ] == ["要删掉的岗位"]
+
+    # ⑥ 备份里不含明文 API Key（导入的那份同样是"导出产物"，这条顺带再确认一次）。
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["api_key_included"] is False
+
+
 def test_import_path_is_registered():
     """中间件按 IMPORT_PATH 放宽上限；路由改名会让豁免静默失效，这里把两者绑死。"""
     from app.application import create_app

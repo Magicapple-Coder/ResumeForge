@@ -16,6 +16,12 @@ select = ["E4", "E7", "E9", "F"]
 [tool.coverage.run]
 branch = true
 source = ["app"]
+# Required for `pytest -n auto`: without it every xdist worker writes the same
+# `.coverage` SQLite file and the run dies at teardown with
+# "attempt to write a readonly database" -- after all tests have already passed,
+# which is the worst possible place to fail. With parallel = true each process
+# writes `.coverage.<host>.<pid>` and pytest-cov combines them itself.
+parallel = true
 
 [tool.coverage.report]
 show_missing = true

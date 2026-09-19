@@ -1,11 +1,15 @@
 /** 简历相关接口：生成（SSE）、历史、渲染预览、导出下载。 */
 import type {
+  ExportFormat,
+  ExportRequest,
   GenerateOptions,
   Page,
+  RedactionOptions,
   ResumeBrief,
   ResumeContent,
   ResumeDetail,
   ResumeFontScale,
+  ResumeGenerateTask,
   ResumeLayout,
   ResumeLayoutAnalysis,
   ResumeLayoutMeasure,
@@ -15,8 +19,6 @@ import type {
 } from "../types";
 import { ApiError, buildQuery, extractError, getFilenameFromDisposition, request } from "./client";
 import { consumeSSE } from "./stream";
-
-export type ExportFormat = "json" | "md" | "html" | "pdf";
 
 export function listResumes(
   params: {
@@ -89,6 +91,32 @@ export function fetchResumeTemplates(): Promise<ResumeTemplateCatalog> {
   return request("/resumes/templates");
 }
 
+// ===== 后台生成任务（轮询模型，替代弹窗里的同步 SSE 等待）=====
+// 生成改成后台任务后，前端流程是：start → 拿到 task_id → 关不关弹窗都轮询 status。
+// SSE 的 POST /generate 仍保留，这里只新增一套任务接口，不破坏既有流式语义。
+
+/** 启动一次后台简历生成，返回可轮询的任务；job_id 为 null 表示生成通用简历。 */
+export function startResumeGeneration(payload: {
+  job_id: number | null;
+  title?: string;
+  options: GenerateOptions;
+}): Promise<ResumeGenerateTask> {
+  return request("/resumes/generate/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 查询一次生成任务的状态（前端 1.5s 轮询）。 */
+export function getResumeGenerateTask(taskId: number): Promise<ResumeGenerateTask> {
+  return request(`/resumes/generate/tasks/${taskId}`);
+}
+
+/** 取消进行中的生成任务；取消后不落库简历，任务标为 cancelled。 */
+export function cancelResumeGenerateTask(taskId: number): Promise<ResumeGenerateTask> {
+  return request(`/resumes/generate/tasks/${taskId}/cancel`, { method: "POST" });
+}
+
 /**
  * 渲染模板预览为 HTML。
  *
@@ -152,7 +180,7 @@ export async function renderResume(
   return resp.text();
 }
 
-/** 导出为文件（html/md/json），返回 blob 与服务端建议的文件名 */
+/** 导出为文件（html/md/json/pdf），返回 blob 与服务端建议的文件名 */
 export async function exportResume(
   id: number,
   format: ExportFormat,
@@ -170,6 +198,40 @@ export async function exportResume(
     pages: readCountHeader(resp.headers.get("X-Resume-Pages")),
     pageLimit: readCountHeader(resp.headers.get("X-Resume-Page-Limit")),
   };
+}
+
+/**
+ * 全参数导出（POST 管线）：格式、水印、脱敏、页边距、字号、页数、照片。
+ *
+ * 与旧 `exportResume` 的 GET 兼容路径不同，这里支持 docx/txt 与全部后处理参数；
+ * 「统一导出选项」弹窗走这一条。
+ */
+export async function exportResumeWithOptions(
+  id: number,
+  options: ExportRequest,
+): Promise<{ blob: Blob; filename: string; pages: number | null; pageLimit: number | null }> {
+  const resp = await fetch(`/api/resumes/${id}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
+  return {
+    blob: await resp.blob(),
+    filename:
+      getFilenameFromDisposition(resp.headers.get("Content-Disposition")) ??
+      `resume.${options.format}`,
+    pages: readCountHeader(resp.headers.get("X-Resume-Pages")),
+    pageLimit: readCountHeader(resp.headers.get("X-Resume-Page-Limit")),
+  };
+}
+
+/** 脱敏预览：返回脱敏后的简历内容，不落库、不改动原记录。 */
+export function redactResume(id: number, options: RedactionOptions): Promise<ResumeContent> {
+  return request(`/resumes/${id}/redact`, {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
 }
 
 /** 头读不到（跨源未放行、或该格式不提供）时返回 null，而不是把 NaN 传下去。 */

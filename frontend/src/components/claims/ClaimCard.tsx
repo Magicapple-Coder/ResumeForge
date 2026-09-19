@@ -5,6 +5,7 @@
  * 有没有比事实更强——这正是这个功能要防的事。占位符单独高亮，因为它同时意味着
  * "这条还没核实"和"导出终稿会被拦下"。
  */
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Popconfirm, Space, Tag, Tooltip, Typography } from "antd";
 import type { Claim, VerificationStatus } from "../../types";
 import { SOURCE_TYPE_LABELS, hasPlaceholder } from "../../types";
@@ -86,18 +87,28 @@ export default function ClaimCard({ claim, onEdit, onDelete, onConfirm }: Props)
               </Button>
             </Tooltip>
           )}
-          <Button size="small" type="link" onClick={onEdit}>
-            编辑
-          </Button>
+          <Tooltip title="编辑">
+            <Button
+              size="small"
+              type="text"
+              icon={<EditOutlined />}
+              aria-label={`编辑台账 ${claim.title || claim.subject || claim.id}`}
+              onClick={onEdit}
+            />
+          </Tooltip>
           <Popconfirm
             title="删除这条台账记录？"
             okText="删除"
             cancelText="取消"
             onConfirm={onDelete}
           >
-            <Button size="small" type="link" danger>
-              删除
-            </Button>
+            <Button
+              size="small"
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              aria-label={`删除台账 ${claim.title || claim.subject || claim.id}`}
+            />
           </Popconfirm>
         </Space>
       </header>

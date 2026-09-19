@@ -75,3 +75,26 @@ export function measureResumeLayout(document: Document, pageLimit: number): Layo
     body.style.transform = previousTransform;
   }
 }
+
+/**
+ * 按实测高度算出"内容约需几页"。
+ *
+ * 这是 `backend/app/services/resume_layout.py::derive_pages` 里 `pages_needed` 的前端镜像：
+ * 纯算术、同一套 `ceil(used_height / page_content_height)` 口径，只是不做网络往返——
+ * 浏览器里量到的才是 HTML 预览真实要用的页数。HTML 预览路径拿不到 `X-Resume-Pages` 头
+ * （那个头只在 PDF 导出时由服务端写），所以这里不能依赖它，只能靠浏览器自己量。
+ */
+export function pagesNeededFor(measure: LayoutMeasure): number {
+  if (measure.pageContentHeight <= 0) return Math.max(1, measure.pageLimit);
+  return Math.max(1, Math.ceil(measure.usedHeight / measure.pageContentHeight));
+}
+
+/**
+ * 内容超出所选页数多少高度（与 `pageContentHeight` 同单位）。
+ *
+ * 返回 0 表示放得下；大于 0 表示"还多出这么多"。界面据此把"超出了多少"讲清楚，
+ * 而不是只甩一句"放不下"。
+ */
+export function overflowHeightFor(measure: LayoutMeasure): number {
+  return Math.max(0, measure.usedHeight - measure.pageContentHeight * measure.pageLimit);
+}

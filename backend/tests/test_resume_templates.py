@@ -26,12 +26,73 @@ CUSTOM_STYLE = """<!DOCTYPE html>
 """
 
 
+# 设计上**给技能加"小框"**的模板（底色或边框）。其余两个是刻意的**无框**设计：
+# compact 用 `·` 分隔、minimal 纯文本。这份清单是"快照"——某个模板的框被误删时会立刻红。
+SKILL_TAG_BOX_TEMPLATES = {"classic", "elegant", "modern", "technical"}
+
+
 @pytest.mark.parametrize("name", sorted(RESUME_TEMPLATES))
 def test_every_builtin_template_renders(name):
     html = render_html(sample_resume_content(), template=name)
     assert "<html" in html
     # 页数自适应脚本必须存在：预览靠它判断"内容塞不下"。
     assert "body.dataset" in html or "dataset" in html
+
+
+@pytest.mark.parametrize("name", sorted(RESUME_TEMPLATES))
+def test_every_template_fits_by_layout_not_by_transform(name):
+    """逐模板钉住"分页口径唯一"：自适应必须靠**版式**（`--fit-scale` 吸进 `--fs`），
+    不能靠 `transform`。
+
+    这条是用户实测反馈"预览一页装得下、浏览器打印超出一页"的回归防线。transform 只改视觉、
+    不改版式，而打印/导出按未缩放的版式分页——只要哪个模板（或哪个新同事）把 transform 加
+    回来，预览和打印就又开始各说各话。所以断言要**按模板逐个**做，而不是抽查一个：
+    "只有一个模板坏掉"恰恰是最容易漏掉的形态。
+    """
+    html = render_html(sample_resume_content(), template=name)
+
+    # ① 缩放经 CSS 变量进入版式
+    assert "--fit-scale" in html
+    assert "calc({{ base_px }}px * var(--fit-scale, 1))" not in html  # 模板不该残留未渲染的变量
+    assert "* var(--fit-scale, 1)" in html
+    # ② 不再有"只改视觉"的 transform 缩放，而且是整个文档里都没有
+    assert "style.transform" not in html
+    assert "transform = `scale(" not in html
+    # ③ 分页的唯一来源：只有一份 @page 规则
+    assert html.count("@page { size: A4; margin: 0; }") == 1
+
+
+@pytest.mark.parametrize("name", sorted(RESUME_TEMPLATES))
+def test_every_template_keeps_backgrounds_when_printing(name):
+    """打印时要保留背景/边框：技能标签的底色就靠它。
+
+    浏览器默认**不打印背景图形**，这正是"预览里有蓝色小框、打印出来没有"的原因。
+    `print-color-adjust: exact` 强制按屏幕样式绘制，不依赖用户去打印对话框里勾选。
+    """
+    html = render_html(sample_resume_content(), template=name)
+
+    assert "print-color-adjust: exact" in html
+    # 页面几何只应有**一份**声明（base 的 body 规则）。在 @media print 里再抄一遍，
+    # 迟早会出现"改了一处忘了另一处"，而症状就是预览与打印的页边距突然不一致。
+    print_block = html.split("@media print", 1)[1]
+    assert "body { width: 210mm" not in print_block
+
+
+@pytest.mark.parametrize("name", sorted(RESUME_TEMPLATES))
+def test_skill_tag_box_design_is_kept(name):
+    """给技能加框的模板**必须**留着框；无框设计的模板不该被"顺手补上"。
+
+    两个方向都要断言：少了框是用户报告过的缺陷，多出框则是把别人的设计改掉了。
+    """
+    html = render_html(sample_resume_content(), template=name)
+    rule = next(
+        line
+        for line in html.splitlines()
+        if line.strip().startswith(".skill-list li {") and "::after" not in line
+    )
+
+    has_box = "background:" in rule or "border" in rule
+    assert has_box is (name in SKILL_TAG_BOX_TEMPLATES), (name, rule)
 
 
 def test_format_config_is_validated():
@@ -65,7 +126,9 @@ def test_format_config_scales_font_and_accent():
         format_config={"font_scale_adjust": 1.1, "accent": "#abcdef"},
     )
     # 标准字号 14px × 1.1 = 15.4px，同时强调色被覆盖。
-    assert "--fs: 15.4px" in html
+    # 基准字号外面套一层 `calc(... * var(--fit-scale, 1))`：那是**版式自适应**的挂钩，
+    # 默认 1 时结果与不加完全相同（所以这里断言的是"基准值仍按这一档算出来"）。
+    assert "--fs: calc(15.4px * var(--fit-scale, 1))" in html
     assert "--accent: #abcdef" in html
 
 
@@ -84,7 +147,7 @@ def test_font_scale_adjust_has_no_css_mapping():
         font_scale="standard",
         format_config={"font_scale_adjust": 0.9},
     )
-    assert "--fs: 12.6px" in html
+    assert "--fs: calc(12.6px * var(--fit-scale, 1))" in html
 
 
 def test_sanitize_removes_scripts_and_adds_csp():
