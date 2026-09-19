@@ -1,7 +1,7 @@
 -r requirements.txt
 
 # Repository quality checks used locally and in CI.
-pytest==9.0.3
+pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 # Parallel test execution. The suite is >1000 tests and the only reason a change
