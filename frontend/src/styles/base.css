@@ -282,15 +282,16 @@ body {
   margin: 10px 0 0;
   /* ul 用 flex 布局时浏览器不渲染默认的 ::marker 圆点，于是每个要点之间只剩 6px
      空隙，长条目视觉上连成"一整段"。这里显式取消默认圆点、改用统一的小圆点标记，
-     让每一条都一眼可辨，又不抢正文的注意力；间距也从 6px 放宽到 16px，每条之间留白
-     更足、更易逐条扫读（标题 vs 正文 vs 要点 的层级也更分明）。 */
+     让每一条都一眼可辨，又不抢正文的注意力。 */
   padding-left: 0;
   color: #4b5563;
-  line-height: 2;
+  /* 行高从 2 收到 1.75：每条要点现在都由粗体短标签领起，靠**标签**断句就够，
+     不必再靠超宽行距硬撑，收紧后一屏能看到更多条。 */
+  line-height: 1.75;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .user-guide-points li {
@@ -302,12 +303,26 @@ body {
   content: "";
   position: absolute;
   left: 0;
-  top: 0.68em;
+  top: 0.62em;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: #16365c;
   opacity: 0.35;
+}
+
+/* 一条要点的**短标签**：用户扫读时先看它。用强调色 + 半粗，和后面的说明文字拉开层级——
+   此前每条都是一整段普通文字，八十多条排在一起"抓不到重点"（截图反馈）。
+   行内而不是定宽分栏：标签从 2 字到 8 字不等，定宽列要么浪费横向空间、要么把长标签
+   挤折行；行内 + 加粗已经足够让眼睛停住。 */
+.user-guide-point-lead {
+  margin-right: 8px;
+  color: #16365c;
+  font-weight: 600;
+}
+
+.user-guide-point-text {
+  color: #4b5563;
 }
 
 .user-guide-footer {

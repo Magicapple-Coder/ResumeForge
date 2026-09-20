@@ -45,7 +45,11 @@ describe("UserGuideModal", () => {
     expect(screen.getByText(/只有标成「已确认」的条目/)).toBeInTheDocument();
     // 深挖是台账的延伸，入口在台账页里——不写清用户找不到。
     expect(screen.getByText(/拿去深挖/)).toBeInTheDocument();
-    expect(screen.getByText(/在你看到问题\*\*之前\*\*就定下来/)).toBeInTheDocument();
+    // 断言的是**渲染出来的**文字：`**…**` 会被渲染成粗体，星号不该出现在界面上
+    // （此前指南把 `**` 当普通文本渲染，界面上真的显示着星号，而这条断言还把它当成
+    // 期望值钉住了——测试写成了 bug 的形状）。
+    expect(screen.getByText(/在你看到问题之前就定下来/)).toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toContain("**");
 
     fireEvent.click(screen.getByRole("button", { name: /前往我的资料/ }));
     expect(onClose).toHaveBeenCalledOnce();
@@ -61,7 +65,8 @@ describe("UserGuideModal", () => {
     expect(screen.getByText(/识别结果不会自动保存/)).toBeInTheDocument();
     expect(screen.getByText(/pdf\/docx 招聘文档都能识别/)).toBeInTheDocument();
     // 新增能力必须在指南里说出来，否则用户不知道可以用——这是本轮扩写这一步的全部理由。
-    expect(screen.getByText(/匹配度分析/)).toBeInTheDocument();
+    // 用 getAllByText：「匹配度分析」在标签和说明里各出现一次，getByText 会因多匹配而报错。
+    expect(screen.getAllByText(/匹配度分析/).length).toBeGreaterThan(0);
     expect(screen.getByText(/投递专用浏览器/)).toBeInTheDocument();
     // 采集条件那一段的措辞：薪资 / 经验 / 学历以前标的是「未生效」，现在它们真的会生效
     // （采集后按岗位字段筛掉不符合的），所以指南也必须跟着改口——**指南说错比不说更糟**。
@@ -158,17 +163,27 @@ describe("GUIDE_STEPS", () => {
     }
   });
 
-  it("breaks long copy into scannable bullets instead of one wall of text", () => {
-    // 超长单点会被渲染成"一整段"、用户一眼扫不出重点（截图反馈"导入岗位与投递"整屏
-    // 密密麻麻）。这里钉住拆分后的形态：这一步要点数明显变多，且全局没有任何一条要点
-    // 还是一堵墙——400 字上限既挡住"一长串"，又给未来补措辞留足空间。
-    const jobStep = GUIDE_STEPS.find((step) => step.title === "导入岗位与投递");
-    expect(jobStep).toBeDefined();
-    expect(jobStep!.points.length).toBeGreaterThan(10);
+  it("每条要点都是「短标签 + 一句说明」，而不是一整段", () => {
+    // 上一版对付"密密麻麻"的办法是**把长段落拆成更多条**——结果每一条仍然是一整段
+    // 普通文字，八十多条排在一起照样抓不到重点（截图反馈"字太多、用户抓不到重点"）。
+    // 现在钉住的是**层级**而不是条数：每条先给一个短标签（扫读的锚点），说明控制在一句。
+    for (const step of GUIDE_STEPS) {
+      for (const point of step.points) {
+        expect(point.lead.length).toBeGreaterThan(0);
+        // 标签超过 8 字就退化成一句话，扫读的锚点作用就没了。
+        expect(point.lead.length).toBeLessThanOrEqual(8);
+        expect(point.text.length).toBeGreaterThan(0);
+        // 一句话的上限：再长就该拆成两条，或者搬去 docs/user-guide.md（那里才是完整版）。
+        expect(point.text.length).toBeLessThanOrEqual(160);
+      }
+    }
+  });
 
-    const longestPoint = Math.max(
-      ...GUIDE_STEPS.flatMap((step) => step.points.map((point) => point.length)),
-    );
-    expect(longestPoint).toBeLessThan(400);
+  it("要点之间不重复用同一个标签", () => {
+    // 同一个标签在一次浏览里出现两次，扫读时会以为看过了。
+    for (const step of GUIDE_STEPS) {
+      const leads = step.points.map((point) => point.lead);
+      expect(new Set(leads).size).toBe(leads.length);
+    }
   });
 });
