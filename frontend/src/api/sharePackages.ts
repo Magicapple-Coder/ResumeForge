@@ -12,7 +12,9 @@ export function listSharePackages(): Promise<SharePackageBrief[]> {
   return request("/share-packages");
 }
 
-export function createSharePackage(payload: SharePackageCreatePayload): Promise<SharePackageDetail> {
+export function createSharePackage(
+  payload: SharePackageCreatePayload,
+): Promise<SharePackageDetail> {
   return request("/share-packages", { method: "POST", body: JSON.stringify(payload) });
 }
 

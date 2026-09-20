@@ -9,6 +9,7 @@ import { App as AntdApp } from "antd";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApplyTask } from "../../types";
+import { formatDateTime } from "../../utils/format";
 import CollectRecordsPanel from "./CollectRecordsPanel";
 
 const apiMocks = vi.hoisted(() => ({ listApplyTasks: vi.fn() }));
@@ -66,6 +67,7 @@ describe("CollectRecordsPanel", () => {
 
     expect(await screen.findByText("已暂存 3 个，重复 2 个")).toBeInTheDocument();
     expect(screen.getByText("关键词：后端；城市：北京")).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime("2026-09-18T10:05:00"))).toBeInTheDocument();
   });
 
   it("搜索批次没有条件时显示占位文案，不会渲染成空行", async () => {

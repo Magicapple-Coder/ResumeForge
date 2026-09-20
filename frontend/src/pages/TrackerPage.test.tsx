@@ -154,9 +154,10 @@ describe("TrackerPage", () => {
     renderPage();
     await screen.findByText("示例科技");
 
-    fireEvent.click(screen.getByRole("button", { name: "删除" }));
-    // 确认按钮的文案与触发按钮不同，否则这里会选错。
-    fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作 示例科技" }));
+    fireEvent.click(await screen.findByText("删除"));
+    // 二次确认走 modal.confirm（测试环境默认英文，确认按钮是「OK」）。
+    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
 
     await waitFor(() => expect(apiMocks.deleteTrack).toHaveBeenCalledWith(1));
   });

@@ -85,6 +85,15 @@ const ANALYZED: JobMatchOut = {
   model: "demo-model",
   created_at: "2026-09-17T08:00:00",
   updated_at: "2026-09-17T08:00:00",
+  reference_score: {
+    score: 62,
+    dimensions: [
+      { key: "skills", label: "技能覆盖", score: 75, weight: 0.3, evidence: "命中 3/4 个关键词" },
+      { key: "seniority", label: "年限", score: 50, weight: 0.2, evidence: "" },
+    ],
+    disclaimer:
+      "本参考分由本地规则估算，仅供展示与自我评估，不代表真实 ATS 解析结果或投递成功概率；投递准入仍以五类匹配结论为准。",
+  },
 };
 
 const NOT_ANALYZED: JobMatchOut = {
@@ -106,6 +115,7 @@ const NOT_ANALYZED: JobMatchOut = {
   model: "",
   created_at: "2026-09-17T08:00:00",
   updated_at: "2026-09-17T08:00:00",
+  reference_score: null,
 };
 
 beforeEach(() => {
@@ -130,7 +140,7 @@ describe("JobMatchModal", () => {
     expect(screen.getByRole("button", { name: /开始分析/ })).toBeInTheDocument();
   });
 
-  it("renders the five-way taxonomy, admission and hard gate without any percentage", async () => {
+  it("renders the five-way taxonomy, admission and hard gate as plain states", async () => {
     apiMocks.getJobMatch.mockResolvedValue(ANALYZED);
 
     render(
@@ -145,8 +155,40 @@ describe("JobMatchModal", () => {
     expect(screen.getByText("真实缺口")).toBeInTheDocument();
     expect(screen.getByText("不投")).toBeInTheDocument();
     expect(screen.getByText("硬性条件未满足")).toBeInTheDocument();
-    // 设计硬约束：绝不渲染任何百分比 / 评分。
+    // **五类结论**是不带评分的：整套结论区里不能出现百分比 / 百分号。
+    // （「匹配度参考分」是另一个区块、且强制带免责，它的分数是 0–100 的整数、同样不写成 %。）
     expect(document.body.textContent ?? "").not.toContain("%");
+  });
+
+  it("渲染匹配度参考分：总分 + 分项 + 后端下发的免责文案", async () => {
+    apiMocks.getJobMatch.mockResolvedValue(ANALYZED);
+
+    render(
+      <AntdApp>
+        <JobMatchModal job={JOB} onClose={vi.fn()} />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText("匹配度参考分")).toBeInTheDocument();
+    expect(screen.getByText("技能覆盖")).toBeInTheDocument();
+    expect(screen.getByText("命中 3/4 个关键词")).toBeInTheDocument();
+    // 免责文案来自后端，必须原样展示——这是"参考分不能被当成结论"的唯一保底。
+    expect(
+      screen.getByText(/仅供展示与自我评估，不代表真实 ATS 解析结果或投递成功概率/),
+    ).toBeInTheDocument();
+  });
+
+  it("没有参考分时不渲染该区块", async () => {
+    apiMocks.getJobMatch.mockResolvedValue({ ...ANALYZED, reference_score: null });
+
+    render(
+      <AntdApp>
+        <JobMatchModal job={JOB} onClose={vi.fn()} />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText("已匹配")).toBeInTheDocument();
+    expect(screen.queryByText("匹配度参考分")).toBeNull();
   });
 
   it("forces a re-analysis only when the user asks", async () => {

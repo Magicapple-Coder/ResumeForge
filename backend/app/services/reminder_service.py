@@ -83,6 +83,27 @@ def reminder_urgency(remind_at: datetime, now: datetime) -> tuple[str, str]:
     return REMINDER_URGENCY_LATER, label
 
 
+def reminder_urgency_counts(db: Session, now: datetime | None = None) -> dict[str, int]:
+    """待办提醒按紧急度分档计数（含 ``total``）。
+
+    口径**必须**走 :func:`reminder_urgency`——四档阈值只在那里有一份实现，看板再写
+    一遍就会与首页的紧急度标签对不上。只统计 ``pending``：已完成/已忽略的提醒不再是
+    "接下来要做什么"。用 ``remind_at`` 单列查询，不为一个计数把正文一起读进内存。
+    """
+    moment = now or utcnow()
+    counts: dict[str, int] = {urgency: 0 for urgency in REMINDER_URGENCIES}
+    rows = (
+        db.query(Reminder.remind_at)
+        .filter(trash.live_only(Reminder), Reminder.status == REMINDER_STATUS_PENDING)
+        .all()
+    )
+    for (remind_at,) in rows:
+        urgency, _label = reminder_urgency(remind_at, moment)
+        counts[urgency] = counts.get(urgency, 0) + 1
+    counts["total"] = len(rows)
+    return counts
+
+
 def list_reminders(
     db: Session, *, kind: str = "", status: str = "", limit: int = 200
 ) -> list[Reminder]:
@@ -186,6 +207,7 @@ __all__ = [
     "list_reminders",
     "reminder_or_none",
     "reminder_urgency",
+    "reminder_urgency_counts",
     "upcoming_reminder_out",
     "upcoming_reminders",
     "upcoming_reminders_out",

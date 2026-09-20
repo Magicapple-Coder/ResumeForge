@@ -27,6 +27,7 @@ DEFAULT_PAGE_LIMIT = 1
 #   line_height        ：body 的 line-height
 #   section_gap        ：`.section` 的 margin-bottom 系数（× 字号）
 #   name_ratio         ：`.header .name` 的字号倍数（× 字号）
+#   name_extra_ratio   ：`.name-extra`（姓名旁的性别等附加信息）的字号倍数
 #   intent_ratio       ：`.header .intent`（求职意向）
 #   contact_ratio      ：`.header .contact`（联系方式）
 #   section_title_ratio：`.section-title`
@@ -44,14 +45,35 @@ DEFAULT_PAGE_LIMIT = 1
 # `:root` 里的 CSS 变量去掉 `--` 前缀），值一律是**十六进制字符串**——与上面的数值键
 # 类型不同，所以这个注册表的值类型是 `float | str`。直出 PDF 的强调色从这里读
 # （`pdf_exporter` 曾自带一份 `_TEMPLATE_COLORS`，与 `--accent` 是同一件事的两份定义，
-# 模板一改颜色 PDF 就悄悄漂移）。`text`/`muted`/`line` 目前只有 HTML 用，一并收录是为了
-# 让"模板颜色"在此一处定义，将来 PDF 要画辅助文字/分隔线时也从这读，而不是再抄一份。
+# 模板一改颜色 PDF 就悄悄漂移）。`line` 现在也被 PDF 读（区块标题的下划线用它画），
+# `text`/`muted` 仍主要给 HTML 用，但一并收录让"模板颜色"在此一处定义。
+#
+# 除"字号层级"外，**垂直间距**与**区块标题的形状**也从这里读。它们曾只存在于模板 CSS、
+# 而 PDF 侧完全没有，于是 PDF 排得比预览紧——用户看到的"被压扁"主要就是这些间距缺席造成的
+# （条目之间 `.entry`、副行 `.sub`、列表项 `li`、页头之后 `.header`）。键与 CSS 的对应：
+#   header_gap          ：`.header` 的 margin-bottom（页头与第一段之间的留白）
+#   entry_gap           ：`.entry` 的 margin-bottom（同一分区内条目之间的留白）
+#   sub_gap_top         ：`.entry .sub` 的 margin-top
+#   sub_gap_bottom      ：`.entry .sub` 的 margin-bottom
+#   li_gap              ：`li` 的 margin-bottom（列表项之间）
+#   section_title_gap   ：`.section-title` 的 margin-bottom（标题与正文之间的留白）
+#   section_title_style ：区块标题的形状（left_bar / soft_box / underline / accent_box / plain）
+#   section_title_text  ：标题文字颜色（accent / body / muted / white）
+#   section_title_align ：标题对齐（left / center）
+#   section_title_pad_x/y：标题的内边距（× 字号），左竖条与色块用得到
+#   photo_width_ratio / photo_height_ratio：`.profile-photo` 的宽高（× 字号）
+#   header_*            ：页头的装饰——底边线（`header_border_width` 固定 px / `header_border_color`）、
+#                         文字与底边线之间的 `header_pad_bottom`（× 字号），以及 modern 那种
+#                         **浅底色块**（`header_bg` = soft_accent、`header_pad_x/y`、`header_radius`，均 × 字号）。
+#                         此前 PDF 只画了 `header_gap`（下边距），classic 页头下那条 2px 蓝线整条缺失。
+# 这些数字同样由 `test_resume_layout.py` 拿模板 CSS 逐条核对，抄错会让 PDF 与预览再次分叉。
 TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
     "classic": {
         "padding_mm": 14.0,
         "line_height": 1.7,
         "section_gap": 1.3,
         "name_ratio": 1.86,
+        "name_extra_ratio": 1.0,
         "intent_ratio": 1.07,
         "contact_ratio": 0.93,
         "section_title_ratio": 1.14,
@@ -59,6 +81,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.93,
         "entry_sub_ratio": 0.93,
         "tag_font_ratio": 0.93,
+        "header_gap": 1.4,
+        "entry_gap": 0.86,
+        "sub_gap_top": 0.14,
+        "sub_gap_bottom": 0.28,
+        "li_gap": 0.21,
+        "header_border_width": 2.0,
+        "header_border_color": "accent",
+        "header_pad_bottom": 1.1,
+        "header_bg": "none",
+        "header_pad_x": 0.0,
+        "header_pad_y": 0.0,
+        "header_radius": 0.0,
+        "section_title_style": "left_bar",
+        "section_title_text": "accent",
+        "section_title_align": "left",
+        "section_title_gap": 0.71,
+        "section_title_pad_x": 0.71,
+        "section_title_pad_y": 0.0,
+        "photo_width_ratio": 6.3,
+        "photo_height_ratio": 8.0,
         "accent": "#16365c",
         "text": "#1f2937",
         "muted": "#6b7280",
@@ -69,6 +111,7 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "line_height": 1.72,
         "section_gap": 1.2,
         "name_ratio": 2.0,
+        "name_extra_ratio": 1.0,
         "intent_ratio": 1.07,
         "contact_ratio": 0.93,
         "section_title_ratio": 1.14,
@@ -76,6 +119,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.93,
         "entry_sub_ratio": 0.93,
         "tag_font_ratio": 0.93,
+        "header_gap": 1.5,
+        "entry_gap": 0.9,
+        "sub_gap_top": 0.14,
+        "sub_gap_bottom": 0.28,
+        "li_gap": 0.25,
+        "header_border_width": 0.0,
+        "header_border_color": "none",
+        "header_pad_bottom": 0.0,
+        "header_bg": "soft_accent",
+        "header_pad_x": 1.3,
+        "header_pad_y": 1.2,
+        "header_radius": 0.6,
+        "section_title_style": "soft_box",
+        "section_title_text": "accent",
+        "section_title_align": "left",
+        "section_title_gap": 0.8,
+        "section_title_pad_x": 0.8,
+        "section_title_pad_y": 0.28,
+        "photo_width_ratio": 6.6,
+        "photo_height_ratio": 6.6,
         "accent": "#0f766e",
         "text": "#24303f",
         "muted": "#667085",
@@ -86,6 +149,7 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "line_height": 1.55,
         "section_gap": 0.85,
         "name_ratio": 1.6,
+        "name_extra_ratio": 0.93,
         "intent_ratio": 1.0,
         "contact_ratio": 0.9,
         "section_title_ratio": 1.05,
@@ -93,6 +157,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.9,
         "entry_sub_ratio": 0.9,
         "tag_font_ratio": 0.9,
+        "header_gap": 0.9,
+        "entry_gap": 0.5,
+        "sub_gap_top": 0.1,
+        "sub_gap_bottom": 0.2,
+        "li_gap": 0.12,
+        "header_border_width": 1.0,
+        "header_border_color": "accent",
+        "header_pad_bottom": 0.7,
+        "header_bg": "none",
+        "header_pad_x": 0.0,
+        "header_pad_y": 0.0,
+        "header_radius": 0.0,
+        "section_title_style": "underline",
+        "section_title_text": "body",
+        "section_title_align": "left",
+        "section_title_gap": 0.5,
+        "section_title_pad_x": 0.0,
+        "section_title_pad_y": 0.14,
+        "photo_width_ratio": 5.4,
+        "photo_height_ratio": 7.0,
         "accent": "#30363f",
         "text": "#1f2430",
         "muted": "#6b7280",
@@ -103,6 +187,7 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "line_height": 1.76,
         "section_gap": 1.35,
         "name_ratio": 1.9,
+        "name_extra_ratio": 0.93,
         "intent_ratio": 1.0,
         "contact_ratio": 0.9,
         "section_title_ratio": 1.11,
@@ -110,6 +195,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.9,
         "entry_sub_ratio": 0.9,
         "tag_font_ratio": 0.93,
+        "header_gap": 1.5,
+        "entry_gap": 0.9,
+        "sub_gap_top": 0.14,
+        "sub_gap_bottom": 0.28,
+        "li_gap": 0.2,
+        "header_border_width": 1.0,
+        "header_border_color": "accent",
+        "header_pad_bottom": 0.9,
+        "header_bg": "none",
+        "header_pad_x": 0.0,
+        "header_pad_y": 0.0,
+        "header_radius": 0.0,
+        "section_title_style": "underline",
+        "section_title_text": "accent",
+        "section_title_align": "center",
+        "section_title_gap": 0.8,
+        "section_title_pad_x": 0.0,
+        "section_title_pad_y": 0.28,
+        "photo_width_ratio": 5.6,
+        "photo_height_ratio": 7.2,
         "accent": "#1f3b4d",
         "text": "#22252b",
         "muted": "#7a7f88",
@@ -120,6 +225,7 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "line_height": 1.6,
         "section_gap": 1.0,
         "name_ratio": 1.8,
+        "name_extra_ratio": 0.95,
         "intent_ratio": 1.04,
         "contact_ratio": 0.86,
         "section_title_ratio": 1.04,
@@ -127,6 +233,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.86,
         "entry_sub_ratio": 0.9,
         "tag_font_ratio": 0.86,
+        "header_gap": 1.1,
+        "entry_gap": 0.64,
+        "sub_gap_top": 0.1,
+        "sub_gap_bottom": 0.2,
+        "li_gap": 0.14,
+        "header_border_width": 3.0,
+        "header_border_color": "accent",
+        "header_pad_bottom": 0.8,
+        "header_bg": "none",
+        "header_pad_x": 0.0,
+        "header_pad_y": 0.0,
+        "header_radius": 0.0,
+        "section_title_style": "accent_box",
+        "section_title_text": "white",
+        "section_title_align": "left",
+        "section_title_gap": 0.57,
+        "section_title_pad_x": 0.71,
+        "section_title_pad_y": 0.1,
+        "photo_width_ratio": 5.8,
+        "photo_height_ratio": 7.4,
         "accent": "#0b5fa5",
         "text": "#1c2430",
         "muted": "#5d6b7a",
@@ -137,6 +263,7 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "line_height": 1.8,
         "section_gap": 1.45,
         "name_ratio": 1.75,
+        "name_extra_ratio": 0.93,
         "intent_ratio": 1.0,
         "contact_ratio": 0.9,
         "section_title_ratio": 1.0,
@@ -144,6 +271,26 @@ TEMPLATE_LAYOUT_DEFAULTS: dict[str, dict[str, float | str]] = {
         "entry_meta_ratio": 0.9,
         "entry_sub_ratio": 0.9,
         "tag_font_ratio": 0.93,
+        "header_gap": 1.7,
+        "entry_gap": 0.93,
+        "sub_gap_top": 0.14,
+        "sub_gap_bottom": 0.28,
+        "li_gap": 0.21,
+        "header_border_width": 0.0,
+        "header_border_color": "none",
+        "header_pad_bottom": 0.0,
+        "header_bg": "none",
+        "header_pad_x": 0.0,
+        "header_pad_y": 0.0,
+        "header_radius": 0.0,
+        "section_title_style": "plain",
+        "section_title_text": "muted",
+        "section_title_align": "left",
+        "section_title_gap": 0.71,
+        "section_title_pad_x": 0.0,
+        "section_title_pad_y": 0.0,
+        "photo_width_ratio": 5.4,
+        "photo_height_ratio": 7.0,
         "accent": "#17181a",
         "text": "#17181a",
         "muted": "#767a80",

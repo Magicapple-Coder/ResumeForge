@@ -21,7 +21,13 @@ def _to_lines(content: dict[str, Any]) -> list[str]:
     """
     if not isinstance(content, dict):
         return []
-    serialized = json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True)
+    # 照片是 base64 data URL：原样混进 diff 会输出一大段乱码。序列化前用占位符替换
+    # （**占位而非剔除**，保留"这一行是照片"的结构线索，两端都换成同一占位才不会被
+    # 误判成内容变化）。
+    serializable = dict(content)
+    if serializable.get("photo"):
+        serializable["photo"] = "[图片]"
+    serialized = json.dumps(serializable, ensure_ascii=False, indent=2, sort_keys=True)
     return serialized.splitlines()
 
 

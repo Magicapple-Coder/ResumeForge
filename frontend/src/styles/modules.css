@@ -440,6 +440,9 @@
   border-left: 3px solid #16365c;
   background: #f1f5f9;
   border-radius: 0 6px 6px 0;
+  /* 作为 composer 栅格子项，默认 min-width:auto 会让超长引用把整块撑出可视区；
+     这里允许收缩，配合文字容器截断，取消按钮始终留在右侧。 */
+  min-width: 0;
 }
 
 .assistant-quote-chip-label {
@@ -457,6 +460,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 取消按钮不被引用文字挤掉：固定不收缩、永远贴右。 */
+.assistant-quote-chip-close {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 /* ===== 工作台：简历模板 ===== */
@@ -978,4 +987,48 @@
 
 .analytics-page .ant-typography-secondary {
   font-size: 12px;
+}
+
+/* 区块的一行口径说明。占整行、与下方图表拉开一点距离，但不要抢标题的层级。 */
+.analytics-page .analytics-section-note {
+  display: block;
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+/* 数据缺口提示：只有真有缺口时才渲染（组件本身在 missing<=0 时返回 null），
+   所以这里不需要额外的显隐控制。 */
+.analytics-page .analytics-gap-notice {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* 区块内的数字比顶部指标行低一档：顶部是"这一页的结论"，区块里是"支撑它的细节"。
+   字号一样会让层级变平，扫读时分不出主次。 */
+.analytics-page .analytics-section .ant-statistic-content {
+  font-size: 18px;
+}
+
+/* 「渠道与去向」顶部的口径提示 tile：把描述里的长句收敛成一张可扫读的小卡，
+   与左右两张数字 StatCard 并排，层级一致。 */
+.analytics-page .analytics-hint-tile {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+/* 底部三种记录来源的小 tile：轻边框 + 圆角，区别于上方带数字的核心指标卡。 */
+.analytics-page .analytics-source-tile {
+  height: 100%;
+  padding: 8px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
 }

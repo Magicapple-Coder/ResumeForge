@@ -53,9 +53,7 @@ describe("AtsCheckPanel", () => {
     apiMocks.runAtsCheck.mockResolvedValue(RESULT);
     render(<AtsCheckPanel resumeId={7} />);
 
-    expect(
-      await screen.findByText("本地规则估计，不代表真实 ATS 解析结果"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("本地规则估计，不代表真实 ATS 解析结果")).toBeInTheDocument();
     expect(screen.getByText("缺少姓名")).toBeInTheDocument();
     expect(screen.getByText("缺少求职意向")).toBeInTheDocument();
     expect(screen.getByText("关键词覆盖不足")).toBeInTheDocument();
@@ -74,9 +72,7 @@ describe("AtsCheckPanel", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /开始检测/ }));
 
-    expect(
-      await screen.findByText("本地规则估计，不代表真实 ATS 解析结果"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("本地规则估计，不代表真实 ATS 解析结果")).toBeInTheDocument();
     expect(apiMocks.runAtsCheck).toHaveBeenCalledWith(7, "要求熟悉 Python");
   });
 });

@@ -82,6 +82,11 @@ export function listDatasets(): Promise<DatasetInfo[]> {
   return request("/settings/datasets");
 }
 
+/** 新建一份空数据集（自定义名称，≤64 字），返回描述；创建后可激活。 */
+export function createDataset(name: string): Promise<DatasetInfo> {
+  return request("/settings/datasets", { method: "POST", body: JSON.stringify({ name }) });
+}
+
 /** 把备份包导入为一份**新数据集**；不触碰当前正在使用的数据。 */
 export async function importDataset(file: File, name: string): Promise<DatasetInfo> {
   const resp = await fetch(`/api/settings/datasets/import?name=${encodeURIComponent(name)}`, {

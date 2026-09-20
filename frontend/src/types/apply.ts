@@ -30,6 +30,26 @@ export interface JobMatchResult {
   notes: string[];
 }
 
+/** 参考分的单个分项（0-100 分 + 权重 + 一句可读的依据）。 */
+export interface MatchScoreDimension {
+  key: string;
+  label: string;
+  score: number;
+  weight: number;
+  evidence: string;
+}
+
+/** 匹配度参考分：0-100 总分 + 5 个分项 + **后端下发的免责文案**。
+ *
+ * 它是**纯本地规则**算出来的派生值（不调模型）、**不参与投递准入**——能不能投仍只看
+ * 五类结论。`disclaimer` 必须原样展示，不要自己改写或省略。
+ */
+export interface MatchReferenceScore {
+  score: number;
+  dimensions: MatchScoreDimension[];
+  disclaimer: string;
+}
+
 export interface JobMatchOut {
   id: number;
   job_id: number | null;
@@ -41,6 +61,8 @@ export interface JobMatchOut {
   model: string;
   created_at: string;
   updated_at: string;
+  /** 派生值、仅展示、带免责；未分析过时为 null。 */
+  reference_score: MatchReferenceScore | null;
 }
 
 /** 五类状态的中文名与展示色；`admission` 与后端闸门映射一致，仅用于说明，不用于判定。 */
@@ -195,6 +217,8 @@ export interface CollectConfig {
   per_task_limit: number;
   interval_seconds: number;
   interval_jitter_seconds: number;
+  /** 采集结果标注类型（校招/实习/社招）；可空=不限。只入库标注，不参与站点筛选与去重。 */
+  job_type: string;
 }
 
 export interface CollectConfigOut extends CollectConfig {

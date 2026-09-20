@@ -3,6 +3,8 @@
 管线是唯一导出出口：这里钉住注册表含全部六种格式、脱敏作为前置步骤、水印后处理，
 以及 ``POST /export`` 全参数与 ``POST /redact`` 预览不落库、不回写。
 """
+import urllib.parse
+
 import pytest
 
 from app.schemas.resume import ResumeContent
@@ -69,7 +71,10 @@ def test_build_export_applies_watermark_to_html():
         RenderContext(),
     )
 
-    assert "内部使用" in artifact.content.decode("utf-8")
+    # 水印是「倾斜 + 重复平铺」的覆盖层；文案在 SVG 数据里，URL 解码后可见。
+    text = artifact.content.decode("utf-8")
+    assert "background-repeat:repeat" in text
+    assert "内部使用" in urllib.parse.unquote(text)
 
 
 def test_unknown_format_raises():

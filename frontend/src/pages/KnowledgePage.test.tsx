@@ -52,7 +52,9 @@ beforeEach(() => {
   apiMocks.createKnowledge.mockImplementation(async (payload) =>
     makeKnowledge({ id: 2, ...payload, tags: payload.tags }),
   );
-  apiMocks.updateKnowledge.mockImplementation(async (id, payload) => makeKnowledge({ id, ...payload }));
+  apiMocks.updateKnowledge.mockImplementation(async (id, payload) =>
+    makeKnowledge({ id, ...payload }),
+  );
   apiMocks.deleteKnowledge.mockResolvedValue(undefined);
 });
 

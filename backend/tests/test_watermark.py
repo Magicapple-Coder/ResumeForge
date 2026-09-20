@@ -1,9 +1,12 @@
-"""水印后处理：HTML 转义 / 注入、PDF 叠加、空文本透传、不支持格式报错。
+"""水印后处理：三端统一的「倾斜 + 重复平铺 + 半透明」。
 
-这是 QA 早先标记的「watermark.py 零测试」缺口。水印是导出后处理，必须钉住三件事：
-HTML 路径不能把水印文案当 HTML 解析（XSS），PDF 路径叠完页数不变、原正文仍在，
-空文本直接透传（不能凭空多出一层空水印）。
+水印是导出后处理，必须钉住这几件事：
+- HTML 路径注入的是一层**平铺**覆盖层，且水印文案绝不能被当作 HTML 解析（XSS）；
+- PDF 路径叠完**页数不变**、原正文仍在，且水印确实是**重复多份**（平铺）而不是单行；
+- Word 路径写入的是**斜向 VML WordArt**（不是普通页眉文字）；
+- 空文本直接透传（不能凭空多出一层空水印），不支持的格式明确报错。
 """
+import urllib.parse
 from io import BytesIO
 
 import pytest
@@ -23,16 +26,20 @@ def test_empty_text_passes_through():
     assert apply_watermark(content, "", "html") == content
 
 
-def test_html_watermark_escapes_and_injects_overlay():
+def test_html_watermark_escapes_and_injects_tiled_overlay():
     content = "<html><body><p>正文</p></body></html>".encode("utf-8")
     out = apply_watermark(content, '<script>"内部水印"</script>', "html")
     text = out.decode("utf-8")
-    # 注入半透明覆盖层，且文案原样出现。
+    decoded = urllib.parse.unquote(text)
+    # 注入的是"固定定位 + 平铺"的覆盖层（倾斜 + 重复），而不是一坨居中文字。
     assert "position:fixed" in text
-    assert "内部水印" in text
+    assert "background-repeat:repeat" in text
+    assert "rotate(-30" in decoded
+    # 文案原样出现（在 SVG 数据里，URL 解码后可见）。
+    assert "内部水印" in decoded
     # 特殊字符必须被转义，绝不能把水印文案当 HTML 解析（XSS 防线）。
-    assert "<script>" not in text
-    assert "&lt;script&gt;" in text
+    assert "<script>" not in decoded
+    assert "&lt;script&gt;" in decoded
     # 正文不受影响。
     assert "<p>正文</p>" in text
 
@@ -40,7 +47,10 @@ def test_html_watermark_escapes_and_injects_overlay():
 def test_html_watermark_appends_when_no_body_tag():
     content = b"<html>hello</html>"
     out = apply_watermark(content, "水印", "html")
-    assert "水印" in out.decode("utf-8")
+    text = out.decode("utf-8")
+    assert text.startswith("<html>hello</html>")
+    assert "background-repeat:repeat" in text
+    assert "水印" in urllib.parse.unquote(text)
 
 
 def test_unsupported_format_raises():
@@ -49,7 +59,7 @@ def test_unsupported_format_raises():
 
 
 @needs_font
-def test_pdf_watermark_keeps_page_count_and_original_text():
+def test_pdf_watermark_tiles_and_keeps_page_count_and_original_text():
     pdf = build_resume_pdf(sample_resume_content(), template="classic", page_limit=1)
     before = PdfReader(BytesIO(pdf.content))
 
@@ -62,17 +72,18 @@ def test_pdf_watermark_keeps_page_count_and_original_text():
     merged = "\n".join((page.extract_text() or "") for page in after.pages)
     assert "内部使用" in merged
     assert "个人总结" in merged or "实习/工作经历" in merged
+    # 平铺：同一页里水印不止出现一次（单行居中水印只会出现一次）。
+    assert merged.count("内部使用") >= 2
 
 
-def test_docx_watermark_writes_header_text():
-    """Word 水印写入每个节的页眉，重开文档后能读到同一行水印文案。"""
+def test_docx_watermark_writes_a_diagonal_art_in_header():
+    """Word 水印是每个节页眉里的斜向半透明 WordArt（VML 形状），不是普通文字。"""
     docx = build_resume_docx(sample_resume_content(), template="classic", page_limit=1)
     out = apply_watermark(docx.content, "内部使用", "docx")
 
     document = Document(BytesIO(out))
-    header_text = "\n".join(
-        paragraph.text
-        for section in document.sections
-        for paragraph in section.header.paragraphs
-    )
-    assert "内部使用" in header_text
+    header_xml = "".join(section.header._element.xml for section in document.sections)
+    assert header_xml, "应当写进了页眉"
+    assert "ResumeForgeWatermark" in header_xml  # VML 水印形状
+    assert "rotation:315" in header_xml  # 倾斜
+    assert "内部使用" in header_xml  # 文案

@@ -5,9 +5,16 @@
  * 这里会读取个人资料与简历（"我够不够"），所以标题与说明都明确写出这一区别。
  *
  * 三条硬约束（设计 §9）：
- * - 只展示五类状态，**不渲染任何百分比 / 评分**；
+ * - **五类结论本身不渲染任何百分比 / 评分**——模型给出的判断只有"到没到"这一层，
+ *   给它配一个数字会让人以为存在一个客观分数；
  * - 准入结论只读后端返回的 `admission`，前端不自行再判一次；
  * - 证据不足的条目如实写"资料中未提供"，不替模型补事实。
+ *
+ * **与「匹配度参考分」的区别（别把两者混起来）**：参考分是后端用**纯本地规则**现算的
+ * 派生值（技能覆盖 / 年限 / 项目相关度 / 硬性门槛 / JD 关键词覆盖五个分项加权），
+ * **不调用模型、不落库、也不参与投递准入**，并且**强制展示后端下发的免责文案**。
+ * 它放在五类结论**之后**作为补充，且不给分数配"好/差"的颜色分级——后端没有定义档位，
+ * 前端自己划一条线就是在编造一个判断。
  */
 import { BulbOutlined, DeleteOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
 import {
@@ -17,6 +24,7 @@ import {
   Descriptions,
   Empty,
   Modal,
+  Progress,
   Space,
   Skeleton,
   Tag,
@@ -257,6 +265,40 @@ export default function JobMatchModal({ job, onClose }: Props) {
                 <Typography.Title level={5}>投递建议</Typography.Title>
                 <Typography.Paragraph>{result.advice}</Typography.Paragraph>
               </>
+            )}
+
+            {/* 参考分放在五类结论**之后**：它只是补充感知"差多少"，不能盖过准入结论。
+                分数用单一色相画（不按高低变色）：后端没有定义档位，前端自己划"好/差"的线
+                就是在编造一个它没有的判断。 */}
+            {data.reference_score && (
+              <section className="job-match-score">
+                <Typography.Title level={5}>匹配度参考分</Typography.Title>
+                <div className="job-match-score-head">
+                  <Progress
+                    type="circle"
+                    size={72}
+                    percent={data.reference_score.score}
+                    format={(value) => <span className="job-match-score-value">{value}</span>}
+                  />
+                  <Typography.Paragraph type="secondary" className="job-match-score-disclaimer">
+                    {data.reference_score.disclaimer}
+                  </Typography.Paragraph>
+                </div>
+                <ul className="job-match-score-dimensions">
+                  {data.reference_score.dimensions.map((dimension) => (
+                    <li key={dimension.key}>
+                      <div className="job-match-score-line">
+                        <span className="job-match-score-label">{dimension.label}</span>
+                        <Progress percent={dimension.score} showInfo={false} size="small" />
+                        <span className="job-match-score-value">{dimension.score}</span>
+                      </div>
+                      {dimension.evidence && (
+                        <Typography.Text type="secondary">{dimension.evidence}</Typography.Text>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
 
             {result.notes.length > 0 && (

@@ -114,6 +114,17 @@ export function deleteQuestionBank(id: number): Promise<void> {
   return request(`/interview/question-banks/${id}`, { method: "DELETE" });
 }
 
+/** 局部更新题库历史（历史记录富还原：把新生成的参考答案写回同一条记录）。 */
+export function updateQuestionBank(
+  id: number,
+  payload: Partial<QuestionBankRecordPayload>,
+): Promise<QuestionBankRecord> {
+  return request(`/interview/question-banks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 /** 保存一次面试复盘为历史。 */
 export function saveReview(payload: InterviewReviewRecordPayload): Promise<InterviewReviewRecord> {
   return request("/interview/reviews", {
@@ -133,4 +144,15 @@ export function getReview(id: number): Promise<InterviewReviewRecord> {
 /** 删除复盘历史（软删，彻底删除在回收站）。 */
 export function deleteReview(id: number): Promise<void> {
   return request(`/interview/reviews/${id}`, { method: "DELETE" });
+}
+
+/** 局部更新复盘历史（历史记录富还原：把新复盘/反向优化结果写回同一条记录）。 */
+export function updateReview(
+  id: number,
+  payload: Partial<InterviewReviewRecordPayload>,
+): Promise<InterviewReviewRecord> {
+  return request(`/interview/reviews/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }

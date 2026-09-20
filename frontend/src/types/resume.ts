@@ -164,6 +164,8 @@ export interface ResumeBrief {
   company: string;
   source: "ai" | "manual";
   favorite: boolean;
+  /** 简历备注（B5）：列表可见、详情可编辑，与后端 ``ResumeRecord.note`` 对齐。 */
+  note: string;
   model: string;
   enhancement_enabled: boolean;
   enhancement_level: EnhancementLevel;

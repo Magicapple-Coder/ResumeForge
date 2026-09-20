@@ -20,6 +20,7 @@ import {
   type TaskStatus,
 } from "../../types";
 import { isActiveTaskStatus as isActive } from "../../hooks/useTaskPolling";
+import { formatDateTime } from "../../utils/format";
 
 interface Props {
   task: ApplyTaskDetail;
@@ -100,8 +101,12 @@ export default function ApplyProgressPanel({ task, busy, onPause, onResume, onSt
       {item.failure_detail && (
         <Descriptions.Item label="诊断信息">{item.failure_detail}</Descriptions.Item>
       )}
-      <Descriptions.Item label="开始时间">{item.started_at ?? "-"}</Descriptions.Item>
-      <Descriptions.Item label="结束时间">{item.finished_at ?? "-"}</Descriptions.Item>
+      <Descriptions.Item label="开始时间">
+        {formatDateTime(item.started_at ?? undefined)}
+      </Descriptions.Item>
+      <Descriptions.Item label="结束时间">
+        {formatDateTime(item.finished_at ?? undefined)}
+      </Descriptions.Item>
     </Descriptions>
   );
 

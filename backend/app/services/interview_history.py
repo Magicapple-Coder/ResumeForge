@@ -20,7 +20,9 @@ from ..models.question_bank_record import QuestionBankRecord
 from ..models.resume import ResumeRecord
 from ..schemas.interview_history import (
     InterviewReviewRecordCreate,
+    InterviewReviewRecordUpdate,
     QuestionBankRecordCreate,
+    QuestionBankRecordUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,30 @@ def delete_question_bank(db: Session, record_id: int) -> bool:
     return True
 
 
+def update_question_bank(
+    db: Session, record_id: int, payload: QuestionBankRecordUpdate
+) -> QuestionBankRecord | None:
+    """局部更新题库历史（历史记录富还原：把新生成的参考答案写回同一条记录）。
+
+    只更新请求里提供的字段，其余保持原值；记录不存在或在回收站里返回 ``None``。
+    """
+    record = trash.get_live(db, QuestionBankRecord, record_id)
+    if record is None:
+        return None
+    if payload.groups is not None:
+        record.groups = [group.model_dump() for group in payload.groups]
+    if payload.job_title is not None:
+        record.job_title = payload.job_title
+    if payload.company is not None:
+        record.company = payload.company
+    if payload.resume_title is not None:
+        record.resume_title = payload.resume_title
+    db.commit()
+    db.refresh(record)
+    logger.info("已更新题库历史 id=%s 字段=%s", record.id, payload.model_dump(exclude_none=True))
+    return record
+
+
 # ===== 复盘历史 =====
 
 
@@ -156,6 +182,34 @@ def delete_review(db: Session, record_id: int) -> bool:
     return True
 
 
+def update_review(
+    db: Session, record_id: int, payload: InterviewReviewRecordUpdate
+) -> InterviewReviewRecord | None:
+    """局部更新复盘历史（历史记录富还原：把新复盘/反向优化结果写回同一条记录）。
+
+    只更新请求里提供的字段，其余保持原值；记录不存在或在回收站里返回 ``None``。
+    """
+    record = trash.get_live(db, InterviewReviewRecord, record_id)
+    if record is None:
+        return None
+    if payload.questions is not None:
+        record.questions = [str(item).strip() for item in payload.questions if str(item).strip()]
+    if payload.analysis is not None:
+        record.analysis = payload.analysis
+    if payload.suggestions is not None:
+        record.suggestions = payload.suggestions
+    if payload.job_title is not None:
+        record.job_title = payload.job_title
+    if payload.company is not None:
+        record.company = payload.company
+    if payload.resume_title is not None:
+        record.resume_title = payload.resume_title
+    db.commit()
+    db.refresh(record)
+    logger.info("已更新复盘历史 id=%s 字段=%s", record.id, payload.model_dump(exclude_none=True))
+    return record
+
+
 __all__ = [
     "MAX_HISTORY_LIST",
     "create_question_bank",
@@ -166,4 +220,6 @@ __all__ = [
     "list_reviews",
     "question_bank_or_none",
     "review_or_none",
+    "update_question_bank",
+    "update_review",
 ]

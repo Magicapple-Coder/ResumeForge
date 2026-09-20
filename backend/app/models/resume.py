@@ -50,6 +50,8 @@ class ResumeRecord(Base):
     )
     # 用户补充的生成要求原文，留痕以便查看和重新生成。
     custom_instruction: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # 用户给这份简历写的备注（列表默认可见、详情可编辑）。
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
     parse_error: Mapped[str] = mapped_column(Text, default="")  # JSON 解析失败时留痕
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     # 软删除时间戳：NULL 表示「没删」。列表查询一律加 `deleted_at IS NULL`，

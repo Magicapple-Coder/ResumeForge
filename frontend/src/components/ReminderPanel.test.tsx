@@ -64,7 +64,9 @@ describe("ReminderPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /完成提醒 参加某司二面/ }));
 
-    await waitFor(() => expect(apiMocks.updateReminder).toHaveBeenCalledWith(1, { status: "done" }));
+    await waitFor(() =>
+      expect(apiMocks.updateReminder).toHaveBeenCalledWith(1, { status: "done" }),
+    );
   });
 
   it("删除先确认，确认后走软删除", async () => {

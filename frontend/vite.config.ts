@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { codeInspectorPlugin } from "code-inspector-plugin";
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
@@ -6,7 +7,9 @@ export default defineConfig(({ mode }) => {
   const backendUrl = env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 
   return {
-    plugins: [react()],
+    // 开发调试辅助：按住 Alt+Shift（Windows）点击页面元素，自动在 VS Code 中定位到对应源码行。
+    // 插件自身只在 dev server 生效，生产构建不受影响。
+    plugins: [react(), codeInspectorPlugin({ bundler: "vite", editor: "code" })],
     build: {
       rollupOptions: {
         output: {

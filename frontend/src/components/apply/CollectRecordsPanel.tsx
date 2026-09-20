@@ -10,6 +10,7 @@ import { Alert, Collapse, Empty, Skeleton, Space, Tag, Typography } from "antd";
 import { listApplyTasks } from "../../api/apply";
 import { useApi } from "../../hooks/useApi";
 import { TASK_STATUS_META, type ApplyTask } from "../../types";
+import { formatDateTime } from "../../utils/format";
 import CollectResultPanel from "./CollectResultPanel";
 
 interface Props {
@@ -108,7 +109,7 @@ export default function CollectRecordsPanel({ disabled = false, refreshKey = 0 }
             <Space size={8} wrap>
               <HistoryOutlined />
               <Typography.Text strong>
-                {(record.finished_at || record.created_at).replace("T", " ").slice(0, 16)}
+                {formatDateTime(record.finished_at || record.created_at)}
               </Typography.Text>
               <Tag color={meta?.color}>{meta?.label ?? record.status}</Tag>
               {condition && <Typography.Text type="secondary">{condition}</Typography.Text>}

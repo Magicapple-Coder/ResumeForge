@@ -138,6 +138,9 @@ class CollectConfigIn(BaseModel):
     salary_min: int | None = Field(default=None, ge=0, le=1000)
     experience: str = Field(default="", max_length=32)
     education: str = Field(default="", max_length=32)
+    # 采集结果的岗位类型标注（校招/实习/社招）；空串 = 不限。**仅入库标注**：
+    # 不入去重判据、不参与站点筛选（与薪资/经验/学历"采集后本地筛选"口径一致）。
+    job_type: str = Field(default="", max_length=32)
     per_task_limit: int = Field(default=DEFAULT_COLLECT_PER_TASK_LIMIT, ge=1, le=200)
     interval_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_SECONDS, ge=1, le=600)
     interval_jitter_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_JITTER_SECONDS, ge=0, le=300)

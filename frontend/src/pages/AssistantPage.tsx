@@ -249,7 +249,12 @@ export default function AssistantPage() {
 
   // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
   useEffect(() => {
-    if (startNew || conversationsLoading || conversationsError || requestedConversationId !== undefined) {
+    if (
+      startNew ||
+      conversationsLoading ||
+      conversationsError ||
+      requestedConversationId !== undefined
+    ) {
       return;
     }
     // 列表还没回来时 `conversations` 是 undefined，"空"和"没加载"必须分开——

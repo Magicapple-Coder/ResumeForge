@@ -5,7 +5,12 @@
 """
 import pytest
 
-from app.models.apply import TASK_KIND_COLLECT, ApplyTask
+from app.models.apply import (
+    FAILURE_CAPTCHA_REQUIRED,
+    FAILURE_LOGIN_REQUIRED,
+    TASK_KIND_COLLECT,
+    ApplyTask,
+)
 from app.models.job import Job
 from app.models.material import CANDIDATE_JOB_PENDING, CandidateJob
 from app.schemas.apply import CollectConfigIn
@@ -222,6 +227,55 @@ def test_collector_stages_a_candidate_even_when_the_detail_fetch_fails(db_sessio
     assert staged.description == ""
 
 
+def test_collector_stamps_the_configured_job_type_on_candidates(db_session):
+    """采集任务配置里的 job_type 要透传进暂存区（仅标注，不参与站点筛选/去重）。"""
+    pages = [
+        SearchPage(
+            results=[SearchResult(title="后端开发", company="A公司", url="https://example.com/1")],
+            has_next=False,
+        )
+    ]
+    task = _task(db_session)
+
+    Collector().run(
+        session=db_session,
+        task=task,
+        client=object(),
+        adapter=FakeCollectAdapter(pages),
+        config=_config(job_type="校招"),
+        checkpoint=lambda: None,
+        sleeper=lambda _seconds: None,
+        clock=_FakeClock(),
+    )
+
+    staged = db_session.query(CandidateJob).one()
+    assert staged.job_type == "校招"
+
+
+def test_collector_leaves_job_type_empty_when_not_configured(db_session):
+    """不选岗位类型时 job_type 应为空串（= 不限），而不是塞个默认值。"""
+    pages = [
+        SearchPage(
+            results=[SearchResult(title="后端开发", company="A公司", url="https://example.com/1")],
+            has_next=False,
+        )
+    ]
+    task = _task(db_session)
+
+    Collector().run(
+        session=db_session,
+        task=task,
+        client=object(),
+        adapter=FakeCollectAdapter(pages),
+        config=_config(),
+        checkpoint=lambda: None,
+        sleeper=lambda _seconds: None,
+        clock=_FakeClock(),
+    )
+
+    assert db_session.query(CandidateJob).one().job_type == ""
+
+
 def test_collector_records_unmapped_conditions(db_session):
     pages = [
         SearchPage(
@@ -300,7 +354,7 @@ def test_collector_filters_by_education_and_keeps_what_it_cannot_judge(db_sessio
     # 没写学历的那条被保留，但要如实记为"未能判断"。
     assert task.config["filter_undecided"] == ["学历"]
     assert task.config["filter_undecided_count"] == 1
-    assert task.config["filter_applied"] == ["薪资", "经验", "学历"]
+    assert task.config["filter_applied"] == ["学历"]
 
 
 def test_collector_reports_an_unparsable_condition_as_unapplied(db_session):
@@ -448,6 +502,131 @@ def test_collector_stops_when_checkpoint_signals_stop(db_session):
             sleeper=lambda _seconds: None,
             clock=_FakeClock(),
         )
+
+
+def test_collector_searches_all_keywords_with_one_global_limit_and_dedupes(db_session):
+    """多个关键词都要实际搜索；上限与去重口径覆盖整个任务，而不是每个关键词各算一遍。"""
+
+    class _KeywordAdapter(FakeCollectAdapter):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.searched_keywords: list[str] = []
+
+        def collect_search(self, client, query, page):  # type: ignore[override]
+            keyword = query.keywords[0] if query.keywords else ""
+            self.searched_keywords.append(keyword)
+            shared = SearchResult(
+                title="共享岗位", company="A公司", url="https://example.com/shared"
+            )
+            if keyword == "后端":
+                results = [
+                    shared,
+                    SearchResult(
+                        title="后端岗位", company="B公司", url="https://example.com/backend"
+                    ),
+                ]
+            else:
+                results = [
+                    shared,
+                    SearchResult(
+                        title="算法岗位", company="C公司", url="https://example.com/algorithm"
+                    ),
+                    SearchResult(
+                        title="超过全局上限", company="D公司", url="https://example.com/overflow"
+                    ),
+                ]
+            return SearchPage(results=results, page=page, has_next=False)
+
+    adapter = _KeywordAdapter()
+    task = _task(db_session)
+
+    report = Collector().run(
+        session=db_session,
+        task=task,
+        client=object(),
+        adapter=adapter,
+        config=_config(keywords=["后端", "算法"], per_task_limit=3),
+        checkpoint=lambda: None,
+        sleeper=lambda _seconds: None,
+        clock=_FakeClock(),
+    )
+
+    assert adapter.searched_keywords == ["后端", "算法"]
+    assert report.collected == 3
+    assert report.skipped == 1
+    assert {item.title for item in db_session.query(CandidateJob).all()} == {
+        "共享岗位",
+        "后端岗位",
+        "算法岗位",
+    }
+
+
+def test_collector_runs_one_blank_keyword_search_for_city_only_config(db_session):
+    """只填城市也要执行一次搜索，不能因为关键词列表为空而完全跳过采集。"""
+
+    class _CityOnlyAdapter(FakeCollectAdapter):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.keyword_lists: list[list[str]] = []
+
+        def collect_search(self, client, query, page):  # type: ignore[override]
+            self.keyword_lists.append(list(query.keywords))
+            return SearchPage(
+                results=[
+                    SearchResult(
+                        title="城市岗位", company="A公司", url="https://example.com/city"
+                    )
+                ],
+                has_next=False,
+            )
+
+    adapter = _CityOnlyAdapter()
+    task = _task(db_session)
+    report = Collector().run(
+        session=db_session,
+        task=task,
+        client=object(),
+        adapter=adapter,
+        config=_config(keywords=[], city="杭州"),
+        checkpoint=lambda: None,
+        sleeper=lambda _seconds: None,
+        clock=_FakeClock(),
+    )
+
+    assert adapter.keyword_lists == [[""]]
+    assert report.collected == 1
+
+
+@pytest.mark.parametrize("category", [FAILURE_LOGIN_REQUIRED, FAILURE_CAPTCHA_REQUIRED])
+def test_collector_propagates_auth_failures_from_detail_fetch(db_session, category):
+    """登录失效或验证码不是可忽略的详情缺失，必须让任务层暂停/失败并提示用户处理。"""
+
+    class _AuthFailureAdapter(FakeCollectAdapter):
+        def fetch_job_detail(self, client, url):  # type: ignore[override]
+            raise SiteFailure(category, "需要用户处理")
+
+    task = _task(db_session)
+    pages = [
+        SearchPage(
+            results=[SearchResult(title="岗位", company="A公司", url="https://example.com/1")],
+            has_next=False,
+        )
+    ]
+
+    with pytest.raises(SiteFailure) as exc_info:
+        Collector().run(
+            session=db_session,
+            task=task,
+            client=object(),
+            adapter=_AuthFailureAdapter(pages),
+            config=_config(),
+            checkpoint=lambda: None,
+            sleeper=lambda _seconds: None,
+            clock=_FakeClock(),
+        )
+
+    assert exc_info.value.category == category
+    assert db_session.query(CandidateJob).count() == 0
 
 
 # ===== 详情缺失：站点漂移唯一留下的痕迹 =====

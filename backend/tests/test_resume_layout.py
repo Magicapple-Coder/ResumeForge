@@ -321,6 +321,10 @@ def test_room_report_explains_the_font_floor():
 # 所以模板改了比例而注册表没跟上，就应该在这里被逮住。
 _RATIO_SELECTORS: dict[str, str] = {
     "name_ratio": ".header .name",
+    # 姓名旁的性别等附加信息：预览里是独立的 `.name-extra` 小号灰字，各模板比例不同
+    # （classic/modern 1.0、compact/minimal/elegant 0.93、technical 0.95）。PDF 与 Word
+    # 的性别字号都从注册表读这把比例，不核对就会退回"性别跟姓名一样大"的老 bug。
+    "name_extra_ratio": ".name-extra",
     "intent_ratio": ".header .intent",
     "contact_ratio": ".header .contact",
     "section_title_ratio": ".section-title",
@@ -384,6 +388,130 @@ def test_template_layout_defaults_match_the_template_files():
 # （去掉 `--` 前缀）。直出 PDF 的强调色从这读（`pdf_exporter` 不再自带 `_TEMPLATE_COLORS`），
 # 所以模板改了颜色而注册表没跟上，PDF 配色就会与预览悄悄分叉。
 _COLOR_KEYS = ("accent", "text", "muted", "line")
+
+
+def _selector_block(css: str, selector: str) -> str:
+    """取某条选择器 `{ ... }` 里的声明文本（不跨选择器）。"""
+    match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert match, f"模板里没找到选择器 {selector}"
+    return match.group(1)
+
+
+def _fs_scale(declarations: str, prop: str) -> float | None:
+    """读出某条声明里的 `calc(var(--fs) * N)` 里的 N；没有该属性返回 None。"""
+    match = re.search(
+        re.escape(prop) + r":\s*calc\(var\(--fs\)\s*\*\s*([\d.]+)\)", declarations
+    )
+    return float(match.group(1)) if match else None
+
+
+def _section_title_style(declarations: str) -> str:
+    """由 `.section-title` 的声明反推它的形状（与各模板 CSS 一一对应）。"""
+    if "border-left:" in declarations:
+        return "left_bar"
+    if "display: inline-block" in declarations and "background: var(--accent);" in declarations:
+        return "accent_box"
+    if "background: var(--accent-soft)" in declarations:
+        return "soft_box"
+    if "border-bottom:" in declarations:
+        return "underline"
+    return "plain"
+
+
+def _section_title_text(declarations: str) -> str:
+    """由 `.section-title` 的 `color` 反推标题文字色（无 color 则继承正文色）。"""
+    match = re.search(r"(?<!-)\bcolor:\s*(#[0-9a-fA-F]{3,6}|var\(--[a-z-]+\))", declarations)
+    if not match:
+        return "body"
+    token = match.group(1)
+    if token == "var(--accent)":
+        return "accent"
+    if token == "var(--muted)":
+        return "muted"
+    if token.startswith("#") and _normalize_hex(token) == "ffffff":
+        return "white"
+    return "body"
+
+
+def _section_title_padding(declarations: str) -> tuple[float, float]:
+    """由 `.section-title` 反推（纵向内边距, 横向内边距），单位是 × 字号。"""
+    shorthand = re.search(
+        r"padding:\s*calc\(var\(--fs\)\s*\*\s*([\d.]+)\)\s+calc\(var\(--fs\)\s*\*\s*([\d.]+)\)",
+        declarations,
+    )
+    if shorthand:
+        return float(shorthand.group(1)), float(shorthand.group(2))
+    pad_y = _fs_scale(declarations, "padding-bottom")
+    pad_x = _fs_scale(declarations, "padding-left")
+    return (pad_y or 0.0), (pad_x or 0.0)
+
+
+def test_template_vertical_gaps_and_title_style_match_the_template_files():
+    """垂直间距、区块标题形状/配色/内边距、照片尺寸都必须与模板 CSS 一致。
+
+    这些此前**只存在于模板 CSS**、`TEMPLATE_LAYOUT_DEFAULTS` 里没有、PDF 侧也完全没画，
+    正是"直出 PDF 比预览被压扁"的根因。既然现在 PDF 从注册表读它们，注册表就不能与模板
+    漂移——否则又是一次"两边各写各的"。与字号比例守卫同理，期望值来自注册表、拿模板 CSS 比对。
+    """
+    for name, spec in RESUME_TEMPLATES.items():
+        css = (TEMPLATES_DIR / spec["file"]).read_text(encoding="utf-8")
+        defaults = TEMPLATE_LAYOUT_DEFAULTS[name]
+
+        header = _selector_block(css, ".header")
+        assert _fs_scale(header, "margin-bottom") == defaults["header_gap"], name
+        # 页头装饰：底边线（宽度/颜色）、padding-bottom，以及 modern 的浅底色块。
+        header_border = re.search(r"border-bottom:\s*([\d.]+)px\s+solid\s+var\(--accent\)", header)
+        assert (float(header_border.group(1)) if header_border else 0.0) == defaults[
+            "header_border_width"
+        ], name
+        assert ("accent" if header_border else "none") == defaults["header_border_color"], name
+        assert (_fs_scale(header, "padding-bottom") or 0.0) == defaults["header_pad_bottom"], name
+        assert (
+            "soft_accent" if "background: var(--accent-soft)" in header else "none"
+        ) == defaults["header_bg"], name
+        header_padding = re.search(
+            r"padding:\s*calc\(var\(--fs\)\s*\*\s*([\d.]+)\)\s+calc\(var\(--fs\)\s*\*\s*([\d.]+)\)",
+            header,
+        )
+        assert (float(header_padding.group(1)) if header_padding else 0.0) == defaults[
+            "header_pad_y"
+        ], name
+        assert (float(header_padding.group(2)) if header_padding else 0.0) == defaults[
+            "header_pad_x"
+        ], name
+        assert (_fs_scale(header, "border-radius") or 0.0) == defaults["header_radius"], name
+
+        entry = _selector_block(css, ".entry")
+        assert _fs_scale(entry, "margin-bottom") == defaults["entry_gap"], name
+
+        sub = _selector_block(css, ".entry .sub")
+        sub_margin = re.search(
+            r"margin:\s*calc\(var\(--fs\)\s*\*\s*([\d.]+)\)\s+0\s+calc\(var\(--fs\)\s*\*\s*([\d.]+)\)",
+            sub,
+        )
+        assert sub_margin, f"{spec['file']} 里 `.entry .sub` 不是 `AR 0 BR` 形式"
+        assert float(sub_margin.group(1)) == defaults["sub_gap_top"], name
+        assert float(sub_margin.group(2)) == defaults["sub_gap_bottom"], name
+
+        # 列表项：模板里是裸 `li { margin-bottom: ... }`（`.skill-list li` / `li::marker` 不算）。
+        li_block = re.search(r"(?:^|\n)\s*li\s*\{([^}]*)\}", css)
+        assert li_block, f"{spec['file']} 里没找到裸 li 选择器"
+        assert _fs_scale(li_block.group(1), "margin-bottom") == defaults["li_gap"], name
+
+        title = _selector_block(css, ".section-title")
+        assert _fs_scale(title, "margin-bottom") == defaults["section_title_gap"], name
+        assert _section_title_style(title) == defaults["section_title_style"], name
+        assert _section_title_text(title) == defaults["section_title_text"], name
+        assert ("center" if "text-align: center" in title else "left") == defaults[
+            "section_title_align"
+        ], name
+        pad_y, pad_x = _section_title_padding(title)
+        assert pad_y == defaults["section_title_pad_y"], name
+        assert pad_x == defaults["section_title_pad_x"], name
+
+        photo = _selector_block(css, ".profile-photo")
+        assert _fs_scale(photo, "width") == defaults["photo_width_ratio"], name
+        assert _fs_scale(photo, "height") == defaults["photo_height_ratio"], name
 
 
 def _normalize_hex(value: str) -> str:

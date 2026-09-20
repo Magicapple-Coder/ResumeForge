@@ -134,7 +134,9 @@ def _config(**overrides) -> ApplyConfigIn:
     return ApplyConfigIn(**data)
 
 
-def _setup_task(db_session, count: int = 1, **config_overrides) -> ApplyTask:
+def _setup_task(
+    db_session, count: int = 1, *, with_resume: bool = True, **config_overrides
+) -> ApplyTask:
     task = ApplyTask(kind="apply", status="pending", total=count, config=_config(**config_overrides).model_dump())
     db_session.add(task)
     db_session.flush()
@@ -147,17 +149,21 @@ def _setup_task(db_session, count: int = 1, **config_overrides) -> ApplyTask:
         )
         db_session.add(job)
         db_session.flush()
-        resume = ResumeRecord(title=f"后端版{index}", job_id=job.id, job_title=job.title, content={})
-        db_session.add(resume)
-        db_session.flush()
+        resume = None
+        if with_resume:
+            resume = ResumeRecord(
+                title=f"后端版{index}", job_id=job.id, job_title=job.title, content={}
+            )
+            db_session.add(resume)
+            db_session.flush()
         db_session.add(
             ApplyTaskItem(
                 task_id=task.id,
                 job_id=job.id,
                 job_title=job.title,
                 company=job.company,
-                resume_id=resume.id,
-                resume_title=resume.title,
+                resume_id=resume.id if resume is not None else None,
+                resume_title=resume.title if resume is not None else "",
                 sort_order=index,
             )
         )
@@ -283,6 +289,42 @@ def test_runner_records_a_tracker_row_for_each_successful_apply(db_session):
     assert tracks[0].status == STATUS_APPLIED
     assert tracks[0].source == SOURCE_APPLY
     assert tracks[0].job_id == item.job_id
+
+
+def test_runner_allows_an_adapter_that_does_not_require_a_generated_resume(db_session):
+    """BOSS 的立即沟通不依赖本地岗位版简历，缺简历时仍应进入站点投递流程。"""
+
+    class _NoResumeAdapter(FakeAdapter):
+        requires_resume = False
+
+    task = _setup_task(db_session, 1, with_resume=False)
+    adapter = _NoResumeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+    _wait_db(db_session, lambda: _task_status(db_session, task.id), "completed", "任务状态")
+
+    db_session.expire_all()
+    item = db_session.query(ApplyTaskItem).filter_by(task_id=task.id).one()
+    assert item.status == "success"
+    assert adapter.calls == 1
+
+
+def test_runner_still_skips_missing_resume_when_the_adapter_requires_it(db_session):
+    task = _setup_task(db_session, 1, with_resume=False)
+    adapter = FakeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+    _wait_db(db_session, lambda: _task_status(db_session, task.id), "completed", "任务状态")
+
+    db_session.expire_all()
+    item = db_session.query(ApplyTaskItem).filter_by(task_id=task.id).one()
+    assert item.status == "skipped"
+    assert "未找到可用简历" in item.failure_detail
+    assert adapter.calls == 0
 
 
 def test_runner_pause_and_resume(db_session):

@@ -1,17 +1,11 @@
-/** 简历记录预览弹窗（历史记录用）：加载详情、调整版式、渲染 HTML 后展示。 */
-import {
-  BulbOutlined,
-  EditOutlined,
-  ExportOutlined,
-  EyeInvisibleOutlined,
-  FolderOpenOutlined,
-  MessageOutlined,
-  SafetyCertificateOutlined,
-  ShareAltOutlined,
-} from "@ant-design/icons";
-import { Alert, App, Button, Modal, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
+/** 简历记录预览弹窗（历史记录用）：加载详情、调整版式、渲染 HTML 后展示。
+ *
+ * 预览主体已抽到 ``components/resume/ResumeDetailPreview``（B3）：本弹窗只负责
+ * 加载 detail/html、错误与骨架屏，以及把「换版式 / 自动一页 / 保存编辑」这些会改
+ * 数据与重渲染的动作准备好，交给共享组件渲染。
+ */
+import { Alert, App, Modal, Skeleton } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   fetchResumeHtml,
   fetchResumeTemplates,
@@ -20,19 +14,10 @@ import {
   updateResume,
   updateResumeLayout,
 } from "../api/resumes";
-import { RESUME_ENHANCEMENT_LEVELS } from "../config";
 import type { ResumeContent, ResumeDetail, ResumeLayout } from "../types";
 import type { LayoutMeasure } from "../utils/resumeLayoutMeasure";
-import ExportButtons from "./ExportButtons";
-import ExportOptionsModal from "./ExportOptionsModal";
-import RedactionModal from "./RedactionModal";
-import ResumeEditorModal from "./ResumeEditorModal";
-import SharePackageModal from "./SharePackageModal";
-import ResumeLayoutControls from "./ResumeLayoutControls";
-import ResumeLayoutDiagnosisCard from "./resume/ResumeLayoutDiagnosisCard";
-import ResumePreview, { type ResumePreviewHandle } from "./ResumePreview";
-import ResumeQualityModal from "./ResumeQualityModal";
-import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
+import ResumeDetailPreview from "./resume/ResumeDetailPreview";
+import type { ResumePreviewHandle } from "./ResumePreview";
 
 interface Props {
   recordId: number | null;
@@ -48,7 +33,6 @@ const DEFAULT_LAYOUT: ResumeLayout = {
 
 export default function ResumeDetailModal({ recordId, onClose }: Props) {
   const { message } = App.useApp();
-  const navigate = useNavigate();
   const [detail, setDetail] = useState<ResumeDetail | null>(null);
   const [html, setHtml] = useState("");
   const [error, setError] = useState("");
@@ -63,15 +47,8 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   // 预览量到的实测高度：只有浏览器能量准，所以由预览上报、这里转交给诊断面板。
   const [measure, setMeasure] = useState<LayoutMeasure | null>(null);
   const previewRef = useRef<ResumePreviewHandle>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTarget, setEditorTarget] = useState<string | null>(null);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [exportOptionsOpen, setExportOptionsOpen] = useState(false);
-  const [redactionOpen, setRedactionOpen] = useState(false);
-  const [sharePackageOpen, setSharePackageOpen] = useState(false);
   const loadedRecordId = useRef<number | null>(null);
   const requestVersion = useRef(0);
   const saveRequestVersion = useRef(0);
@@ -83,9 +60,6 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
     setHtml("");
     setError("");
     setLayoutStatus(null);
-    setEditorOpen(false);
-    setEditorTarget(null);
-    setSuggestionsOpen(false);
     if (loadedRecordId.current !== recordId) {
       loadedRecordId.current = recordId;
       setSuggestionsGenerated(false);
@@ -126,10 +100,6 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
       });
   }, []);
 
-  const enhancementLabel = RESUME_ENHANCEMENT_LEVELS.find(
-    (item) => item.value === detail?.enhancement_level,
-  )?.label;
-
   const saveEditedResume = async (content: ResumeContent) => {
     if (!detail) return;
     const requestAtStart = requestVersion.current;
@@ -165,12 +135,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
     }
   };
 
-  /**
-   * 「自动一页」试出方案并保存之后，只需要按新配置重渲染一次。
-   *
-   * 不再走 `applyLayout`：那边会再 PATCH 一遍，而卡片已经把配置存进去了——
-   * 发两次同样的写请求除了浪费一次往返，还会让"到底存了几次"变得难以解释。
-   */
+  /** 「自动一页」已由诊断卡写回配置，这里只需按新配置重渲染一次。 */
   const applyFittedFormat = async (formatConfig: Record<string, number | string>) => {
     if (!detail) return;
     const next: ResumeLayout = { ...layout, format_config: formatConfig };
@@ -204,162 +169,25 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
       ) : !detail || !html ? (
         <Skeleton active paragraph={{ rows: 8 }} />
       ) : (
-        <div>
-          <Space style={{ marginBottom: 12 }} wrap>
-            <Tag color={detail.source === "manual" ? "purple" : "blue"}>
-              {detail.source === "manual" ? "用户编写" : "AI 生成"}
-            </Tag>
-            {detail.job_id ? (
-              <Tag color="blue">目标岗位：{detail.job_title || "-"}</Tag>
-            ) : (
-              // 通用简历没有岗位；job_title 里存的是求职意向。
-              <>
-                <Tooltip title="不关联岗位、可投递多个方向的简历">
-                  <Tag color="purple">通用简历</Tag>
-                </Tooltip>
-                <Tag>求职意向：{detail.job_title || "未填写"}</Tag>
-              </>
-            )}
-            {detail.company && <Tag>{detail.company}</Tag>}
-            <Tag>模型：{detail.model || "-"}</Tag>
-            <Tag color={detail.enhancement_enabled ? "green" : undefined}>
-              美化拓展：{detail.enhancement_enabled ? (enhancementLabel ?? "已开启") : "未开启"}
-            </Tag>
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-              创建于 {detail.created_at.replace("T", " ").slice(0, 16)}
-            </Typography.Text>
-          </Space>
-          <div className="generate-layout-bar">
-            <ResumeLayoutControls
-              compact
-              layout={layout}
-              resumeId={detail.id}
-              disabled={relayouting}
-              previewRef={previewRef}
-              onChange={(next) => void applyLayout(next)}
-            />
-            {relayouting && <Typography.Text type="secondary">正在按新版式渲染…</Typography.Text>}
-          </div>
-          <ResumeLayoutDiagnosisCard
-            resumeId={detail.id}
-            measure={measure}
-            overflow={layoutStatus?.overflow ?? false}
-            previewRef={previewRef}
-            layout={layout}
-            disabled={relayouting}
-            onApplied={(formatConfig) => void applyFittedFormat(formatConfig)}
-            onAddPage={() => void applyLayout({ ...layout, page_limit: layout.page_limit + 1 })}
-          />
-          <ResumePreview
-            ref={previewRef}
-            html={html}
-            pages={layout.page_limit}
-            warnings={detail.warnings}
-            onLayoutStatus={setLayoutStatus}
-            onMeasure={setMeasure}
-            onEditTarget={(path) => {
-              setEditorTarget(path);
-              setEditorOpen(true);
-            }}
-          />
-          {/* 固定在弹窗底部：内容长（版面诊断 + 预览）时不必一路翻到最后才够得着这些按钮。 */}
-          <div className="resume-detail-footer">
-            <Space wrap>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setEditorTarget(null);
-                  setEditorOpen(true);
-                }}
-              >
-                微调内容
-              </Button>
-              <Button
-                icon={<BulbOutlined />}
-                disabled={!detail.job_id}
-                onClick={() => setSuggestionsOpen(true)}
-              >
-                {suggestionsGenerated ? "查看岗位优化建议" : "生成岗位优化建议"}
-              </Button>
-              <Button
-                icon={<FolderOpenOutlined />}
-                disabled={!detail.job_id}
-                onClick={() => detail.job_id && navigate(`/jobs?job_id=${detail.job_id}`)}
-              >
-                查看对应岗位
-              </Button>
-              <Button
-                icon={<MessageOutlined />}
-                onClick={() => navigate(`/assistant?resume_id=${detail.id}&new=1`)}
-              >
-                咨询求职助手
-              </Button>
-              <Button
-                icon={<SafetyCertificateOutlined />}
-                onClick={() => setQualityOpen(true)}
-              >
-                质量检测
-              </Button>
-              <Button
-                icon={<ExportOutlined />}
-                onClick={() => setExportOptionsOpen(true)}
-              >
-                导出选项
-              </Button>
-              <Button
-                icon={<EyeInvisibleOutlined />}
-                onClick={() => setRedactionOpen(true)}
-              >
-                一键脱敏
-              </Button>
-              <Button
-                icon={<ShareAltOutlined />}
-                onClick={() => setSharePackageOpen(true)}
-              >
-                离线分享
-              </Button>
-            </Space>
-            <ExportButtons recordId={detail.id} pdfDirectAvailable={pdfDirectAvailable} />
-          </div>
-        </div>
+        <ResumeDetailPreview
+          detail={detail}
+          html={html}
+          layout={layout}
+          layoutStatus={layoutStatus}
+          measure={measure}
+          pdfDirectAvailable={pdfDirectAvailable}
+          relayouting={relayouting}
+          previewRef={previewRef}
+          onLayoutStatus={setLayoutStatus}
+          onMeasure={setMeasure}
+          onApplyLayout={(next) => void applyLayout(next)}
+          onApplyFittedFormat={(formatConfig) => void applyFittedFormat(formatConfig)}
+          onSaveEditedResume={(content) => saveEditedResume(content)}
+          suggestionsGenerated={suggestionsGenerated}
+          suggestionsResetKey={suggestionsResetKey}
+          onSuggestionsGenerated={() => setSuggestionsGenerated(true)}
+        />
       )}
-      <ResumeEditorModal
-        open={editorOpen}
-        content={detail?.content ?? null}
-        initialTarget={editorTarget}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditorTarget(null);
-        }}
-        onSave={saveEditedResume}
-      />
-      <ResumeSuggestionsModal
-        open={suggestionsOpen}
-        recordId={detail?.id ?? null}
-        resetKey={suggestionsResetKey}
-        onClose={() => setSuggestionsOpen(false)}
-        onGenerated={() => setSuggestionsGenerated(true)}
-      />
-      <ResumeQualityModal
-        open={qualityOpen}
-        resumeId={detail?.id ?? null}
-        onClose={() => setQualityOpen(false)}
-      />
-      <ExportOptionsModal
-        recordId={detail?.id ?? 0}
-        open={exportOptionsOpen && !!detail}
-        onClose={() => setExportOptionsOpen(false)}
-      />
-      <RedactionModal
-        recordId={detail?.id ?? 0}
-        open={redactionOpen && !!detail}
-        onClose={() => setRedactionOpen(false)}
-      />
-      <SharePackageModal
-        recordId={detail?.id ?? 0}
-        open={sharePackageOpen && !!detail}
-        onClose={() => setSharePackageOpen(false)}
-      />
     </Modal>
   );
 }

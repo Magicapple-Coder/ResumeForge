@@ -4,13 +4,7 @@ import type { Job } from "./job";
 import type { ResumeBrief } from "./resume";
 
 /** 全局搜索"更多结果"覆盖的数据域。 */
-export type SearchHitType =
-  | "referral"
-  | "reminder"
-  | "experience"
-  | "claim"
-  | "material"
-  | "skill";
+export type SearchHitType = "referral" | "reminder" | "experience" | "claim" | "material" | "skill";
 
 /** 扩展数据域里的一条命中结果，放在 ``SearchResult.more`` 中。 */
 export interface SearchHit {

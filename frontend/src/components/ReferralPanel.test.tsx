@@ -76,10 +76,11 @@ describe("ReferralPanel", () => {
     renderPanel();
     await screen.findByText(/张三 · 后端开发/);
 
-    fireEvent.click(screen.getByRole("button", { name: /删除内推 张三/ }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作 张三" }));
+    fireEvent.click(await screen.findByText("删除"));
 
     expect(apiMocks.deleteReferral).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "确认删除内推 张三" }));
+    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
 
     await waitFor(() => expect(apiMocks.deleteReferral).toHaveBeenCalledWith(1));
   });

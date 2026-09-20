@@ -363,6 +363,22 @@
   }
 }
 
+/* 思考过程置顶 + 动效（A2）：思考中标题亮蓝并带脉冲点，思考结束后停（复用 streaming 的
+   同一套脉冲节奏，视觉上"正在想"与"正在答"是一致的手感）。 */
+.assistant-reasoning--active .assistant-reasoning-label {
+  color: #1677ff;
+}
+
+.assistant-reasoning-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #1677ff;
+  animation: assistant-pulse 1.2s ease-in-out infinite;
+}
+
 .assistant-message-image {
   display: block;
   width: 120px;

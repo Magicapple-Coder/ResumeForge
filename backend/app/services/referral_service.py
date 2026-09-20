@@ -23,6 +23,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from . import trash
+from .ratios import rate
 from .attachments import (
     MAX_ATTACHMENT_BYTES,
     declared_mime,
@@ -38,6 +39,7 @@ from ..models.job import Job
 from ..models.referral import (
     REFERRAL_STATUS_ACTIVE,
     REFERRAL_STATUS_SUBMITTED,
+    REFERRAL_STATUSES,
     Referral,
 )
 from ..models.tracker import STATUS_INTERVIEW, STATUS_OFFER, ApplicationTrack
@@ -220,8 +222,22 @@ def referral_stats(db: Session) -> ReferralStatsOut:
     )
     converted = sum(1 for row in rows if _is_converted(db, row))
     total = len(rows)
-    rate = round(converted / total, 4) if total else 0.0
-    return ReferralStatsOut(total=total, converted=converted, rate=rate)
+    return ReferralStatsOut(total=total, converted=converted, rate=rate(converted, total))
+
+
+def referral_status_counts(db: Session) -> list[dict]:
+    """各内推状态的条数，按 ``REFERRAL_STATUSES`` 顺序（含计数为 0 的分支）。
+
+    **只回 ``key``/``count``、不带中文标签**：内推状态的展示名归前端
+    （``frontend/src/types/referral.ts`` 的 ``REFERRAL_STATUS_LABELS``），后端再写一份
+    就是同一件事的两份定义、迟早漂移。
+    """
+    counts = {status: 0 for status in REFERRAL_STATUSES}
+    rows = db.query(Referral.status).filter(trash.live_only(Referral)).all()
+    for (status,) in rows:
+        if status in counts:
+            counts[status] += 1
+    return [{"key": status, "count": counts[status]} for status in REFERRAL_STATUSES]
 
 
 __all__ = [
@@ -234,6 +250,7 @@ __all__ = [
     "referral_or_none",
     "referral_out",
     "referral_stats",
+    "referral_status_counts",
     "save_referral_image",
     "update_referral",
 ]

@@ -1,8 +1,8 @@
 /** 首页：数据概览、"接下来做什么"、全局搜索与最近动态。 */
 import {
   AuditOutlined,
-  BarChartOutlined,
   CalendarOutlined,
+  EditOutlined,
   FileTextOutlined,
   FunnelPlotOutlined,
   InboxOutlined,
@@ -19,12 +19,14 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   Empty,
   Input,
   List,
   Modal,
   Row,
+  Segmented,
   Space,
   Statistic,
   Tag,
@@ -32,6 +34,7 @@ import {
 } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createSearchParams, Link } from "react-router-dom";
+import { MENU_ITEMS } from "../App";
 import { listUpcomingReminders } from "../api/reminders";
 import { getStats, searchAll } from "../api/search";
 import { getReminderPopupSetting } from "../api/settings";
@@ -39,34 +42,58 @@ import { useApi } from "../hooks/useApi";
 import { REMINDER_URGENCY_COLORS } from "../types";
 import type { ReminderUpcoming, SearchHitType, SearchResult } from "../types";
 import { formatDateTime } from "../utils/format";
+import CalendarView from "../components/tracker/CalendarView";
 
-/** 快捷入口：点一下就到自己要做的那件事上，不用先想它在哪个菜单里。 */
-const SHORTCUTS = [
-  {
-    path: "/analytics",
-    icon: <BarChartOutlined />,
-    label: "求职统计",
-    hint: "投递漏斗与月度趋势",
-  },
-  {
-    path: "/interview",
-    icon: <SolutionOutlined />,
-    label: "模拟面试·题库",
-    hint: "对话练习与即时出题",
-  },
-  {
-    path: "/apply",
-    icon: <TeamOutlined />,
-    label: "内推管理",
-    hint: "找人内推，记录每一次进展",
-  },
-  {
-    path: "/tracker",
-    icon: <CalendarOutlined />,
-    label: "日历提醒",
-    hint: "面试、测评截止别错过",
-  },
-] as const;
+/** 快捷入口默认值（与旧版 7 项一致）；完整可选项见 App.tsx 的 MENU_ITEMS。 */
+const DEFAULT_SHORTCUT_KEYS = [
+  "/jobs",
+  "/resumes",
+  "/apply",
+  "/tracker",
+  "/interview",
+  "/analytics",
+  "/settings",
+];
+
+const SHORTCUT_STORAGE_KEY = "rf.home.shortcuts";
+const REMINDER_VIEW_KEY = "rf.home.reminderView";
+
+/** 紧急度着色点的实际色值（与 REMINDER_URGENCY_COLORS 的 antd 色名对应）。 */
+const URGENCY_DOT_COLORS: Record<string, string> = {
+  overdue: "#ff4d4f",
+  soon: "#fa8c16",
+  upcoming: "#1677ff",
+  later: "#d9d9d9",
+};
+
+/** 从 localStorage 读取已保存的快捷入口 key 数组；缺省/非法时回退默认。 */
+function loadShortcutKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(SHORTCUT_STORAGE_KEY);
+    if (!raw) return DEFAULT_SHORTCUT_KEYS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_SHORTCUT_KEYS;
+    return parsed.filter((value): value is string => typeof value === "string");
+  } catch {
+    return DEFAULT_SHORTCUT_KEYS;
+  }
+}
+
+/** 从 localStorage 读取近期提醒视图偏好；缺省为列表。 */
+function loadReminderView(): "list" | "calendar" {
+  try {
+    return localStorage.getItem(REMINDER_VIEW_KEY) === "calendar" ? "calendar" : "list";
+  } catch {
+    return "list";
+  }
+}
+
+/** 启动弹窗在一次 SPA 会话内只弹一次。
+ *
+ * 用模块级标记而不是 localStorage：模块在整页刷新时会被重新求值，标记随之归零，
+ * 满足「刷新后可再弹一次」；而在 SPA 内切走再回首页（组件卸载/挂载，模块不重算）
+ * 标记保持，弹窗不再弹出。 */
+let reminderPopupShownThisSession = false;
 
 /** 全局搜索"更多结果"分组的展示顺序与图标/标签（与后端下发顺序一致）。 */
 const MORE_ORDER: SearchHitType[] = [
@@ -103,10 +130,40 @@ export default function HomePage() {
   const [searchError, setSearchError] = useState("");
   const searchVersion = useRef(0);
 
-  // 打开应用时：设置开启且有未完成提醒 → 弹出近期提醒。
+  // 快捷入口：用户可自定义的 key 集合（顺序即渲染顺序），缺省回退默认 7 项。
+  const [shortcutKeys, setShortcutKeys] = useState<string[]>(() => loadShortcutKeys());
+  const [shortcutModalOpen, setShortcutModalOpen] = useState(false);
+  const [shortcutDraft, setShortcutDraft] = useState<string[]>(shortcutKeys);
+  // 近期提醒卡片视图：列表 / 月历，缺省列表。
+  const [reminderView, setReminderView] = useState<"list" | "calendar">(() => loadReminderView());
+
+  /** 保存快捷入口选择：至少保留 1 项，空选则视为未改动。 */
+  const saveShortcuts = (keys: string[]) => {
+    const next = keys.length > 0 ? keys : DEFAULT_SHORTCUT_KEYS;
+    setShortcutKeys(next);
+    localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(next));
+    setShortcutModalOpen(false);
+  };
+
+  const changeReminderView = (value: "list" | "calendar") => {
+    setReminderView(value);
+    localStorage.setItem(REMINDER_VIEW_KEY, value);
+  };
+
+  // 按用户选择顺序，从 MENU_ITEMS 取出可渲染的快捷入口（过滤掉已不存在的 key）。
+  const shortcuts = shortcutKeys
+    .map((key) => MENU_ITEMS.find((item) => item.key === key))
+    .filter((item): item is (typeof MENU_ITEMS)[number] => Boolean(item));
+
+  // 打开应用时：设置开启且有未完成提醒 → 弹出近期提醒（本 SPA 会话仅弹一次）。
   useEffect(() => {
-    if (popupSetting?.enabled && (upcomingReminders?.length ?? 0) > 0) {
+    if (
+      !reminderPopupShownThisSession &&
+      popupSetting?.enabled &&
+      (upcomingReminders?.length ?? 0) > 0
+    ) {
       setPopupVisible(true);
+      reminderPopupShownThisSession = true;
     }
   }, [popupSetting, upcomingReminders]);
 
@@ -229,22 +286,51 @@ export default function HomePage() {
             <span>近期提醒</span>
           </Space>
         }
-        extra={<Link to="/tracker">查看全部</Link>}
+        extra={
+          <Space size={8}>
+            <Segmented
+              aria-label="近期提醒视图切换"
+              size="small"
+              value={reminderView}
+              options={[
+                { label: "列表", value: "list" },
+                { label: "月历", value: "calendar" },
+              ]}
+              onChange={(value) => changeReminderView(value as "list" | "calendar")}
+            />
+            <Link to="/tracker">查看全部</Link>
+          </Space>
+        }
         loading={remindersLoading}
       >
-        {(upcomingReminders ?? []).length === 0 ? (
+        {reminderView === "calendar" ? (
+          <CalendarView compact />
+        ) : (upcomingReminders ?? []).length === 0 ? (
           <Empty description="近期没有待办提醒" />
         ) : (
           <List
             size="small"
             dataSource={upcomingReminders ?? []}
             renderItem={(item: ReminderUpcoming) => (
-              <List.Item>
-                <Space size={6} wrap>
-                  <Tag color={REMINDER_URGENCY_COLORS[item.urgency] ?? "default"}>
-                    {item.due_label}
-                  </Tag>
-                  <Link to="/tracker">{item.title}</Link>
+              <List.Item
+                style={{ cursor: "pointer" }}
+                onClick={() => setPopupVisible(true)}
+                aria-label={`查看提醒：${item.title}`}
+              >
+                <Space size={8} wrap>
+                  <span
+                    aria-hidden
+                    className="reminder-urgency-dot"
+                    style={{
+                      display: "inline-block",
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: URGENCY_DOT_COLORS[item.urgency] ?? "#d9d9d9",
+                      flex: "none",
+                    }}
+                  />
+                  <span>{item.title}</span>
                   <Typography.Text type="secondary">
                     {formatDateTime(item.remind_at)}
                   </Typography.Text>
@@ -289,20 +375,72 @@ export default function HomePage() {
         )}
       </Card>
 
-      <Card style={{ marginTop: 16 }} title="快捷入口">
+      <Card
+        style={{ marginTop: 16 }}
+        title="快捷入口"
+        extra={
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            aria-label="编辑快捷入口"
+            onClick={() => {
+              setShortcutDraft(shortcutKeys);
+              setShortcutModalOpen(true);
+            }}
+          >
+            编辑
+          </Button>
+        }
+      >
         <div className="home-shortcuts">
-          {SHORTCUTS.map((item) => (
-            <Link key={item.path} to={item.path} className="home-shortcut">
+          {shortcuts.map((item) => (
+            <Link key={item.key} to={item.key} className="home-shortcut">
               <span className="home-shortcut-icon">{item.icon}</span>
               <span className="home-shortcut-label">{item.label}</span>
-              <span className="home-shortcut-hint">{item.hint}</span>
             </Link>
           ))}
         </div>
       </Card>
 
+      <Modal
+        title="自定义快捷入口"
+        open={shortcutModalOpen}
+        onCancel={() => setShortcutModalOpen(false)}
+        footer={[
+          <Button key="restore" onClick={() => setShortcutDraft(DEFAULT_SHORTCUT_KEYS)}>
+            恢复默认
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            disabled={shortcutDraft.length === 0}
+            onClick={() => saveShortcuts(shortcutDraft)}
+          >
+            保存
+          </Button>,
+        ]}
+      >
+        <Typography.Text type="secondary">
+          勾选要在首页展示的入口（至少保留 1 项）。
+        </Typography.Text>
+        <Checkbox.Group
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "8px 16px",
+            marginTop: 12,
+          }}
+          value={shortcutDraft}
+          options={MENU_ITEMS.map((item) => ({ value: item.key, label: item.label }))}
+          onChange={(values) => setShortcutDraft(values as string[])}
+        />
+      </Modal>
+
       <Card style={{ marginTop: 16 }}>
-        <Typography.Title level={5}>全局搜索</Typography.Title>
+        <Typography.Title level={5} style={{ marginTop: 0 }}>
+          全局搜索
+        </Typography.Title>
         <Input.Search
           placeholder="搜索岗位、简历，或内推、提醒、面经、台账、资料、技能，如：后端开发 / 字节跳动"
           enterButton="搜索"
@@ -486,9 +624,7 @@ export default function HomePage() {
                 <Link to="/tracker" onClick={() => setPopupVisible(false)}>
                   {item.title}
                 </Link>
-                <Typography.Text type="secondary">
-                  {formatDateTime(item.remind_at)}
-                </Typography.Text>
+                <Typography.Text type="secondary">{formatDateTime(item.remind_at)}</Typography.Text>
               </Space>
             </List.Item>
           )}

@@ -76,6 +76,70 @@ def test_docx_excludes_photo_when_include_photo_is_false():
     assert len(doc_without.inline_shapes) == 0
 
 
+def test_docx_gender_is_a_separate_muted_run_not_the_name_run():
+    """Word 里性别必须是独立的 muted 灰 run，不再与姓名拼成一个强调色 run。
+
+    此前 `name_line = name + "　" + gender` 拼成一个 run，性别跟着姓名一起变大变粗、
+    变强调色。拆分后姓名 run 是粗体 + 强调色 + name_ratio 字号，性别 run 是常规 + muted +
+    name_extra_ratio 字号。
+    """
+    from app.services.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
+
+    resume = ResumeContent(name="张三", gender="男", summary="一句话总结。")
+    result = build_resume_docx(resume, template="classic", page_limit=1)
+    doc = Document(BytesIO(result.content))
+
+    # 第一个段落应是页头照片段或姓名段；找到含"张三"的段落。
+    name_paragraph = next(p for p in doc.paragraphs if "张三" in p.text)
+    runs = name_paragraph.runs
+    assert len(runs) >= 2, "姓名与性别应分成两个 run"
+    name_run = next(r for r in runs if "张三" in r.text)
+    gender_run = next(r for r in runs if "男" in r.text)
+
+    defaults = TEMPLATE_LAYOUT_DEFAULTS["classic"]
+    base_px = 14.0
+    # 姓名：粗体、强调色、name_ratio 字号
+    assert name_run.font.bold is True
+    # python-docx 把 Pt 量化到 0.5pt（19.53 → 19.5），用 0.05 容差。
+    assert name_run.font.size.pt == pytest.approx(
+        base_px * float(defaults["name_ratio"]) * 0.75, abs=0.05
+    )
+    # 性别：非常规粗体（None 或 False）、name_extra_ratio 字号、且字号小于姓名
+    assert not gender_run.font.bold
+    assert gender_run.font.size.pt == pytest.approx(
+        base_px * float(defaults["name_extra_ratio"]) * 0.75, abs=0.05
+    )
+    assert gender_run.font.size.pt < name_run.font.size.pt
+
+
+def test_docx_photo_is_cover_cropped_before_embedding():
+    """Word 的照片也应先按模板照片框比例做 object-fit: cover 裁剪，不变形。
+
+    用一张横图（宽高比 ≠ classic 照片框 0.7875）：裁剪后嵌入的图片宽度仍是模板的
+    `photo_width_ratio`（由 layout 给定），高度随裁后比例走——这条断言"照片真的进了文档
+    且没让导出崩"。几何精确比对在 pdf_exporter 的纯函数用例里已钉。
+    """
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.services.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
+
+    # 用 Pillow 现造一张 4x1 的横图 PNG（与 classic 照片框 0.7875 比例明显不同）。
+    buf = BytesIO()
+    Image.new("RGB", (400, 100), (0, 128, 200)).save(buf, format="PNG")
+    png = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    resume = ResumeContent(name="张三", photo=png, summary="带照片。")
+    result = build_resume_docx(resume, template="classic", page_limit=1, include_photo=True)
+    doc = Document(BytesIO(result.content))
+    assert len(doc.inline_shapes) >= 1
+    # 嵌入宽度应等于模板照片框宽度（mm 换算成 EMU）
+    defaults = TEMPLATE_LAYOUT_DEFAULTS["classic"]
+    expected_width_emu = int(round(14.0 * float(defaults["photo_width_ratio"]) * 0.264583 * 36000))
+    assert abs(doc.inline_shapes[0].width - expected_width_emu) < expected_width_emu * 0.1
+
+
 @needs_font
 def test_docx_page_estimate_is_within_one_of_pdf():
     resume = sample_resume_content()

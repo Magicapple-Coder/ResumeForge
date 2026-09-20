@@ -68,7 +68,9 @@ describe("JobFormModal", () => {
     expect(screen.getByLabelText("其他招聘信息（选填）")).toHaveValue(
       "提供员工宿舍，面试包含门店案例分析",
     );
-    expect(screen.getByLabelText("发布时间（选填）")).toHaveValue("2026-08-20");
+    await waitFor(() =>
+      expect(screen.getByLabelText("发布时间（选填）")).toHaveValue("2026-08-20"),
+    );
   });
 
   it("submits only once when the save button is activated repeatedly", async () => {

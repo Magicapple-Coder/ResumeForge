@@ -21,6 +21,7 @@ import {
   List,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -35,6 +36,7 @@ import { createReminder, deleteReminder, listReminders, updateReminder } from ".
 import { REMINDER_KINDS, REMINDER_KIND_LABELS, REMINDER_STATUS_LABELS } from "../types";
 import type { Reminder, ReminderKind, ReminderStatus } from "../types";
 import { formatDateTime } from "../utils/format";
+import CalendarView from "./tracker/CalendarView";
 
 interface Option {
   value: number;
@@ -66,6 +68,7 @@ export default function ReminderPanel({
   const [items, setItems] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<string | undefined>();
+  const [view, setView] = useState<"list" | "calendar">("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
   const [saving, setSaving] = useState(false);
@@ -169,10 +172,20 @@ export default function ReminderPanel({
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             新增提醒
           </Button>
+          <Segmented
+            value={view}
+            onChange={(value) => setView(value as "list" | "calendar")}
+            options={[
+              { label: "列表", value: "list" },
+              { label: "月历", value: "calendar" },
+            ]}
+          />
         </Space>
       </Card>
 
-      {loading ? (
+      {view === "calendar" ? (
+        <CalendarView reminders={items} loading={loading} />
+      ) : loading ? (
         <Spin />
       ) : items.length === 0 ? (
         <Empty description="还没有提醒，把面试、测评截止这些时点记下来吧" />
@@ -243,7 +256,15 @@ export default function ReminderPanel({
                     <Space size={6} wrap>
                       <span>{item.title}</span>
                       <Tag>{REMINDER_KIND_LABELS[item.kind as ReminderKind] ?? item.kind}</Tag>
-                      <Tag color={item.status === "pending" ? "blue" : item.status === "done" ? "green" : "default"}>
+                      <Tag
+                        color={
+                          item.status === "pending"
+                            ? "blue"
+                            : item.status === "done"
+                              ? "green"
+                              : "default"
+                        }
+                      >
                         {REMINDER_STATUS_LABELS[item.status as ReminderStatus] ?? item.status}
                       </Tag>
                     </Space>
@@ -270,11 +291,7 @@ export default function ReminderPanel({
         okText="保存"
         cancelText="取消"
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ kind: "other", remind_at: dayjs() }}
-        >
+        <Form form={form} layout="vertical" initialValues={{ kind: "other", remind_at: dayjs() }}>
           <Form.Item
             label="提醒内容"
             name="title"

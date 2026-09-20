@@ -4,6 +4,7 @@ import {
   Alert,
   App,
   Button,
+  DatePicker,
   Form,
   Image,
   Input,
@@ -13,6 +14,8 @@ import {
   Typography,
   Upload,
 } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { createJob, parseJobsMultiple, updateJob } from "../api/jobs";
 import { attachmentInputs, useRecognitionFiles } from "../hooks/useRecognitionFiles";
@@ -442,8 +445,15 @@ export default function JobFormModal({
           >
             <Input placeholder="招聘官网投递链接（选填）" />
           </Form.Item>
-          <Form.Item name="posted_at" label="发布时间（选填）">
-            <Input placeholder="如：2026-08-15" />
+          <Form.Item
+            name="posted_at"
+            label="发布时间（选填）"
+            // DatePicker 值走 Dayjs，但 JobPayload.posted_at 是字符串：getValueProps 把存的
+            // 字符串转成 Dayjs 给控件，normalize 再把 Dayjs 转回 YYYY-MM-DD 存进表单。
+            getValueProps={(value: string) => ({ value: value ? dayjs(value) : null })}
+            normalize={(value: Dayjs | null) => (value ? value.format("YYYY-MM-DD") : "")}
+          >
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item
             name="description"

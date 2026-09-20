@@ -1,5 +1,18 @@
 /** 模板市场（R-19）：按求职场景展示推荐的样式+版式+字号组合，全离线映射既有模板。 */
-import { App, Alert, Button, Card, Col, Empty, Modal, Row, Space, Spin, Tag, Typography } from "antd";
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Modal,
+  Row,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { fetchResumeTemplates, previewResumeTemplate } from "../../api/resumes";
 import { useApi } from "../../hooks/useApi";
@@ -92,10 +105,17 @@ export default function TemplateMarketTab() {
   const { data: catalog, loading, error } = useApi(fetchResumeTemplates, []);
   const [preview, setPreview] = useState<TemplateMarketPreset | null>(null);
 
-  const usePreset = (preset: TemplateMarketPreset) => {
-    message.success(
-      `已选用「${preset.label}」模板组合：${styleLabel(catalog, preset.template)} 样式 + ` +
-        `${formatLabel(catalog, preset.format_name)} 版式 + ${fontLabel(catalog, preset.font_scale)} 字号`,
+  // 函数名不能以 use 开头：它不是 Hook，但 react-hooks/rules-of-hooks 会按命名当成 Hook，
+  // 于是在 onClick 回调里调用就报「Hook 不能在回调里调用」。
+  //
+  // **这里刻意只说「建议组合」而不是「已选用」**：预设只是"样式 + 版式 + 字号"的一组建议，
+  // 点它并不会套用任何配置（模板市场在工作台，没有一个"当前简历"可套）。早先的文案写
+  // 「已选用」+ 按钮写「使用此模板」，用户会以为已经生效、导出后发现没变——那是在骗人。
+  const announcePreset = (preset: TemplateMarketPreset) => {
+    message.info(
+      `「${preset.label}」的建议组合：${styleLabel(catalog, preset.template)} 样式 + ` +
+        `${formatLabel(catalog, preset.format_name)} 版式 + ${fontLabel(catalog, preset.font_scale)} 字号。` +
+        `生成或预览简历时，用「样式」和「版式」按这个组合选一下即可。`,
     );
   };
 
@@ -129,8 +149,8 @@ export default function TemplateMarketTab() {
                 </Space>
                 <Space>
                   <Button onClick={() => setPreview(preset)}>预览</Button>
-                  <Button type="primary" onClick={() => usePreset(preset)}>
-                    使用此模板
+                  <Button type="primary" onClick={() => announcePreset(preset)}>
+                    这套怎么选
                   </Button>
                 </Space>
               </Card>

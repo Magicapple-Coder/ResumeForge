@@ -63,6 +63,9 @@ class CandidateJob(Base):
     images: Mapped[list[str]] = mapped_column(JSON, default=list)
     note: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(32), default="手动添加")
+    # 采集任务透传的岗位类型（校招/实习/社招）；空串 = 不限。**仅做入库标注**：
+    # 不入去重判据、不参与站点筛选（与薪资/经验/学历"采集后本地筛选"口径一致）。
+    job_type: Mapped[str] = mapped_column(String(32), default="", server_default="")
     # 采集多带出来的字段：粘贴文本拿不到城市与薪资，而采集能拿到（迁移 0015）。
     location: Mapped[str] = mapped_column(String(64), default="", server_default="")
     salary: Mapped[str] = mapped_column(String(64), default="", server_default="")

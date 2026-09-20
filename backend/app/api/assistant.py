@@ -35,6 +35,7 @@ from ..services.assistant_service import (
     normalize_attachments,
 )
 from ..services.assistant_skills import build_skill_prompt
+from ..services.feature_catalog import build_capability_map
 from ..services.conversation_export import (
     EXPORT_FORMATS,
     build_conversation_filename,
@@ -102,7 +103,13 @@ def _system_prompt(db: Session, *, web_search: bool = False, fetch_pages: int = 
     去调用一个不存在的工具。
     """
     base = _PROMPT_PATH.read_text(encoding="utf-8")
-    parts = [base, _web_search_addendum(fetch_pages) if web_search else ""]
+    # 能力地图改为每次请求从 feature_catalog 动态渲染：新增功能只需登记目录，
+    # 不必再改这里的装配顺序或手写提示词。
+    parts = [
+        base,
+        build_capability_map(),
+        _web_search_addendum(fetch_pages) if web_search else "",
+    ]
     skill_prompt = build_skill_prompt(db)
     if skill_prompt:
         parts.append(skill_prompt)

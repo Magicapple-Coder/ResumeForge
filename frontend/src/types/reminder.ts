@@ -1,11 +1,6 @@
 /** 日历提醒（后端 /api/reminders）。 */
 
-export const REMINDER_KINDS = [
-  "interview",
-  "assessment_deadline",
-  "hr_reply",
-  "other",
-] as const;
+export const REMINDER_KINDS = ["interview", "assessment_deadline", "hr_reply", "other"] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
 export const REMINDER_STATUSES = ["pending", "done", "dismissed"] as const;

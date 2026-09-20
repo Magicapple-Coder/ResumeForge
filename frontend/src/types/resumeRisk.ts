@@ -3,12 +3,7 @@
  * 枚举字符串与后端 schemas/resume_risk.py 逐字一致（共享知识第 15 条）。
  */
 
-export type RiskCategory =
-  | "duplicate"
-  | "sensitive"
-  | "exaggeration"
-  | "deep_dive"
-  | "compliance";
+export type RiskCategory = "duplicate" | "sensitive" | "exaggeration" | "deep_dive" | "compliance";
 
 export type RiskSeverity = "high" | "medium" | "low";
 

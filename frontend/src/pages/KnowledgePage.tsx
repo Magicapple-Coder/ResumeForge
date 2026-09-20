@@ -1,23 +1,6 @@
 /** 知识库：集中沉淀面经总结、简历技巧、求职策略、行业笔记等成文内容。 */
-import {
-  DeleteOutlined,
-  EditOutlined,
-  FileTextOutlined,
-  PlusOutlined,
-} from "@ant-design/icons";
-import {
-  App,
-  Button,
-  Card,
-  Empty,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-} from "antd";
+import { DeleteOutlined, EditOutlined, FileTextOutlined, PlusOutlined } from "@ant-design/icons";
+import { App, Button, Card, Empty, Input, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createKnowledge,

@@ -5,10 +5,11 @@
  * 有没有比事实更强——这正是这个功能要防的事。占位符单独高亮，因为它同时意味着
  * "这条还没核实"和"导出终稿会被拦下"。
  */
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Popconfirm, Space, Tag, Tooltip, Typography } from "antd";
+import { DeleteOutlined, EditOutlined, MoreOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Space, Tag, Tooltip, Typography } from "antd";
 import type { Claim, VerificationStatus } from "../../types";
 import { SOURCE_TYPE_LABELS, hasPlaceholder } from "../../types";
+import { useRowActionMenu } from "../common/rowActionMenu";
 
 const STATUS_COLORS: Record<VerificationStatus, string> = {
   已确认: "green",
@@ -52,6 +53,7 @@ function Wording({ text }: { text: string }) {
 }
 
 export default function ClaimCard({ claim, onEdit, onDelete, onConfirm }: Props) {
+  const buildMenu = useRowActionMenu();
   const interview = claim.interview_details;
   const hasInterviewDetail =
     Boolean(interview?.result) ||
@@ -87,29 +89,29 @@ export default function ClaimCard({ claim, onEdit, onDelete, onConfirm }: Props)
               </Button>
             </Tooltip>
           )}
-          <Tooltip title="编辑">
-            <Button
-              size="small"
-              type="text"
-              icon={<EditOutlined />}
-              aria-label={`编辑台账 ${claim.title || claim.subject || claim.id}`}
-              onClick={onEdit}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="删除这条台账记录？"
-            okText="删除"
-            cancelText="取消"
-            onConfirm={onDelete}
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: buildMenu([
+                { key: "edit", label: "编辑", icon: <EditOutlined />, onClick: onEdit },
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  icon: <DeleteOutlined />,
+                  confirm: "删除这条台账记录？",
+                  onClick: onDelete,
+                },
+              ]),
+            }}
           >
             <Button
               size="small"
               type="text"
-              danger
-              icon={<DeleteOutlined />}
-              aria-label={`删除台账 ${claim.title || claim.subject || claim.id}`}
+              icon={<MoreOutlined />}
+              aria-label={`更多操作 ${claim.title || claim.subject || claim.id}`}
             />
-          </Popconfirm>
+          </Dropdown>
         </Space>
       </header>
 

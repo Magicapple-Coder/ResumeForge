@@ -15,7 +15,7 @@
 - **不做推断**：普通自动回执只能落到「已投递」，不能推断出面试或 Offer。识别不出来就
   是「待确认」，由用户自己判断——这是本模块唯一会误导用户的失误来源。
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -125,6 +125,32 @@ def is_active(status: str) -> bool:
     return status in ACTIVE_STATUSES
 
 
+# 「卡住」的判定阈值：进行中的记录超过这么多天没有任何更新。
+#
+# **口径写在名字里**：``updated_at`` 会被**任何**编辑刷新（改一条备注里的错别字也算），
+# 所以这条规则是「超过 N 天**没有更新**」，**不是**「面试卡住」——调用方把它讲成后者
+# 就是在给用户一个听起来更精确、其实不成立的说法。
+#
+# 放在领域模型这一层而不是某个路由里：它是关于 ApplicationTrack 的规则，
+# ``/api/stats`` 与求职看板必须用同一份（``test_stalled_count_matches_stats_endpoint``
+# 钉住两处结论一致）。
+STALLED_DAYS = 7
+
+
+def is_stalled(
+    status: str, updated_at: datetime | None, now: datetime, *, days: int = STALLED_DAYS
+) -> bool:
+    """进行中、且超过 ``days`` 天没有任何更新。
+
+    终态（Offer / 已结束 / 待确认）不叫卡住——流程已经走完了，再久没动也只是归档。
+    恰好 ``days`` 天算"还没超"（严格大于才计入），与原先 ``updated_at < now - 7d``
+    的判定等价。``updated_at`` 缺失时返回 False：没有时间戳就不该被点名。
+    """
+    if not is_active(status) or updated_at is None:
+        return False
+    return (now - updated_at) > timedelta(days=days)
+
+
 def normalize_key(value: str) -> str:
     """归一化合并键：去空白、统一大小写、全角转半角。
 
@@ -199,6 +225,7 @@ __all__ = [
     "SOURCE_MANUAL",
     "SOURCE_RECOGNIZED",
     "SOURCES",
+    "STALLED_DAYS",
     "STATUSES",
     "STATUS_APPLIED",
     "STATUS_ASSESSMENT",
@@ -210,6 +237,7 @@ __all__ = [
     "STATUS_SCREENING",
     "STATUS_UNKNOWN",
     "is_active",
+    "is_stalled",
     "normalize_key",
     "resolve_status",
     "status_label",

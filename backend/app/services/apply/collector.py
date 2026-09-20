@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
+from ...models.apply import FAILURE_CAPTCHA_REQUIRED, FAILURE_LOGIN_REQUIRED
 from ...models.job import Job
 from ...models.profile import utcnow
 from ...schemas.apply import CollectConfigIn
@@ -102,6 +103,7 @@ class Collector:
             salary_min=config.salary_min,
             experience=config.experience,
             education=config.education,
+            job_type=config.job_type,
         )
         unmapped: set[str] = set()
         tally = FilterTally()
@@ -123,63 +125,90 @@ class Collector:
                 report=report,
             )
 
-        page = 1
-        while not backfill_job_ids and report.collected < limit and page <= self._max_pages:
-            checkpoint()
-            page_query = replace(query, page=page)
-            page_result = adapter.collect_search(client, page_query, page)
-            report.pages += 1
-            unmapped.update(page_result.unmapped_conditions)
-
-            for result in page_result.results:
-                if report.collected >= limit:
-                    break
+        keywords = list(config.keywords) or [""]
+        seen_results: set[tuple[str, str, str]] = set()
+        for keyword_index, keyword in enumerate(keywords):
+            if backfill_job_ids or report.collected >= limit:
+                break
+            page = 1
+            while report.collected < limit and page <= self._max_pages:
                 checkpoint()
-                if not result.url:
-                    continue
-                known = self._already_known(session, result)
-                if known:
-                    report.skipped += 1
-                    if known == "trashed":
-                        # 单独计数：这是"你之前删过它"，不是"早就在库里了"。
-                        report.skipped_trashed += 1
-                    continue
-                # 条件筛选放在抓详情**之前**：按列表字段就能判定的不符合项，没必要再为它
-                # 打开一次详情页（那是整个采集里最慢的一步）。
-                decision = evaluate_filters(
-                    salary_min=query.salary_min if "薪资" in declared else None,
-                    experience=query.experience if "经验" in declared else "",
-                    education=query.education if "学历" in declared else "",
-                    extra=result.extra,
-                )
-                tally.unapplied.update(decision.unapplied)
-                if not decision.keep:
-                    report.filtered += 1
-                    tally.filtered += 1
-                    tally.reasons.update(decision.rejected_by)
-                    continue
-                if decision.undecided:
-                    # 岗位没给这个字段 → **保留**（判断不了就不误杀），但要记账。
-                    tally.undecided.update(decision.undecided)
-                    tally.undecided_count += 1
-                detail = self._fetch_detail(adapter, client, result.url)
-                if not str(detail.get("description") or "").strip():
-                    # "应该是详情的地方没拿到详情"：详情正文（description）去空白后为空即计一条。
-                    # 这是站点漂移的早期信号——列表字段还在、正文却读不出来了。
-                    report.detail_missing += 1
-                self._stage_candidate(session, adapter, result, detail, getattr(task, "id", None))
-                report.collected += 1
-                self._update_task_progress(session, task, report)
+                # 一次站点搜索只带一个关键词。这样适配器无须猜列表里的多个词应当如何组合，
+                # 同时让每个用户配置的关键词都真正执行；只填城市时用一个空关键词跑一次。
+                page_query = replace(query, keywords=[keyword], page=page)
+                page_result = adapter.collect_search(client, page_query, page)
+                report.pages += 1
+                unmapped.update(page_result.unmapped_conditions)
+
+                for result in page_result.results:
+                    if report.collected >= limit:
+                        break
+                    checkpoint()
+                    if not result.url:
+                        continue
+                    identity = (
+                        result.url.strip(),
+                        result.title.strip().casefold(),
+                        result.company.strip().casefold(),
+                    )
+                    if identity in seen_results:
+                        report.skipped += 1
+                        continue
+                    seen_results.add(identity)
+                    known = self._already_known(session, result)
+                    if known:
+                        report.skipped += 1
+                        if known == "trashed":
+                            # 单独计数：这是"你之前删过它"，不是"早就在库里了"。
+                            report.skipped_trashed += 1
+                        continue
+                    # 条件筛选放在抓详情**之前**：按列表字段就能判定的不符合项，没必要再为它
+                    # 打开一次详情页（那是整个采集里最慢的一步）。
+                    decision = evaluate_filters(
+                        salary_min=query.salary_min if "薪资" in declared else None,
+                        experience=query.experience if "经验" in declared else "",
+                        education=query.education if "学历" in declared else "",
+                        extra=result.extra,
+                    )
+                    tally.unapplied.update(decision.unapplied)
+                    if not decision.keep:
+                        report.filtered += 1
+                        tally.filtered += 1
+                        tally.reasons.update(decision.rejected_by)
+                        continue
+                    if decision.undecided:
+                        # 岗位没给这个字段 → **保留**（判断不了就不误杀），但要记账。
+                        tally.undecided.update(decision.undecided)
+                        tally.undecided_count += 1
+                    detail = self._fetch_detail(adapter, client, result.url)
+                    if not str(detail.get("description") or "").strip():
+                        # "应该是详情的地方没拿到详情"：详情正文（description）去空白后为空即计一条。
+                        # 这是站点漂移的早期信号——列表字段还在、正文却读不出来了。
+                        report.detail_missing += 1
+                    self._stage_candidate(
+                        session, adapter, result, detail, getattr(task, "id", None),
+                        job_type=config.job_type,
+                    )
+                    report.collected += 1
+                    self._update_task_progress(session, task, report)
+                    self._pace(
+                        config.interval_seconds,
+                        config.interval_jitter_seconds,
+                        checkpoint,
+                        sleeper,
+                        clock,
+                    )
+
+                if not page_result.has_next:
+                    break
+                page += 1
                 self._pace(
                     config.interval_seconds, config.interval_jitter_seconds, checkpoint, sleeper, clock
                 )
-
-            if not page_result.has_next:
-                break
-            page += 1
-            self._pace(
-                config.interval_seconds, config.interval_jitter_seconds, checkpoint, sleeper, clock
-            )
+            if keyword_index < len(keywords) - 1 and report.collected < limit:
+                self._pace(
+                    config.interval_seconds, config.interval_jitter_seconds, checkpoint, sleeper, clock
+                )
 
         report.unmapped_conditions = sorted(unmapped)
         # 筛选的账目写进 ``task.config``（不新增数据库列，与 ``unmapped_conditions`` 同一套做法）：
@@ -200,12 +229,20 @@ class Collector:
             # 识别"能采到列表却抓不到 JD"。补详情模式不写这个键（它走 backfilled/backfill_skipped），
             # 两套口径不混一起——否则用户一次"点名补详情"会把漂移计数搅乱。
             summary["detail_missing"] = report.detail_missing
-        if adapter.post_filter_conditions and any(
-            (query.salary_min, query.experience, query.education)
-        ):
+        configured_filters = {
+            "薪资": query.salary_min is not None,
+            "经验": bool(query.experience),
+            "学历": bool(query.education),
+        }
+        applied_filters = [
+            condition
+            for condition in adapter.post_filter_conditions
+            if configured_filters.get(condition, False)
+        ]
+        if applied_filters:
             # 保留适配器声明的顺序（与界面上的字段顺序一致），不排序——排序会把
             # "薪资 / 经验 / 学历"变成按码位排的"学历 / 经验 / 薪资"，读起来别扭。
-            summary["filter_applied"] = list(adapter.post_filter_conditions)
+            summary["filter_applied"] = applied_filters
             summary["filtered_out"] = report.filtered
             summary["filter_reasons"] = sorted(tally.reasons)
             summary["filter_undecided"] = sorted(tally.undecided)
@@ -252,6 +289,7 @@ class Collector:
         result: SearchResult,
         detail: dict[str, Any],
         task_id: int | None,
+        job_type: str = "",
     ) -> None:
         """把一条采集结果放进暂存区（**不 commit**，由 ``run`` 统一提交）。
 
@@ -269,6 +307,7 @@ class Collector:
             requirements=str(detail.get("requirements", "")),
             source=result.source or adapter.display_name,
             task_id=task_id,
+            job_type=job_type,
         )
 
     def _backfill(
@@ -335,6 +374,8 @@ class Collector:
         try:
             return fetch(client, url) or {}
         except SiteFailure as exc:
+            if exc.category in {FAILURE_LOGIN_REQUIRED, FAILURE_CAPTCHA_REQUIRED}:
+                raise
             logger.warning("采集岗位详情失败（不影响主流程）：%s", exc.detail)
             return {}
 

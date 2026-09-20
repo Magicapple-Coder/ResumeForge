@@ -39,6 +39,11 @@ export function renameResume(id: number, title: string): Promise<ResumeDetail> {
   return request(`/resumes/${id}`, { method: "PATCH", body: JSON.stringify({ title }) });
 }
 
+/** 单独更新简历备注（B5），不触碰正文与版式。 */
+export function updateResumeNote(id: number, note: string): Promise<ResumeDetail> {
+  return request(`/resumes/${id}/note`, { method: "PATCH", body: JSON.stringify({ note }) });
+}
+
 export function getResume(id: number): Promise<ResumeDetail> {
   return request(`/resumes/${id}`);
 }

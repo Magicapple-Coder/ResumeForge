@@ -119,6 +119,7 @@ def stage_candidate_job(
     requirements: str = "",
     source: str = "",
     task_id: int | None = None,
+    job_type: str = "",
 ) -> CandidateJob:
     """把一条采集结果放进暂存区（等用户在投递台里挑选后再导入岗位广场）。
 
@@ -135,6 +136,7 @@ def stage_candidate_job(
         requirements=requirements,
         source=source,
         collect_task_id=task_id,
+        job_type=job_type,
         status=CANDIDATE_JOB_PENDING,
     )
     db.add(candidate)
@@ -235,6 +237,8 @@ def import_candidates(db: Session, candidate_ids: list[int]) -> dict:
                 company=candidate.company,
                 location=candidate.location,
                 salary=candidate.salary,
+                # 采集透传的岗位类型入库；候选没标（手动粘贴/历史数据）回落「校招」。
+                job_type=candidate.job_type or "校招",
                 source_url=candidate.source_url,
                 # 采集回来的 JD 已经按小标题切成两段，直接各归各位；
                 # 手动粘贴的候选没有这两段，退回用原文填描述（与以前的导入行为一致）。

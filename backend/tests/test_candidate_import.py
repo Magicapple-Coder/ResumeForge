@@ -113,6 +113,24 @@ def test_import_keeps_the_candidate_source(db_session):
     assert job.source == "BOSS直聘"
 
 
+def test_import_writes_job_type_from_the_candidate(db_session):
+    """采集透传的岗位类型要写进正式岗位（仅标注，不入去重判据）。"""
+    candidate = _stage(db_session, job_type="实习")
+
+    import_candidates(db_session, [candidate.id])
+
+    assert db_session.query(Job).one().job_type == "实习"
+
+
+def test_import_falls_back_to_default_job_type_when_candidate_has_none(db_session):
+    """候选没标岗位类型（手动粘贴/历史数据）时回落「校招」。"""
+    candidate = _stage(db_session)
+
+    import_candidates(db_session, [candidate.id])
+
+    assert db_session.query(Job).one().job_type == "校招"
+
+
 def test_import_points_at_the_existing_job_instead_of_creating_a_duplicate(db_session):
     """岗位广场里已经有同一链接的岗位 → 直接指向它，**不**再建一条。"""
     existing = Job(title="后端开发（旧）", company="A公司", source_url="https://example.com/1")

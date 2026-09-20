@@ -1,11 +1,13 @@
 /**
  * 进度记录的新建 / 编辑表单。
  *
- * 日期与资料库、事实台账一致用纯输入框（`YYYY-MM-DD`，格式由后端校验），不引 dayjs。
+ * 日期字段用 AntD ``DatePicker``（E12）：值在表单里是 Dayjs，提交时再转回 ``YYYY-MM-DD``。
  * 公司和岗位是必填：进度要按这两项合并，缺一个就无从判断该并到哪一条上。
  */
 import { SaveOutlined } from "@ant-design/icons";
-import { App, Button, Form, Input, Modal, Select, Space } from "antd";
+import { App, Button, DatePicker, Form, Input, Modal, Select, Space } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { useEffect } from "react";
 import { createTrack, updateTrack } from "../../api/tracker";
 import type { Track, TrackPayload, TrackStatus } from "../../types";
@@ -21,10 +23,10 @@ interface FormValues {
   title: string;
   status: TrackStatus;
   stage_note: string;
-  applied_at: string;
-  status_date: string;
+  applied_at: Dayjs | null;
+  status_date: Dayjs | null;
   next_action: string;
-  next_action_date: string;
+  next_action_date: Dayjs | null;
   note: string;
 }
 
@@ -33,10 +35,10 @@ const EMPTY: FormValues = {
   title: "",
   status: "applied",
   stage_note: "",
-  applied_at: "",
-  status_date: "",
+  applied_at: null,
+  status_date: null,
   next_action: "",
-  next_action_date: "",
+  next_action_date: null,
   note: "",
 };
 
@@ -46,10 +48,10 @@ function toValues(track: Track): FormValues {
     title: track.title,
     status: track.status,
     stage_note: track.stage_note,
-    applied_at: track.applied_at,
-    status_date: track.status_date,
+    applied_at: track.applied_at ? dayjs(track.applied_at) : null,
+    status_date: track.status_date ? dayjs(track.status_date) : null,
     next_action: track.next_action,
-    next_action_date: track.next_action_date,
+    next_action_date: track.next_action_date ? dayjs(track.next_action_date) : null,
     note: track.note,
   };
 }
@@ -61,10 +63,10 @@ function toPayload(values: FormValues, track: Track | null): TrackPayload {
     title: values.title.trim(),
     status: values.status,
     stage_note: values.stage_note.trim(),
-    applied_at: values.applied_at.trim(),
-    status_date: values.status_date.trim(),
+    applied_at: values.applied_at ? values.applied_at.format("YYYY-MM-DD") : "",
+    status_date: values.status_date ? values.status_date.format("YYYY-MM-DD") : "",
     next_action: values.next_action.trim(),
-    next_action_date: values.next_action_date.trim(),
+    next_action_date: values.next_action_date ? values.next_action_date.format("YYYY-MM-DD") : "",
     note: values.note.trim(),
     // 手编不碰证据与关联：那是识别/投递台留下的痕迹，不该因为改个状态就丢掉。
     evidence: track?.evidence ?? "",
@@ -165,17 +167,33 @@ export default function TrackFormModal({ open, track, onClose, onSaved }: Props)
             name="applied_at"
             label="投递日期"
             className="track-form-grow"
-            extra="YYYY-MM-DD"
+            // 说清留空的代价。此前只写「YYYY-MM-DD」，留空是阻力最小的路径，而后果
+            // （该记录不进投递趋势与周内分布）用户看不到——统计页那张空图就是这么来的。
+            // **刻意不预填今天**：投递台的自动记录知道日期（刚投出去的就是今天），
+            // 手工录入不知道（可能是三周后照着通知补录），预填会把记录钉在错误的月份上，
+            // 在趋势图里造出一个从未发生过的尖峰。给一键填入，让用户自己确认。
+            extra={
+              <>
+                留空表示日期不详——该记录不计入投递趋势与周内分布。
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => form.setFieldValue("applied_at", dayjs())}
+                >
+                  填今天
+                </Button>
+              </>
+            }
           >
-            <Input placeholder="2026-09-18" maxLength={16} />
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item
             name="status_date"
             label="状态更新日期"
             className="track-form-grow"
-            extra="YYYY-MM-DD，通知上写的那天"
+            extra="通知上写的那天"
           >
-            <Input placeholder="2026-09-20" maxLength={16} />
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
         </div>
 
@@ -187,9 +205,9 @@ export default function TrackFormModal({ open, track, onClose, onSaved }: Props)
             name="next_action_date"
             label="截止日期"
             className="track-form-date"
-            extra="YYYY-MM-DD，过期会标红"
+            extra="过期会标红"
           >
-            <Input placeholder="2026-09-20" maxLength={16} />
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
         </div>
 

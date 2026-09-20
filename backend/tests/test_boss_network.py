@@ -32,6 +32,7 @@ from app.services.sites.boss_network import (
     DETAIL_MARKERS,
     SEARCH_MARKER,
     SEARCH_MARKERS,
+    api_error,
     format_salary,
     looks_like_detail,
     looks_like_search,
@@ -134,6 +135,66 @@ def test_items_without_an_encrypt_id_still_come_through():
     assert items[0]["url"] == ""
 
 
+def test_search_parser_accepts_field_aliases_inside_the_real_container():
+    """**卡片内的字段**改名仍能解析（`jobName`→`jobTitle`、`salaryMin`、`skillList`…）。
+
+    与 `test_site_contract_drift.py` 的分工是刻意的：那边钉住"**容器与键**改名即失败"
+    （`data` 这类泛化名字会让页面上无关的响应也被判成岗位列表）；这里钉住"**字段**改名
+    仍能用"——字段名足够具体，而且还有岗位名等内容特征把关，放宽是安全的。
+    """
+    payload = {
+        "code": 0,
+        "zpData": {
+            "jobList": [
+                {
+                    "jobTitle": "平台开发工程师",
+                    "areaName": "杭州",
+                    "encryptId": "renamed123",
+                    "salaryMin": 18000,
+                    "salaryMax": 30000,
+                    "experienceName": "3-5年",
+                    "degreeName": "本科",
+                    "skillList": [{"name": "Python"}, {"tagName": "Redis"}],
+                }
+            ]
+        },
+    }
+
+    items = parse_search_response(payload)
+    assert items is not None
+    assert items[0]["title"] == "平台开发工程师"
+    assert items[0]["location"] == "杭州"
+    assert items[0]["salary"] == "18-30K"
+    assert items[0]["extra"]["skills"] == ["Python", "Redis"]
+    assert looks_like_search(payload) is True
+
+
+def test_search_parser_prefers_an_explicit_detail_url():
+    """接口直接给了详情页地址时用它，而不是用 id 拼一个。"""
+    payload = {
+        "zpData": {
+            "jobList": [
+                {
+                    "jobTitle": "平台开发工程师",
+                    "brandName": "别名科技",
+                    "jobUrl": "/job_detail/url-alias.html",
+                }
+            ]
+        }
+    }
+
+    items = parse_search_response(payload)
+
+    assert items is not None
+    assert items[0]["url"] == "https://www.zhipin.com/job_detail/url-alias.html"
+
+
+def test_generic_list_alias_is_not_mistaken_for_jobs():
+    payload = {"data": {"list": [{"title": "一条新闻", "url": "/article/1"}]}}
+    assert parse_search_response(payload) is None
+    assert looks_like_search(payload) is False
+
+
 # ===== 详情响应解析 =====
 
 
@@ -184,6 +245,50 @@ def test_detail_without_a_description_is_not_a_detail():
     assert parse_detail_response(payload) is None
     assert looks_like_detail(payload) is False
     assert looks_like_detail({"zpData": {"jobInfo": {"postDescription": "有内容"}}}) is True
+
+
+def test_detail_parser_accepts_field_aliases():
+    """详情侧同样只对**字段**放宽：`postDescription`→`jobDescription`、`activeTimeDesc`→
+    `activeDesc` 等仍能读到，但容器（`zpData` / `jobInfo`）与列表侧一样只认原名。"""
+    payload = {
+        "zpData": {
+            "jobInfo": {
+                "jobTitle": "后端工程师",
+                "encryptId": "detail123",
+                "jobDescription": "<p>负责服务端开发</p>",
+                "degreeName": "本科",
+            },
+            "recruiterInfo": {"activeDesc": "刚刚活跃", "recruiterName": "李女士"},
+            "brandInfo": {"brandName": "示例公司"},
+        }
+    }
+    parsed = parse_detail_response(payload)
+    assert parsed is not None
+    assert parsed["job_title"] == "后端工程师"
+    assert parsed["company"] == "示例公司"
+    assert parsed["description"] == "负责服务端开发"
+    assert parsed["extra"]["hr_active_time"] == "刚刚活跃"
+    assert looks_like_detail(payload) is True
+
+
+def test_detail_parser_accepts_brand_com_info():
+    payload = {
+        "zpData": {
+            "jobInfo": {"jobName": "后端工程师", "postDescription": "负责接口开发"},
+            "brandComInfo": {"brandName": "新版公司容器"},
+        }
+    }
+
+    parsed = parse_detail_response(payload)
+
+    assert parsed is not None
+    assert parsed["company"] == "新版公司容器"
+
+
+def test_api_error_recognises_nonzero_code_and_message():
+    assert api_error({"code": 19, "message": "参数值错误"}) == ("19", "参数值错误")
+    assert api_error({"code": 0, "message": "Success"}) is None
+    assert api_error({"data": {"jobs": []}}) is None
 
 
 # ===== 事件与响应体 =====
@@ -368,6 +473,9 @@ class ScriptedClient:
         self._release()
         for marker, value in self._expressions.items():
             if marker in expression:
+                if marker == "rf:readiness" and isinstance(value, dict) and not value.get("url"):
+                    value = dict(value)
+                    value["url"] = self.navigations[-1] if self.navigations else "about:blank"
                 return json.dumps(value, ensure_ascii=False)
         return json.dumps({}, ensure_ascii=False)
 
@@ -381,7 +489,7 @@ class ScriptedClient:
         return None
 
 
-READY = {"url": "https://www.zhipin.com/web/geek/jobs", "matched": 3, "has_next": True}
+READY = {"matched": 3, "has_next": True}
 
 # 等待参数调得很短：这里验的是"走哪条路"（网络优先 / 退回 DOM），不是"等多久"。
 # 生产默认值是 15 秒，用它会让超时那几条测试每条白等 15 秒。
@@ -440,6 +548,23 @@ def test_collect_falls_back_to_the_dom_when_the_interface_is_unrecognised():
     assert [item.title for item in page.results] == ["DOM 来的"]
 
 
+def test_collect_reports_a_nonzero_boss_api_response_before_dom_fallback():
+    events = [
+        _response_event("1", "https://www.zhipin.com" + SEARCH_MARKER),
+        _body_event("1", {"code": 19, "message": "参数值错误"}),
+    ]
+    client = ScriptedClient(
+        events=events,
+        expressions={
+            "rf:readiness": READY,
+            "rf:collect": {"items": [{"title": "不应采用的 DOM 结果"}]},
+        },
+    )
+
+    with pytest.raises(SiteFailure, match="code=19.*参数值错误"):
+        _adapter().collect_search(client, CollectQuery(keywords=["后端"]), 1)
+
+
 def test_collect_falls_back_when_the_client_cannot_capture_events():
     """不支持事件订阅的客户端（例如别的浏览器桥接实现）照样能用。"""
     client = ScriptedClient(
@@ -482,6 +607,32 @@ def test_detail_prefers_the_network_response():
     assert detail["job_title"] == "后端开发实习生"
     assert "负责接口开发" in detail["description"]
     assert detail["extra"]["hr_active_time"] == "今日活跃"
+
+
+def test_detail_network_response_survives_a_stale_dom_selector():
+    events = [
+        _response_event(
+            "1", "https://www.zhipin.com/wapi/zpgeek/job/detail.json?encryptJobId=abc"
+        ),
+        _body_event("1", _detail_payload()),
+    ]
+    target = "https://www.zhipin.com/job_detail/abc.html"
+    client = ScriptedClient(
+        events=events,
+        expressions={
+            "rf:readiness": {
+                "url": target,
+                "matched": 0,
+                "ready_state": "complete",
+                "explicitly_empty": False,
+            }
+        },
+    )
+
+    detail = _adapter().fetch_job_detail(client, target)
+
+    assert detail["job_title"] == "后端开发实习生"
+    assert "负责接口开发" in detail["description"]
 
 
 def test_detail_falls_back_to_the_dom():

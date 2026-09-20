@@ -12,7 +12,7 @@
 import { LinkOutlined, UploadOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { importCandidateJobs, listCandidateJobs } from "../../api/candidateJob";
 import { useApi } from "../../hooks/useApi";
 import type { CandidateJob, CandidateJobImportResult } from "../../types";
@@ -22,6 +22,8 @@ interface Props {
   taskId: number | null;
   /** 采集/投递正在跑时禁用导入。 */
   disabled?: boolean;
+  /** 同一批次的状态或完成时间变化时重新拉取，避免启动时的空结果一直留在页面上。 */
+  refreshKey?: string | number;
   /** 导入完成后通知外层（例如让采集记录里的计数跟着更新）。 */
   onImported?: (result: CandidateJobImportResult) => void;
 }
@@ -38,7 +40,12 @@ function importLabel(count: number): string {
   return count > 0 ? `导入选中的 ${count} 个岗位` : "导入选中的岗位";
 }
 
-export default function CollectResultPanel({ taskId, disabled = false, onImported }: Props) {
+export default function CollectResultPanel({
+  taskId,
+  disabled = false,
+  refreshKey = 0,
+  onImported,
+}: Props) {
   const { message } = App.useApp();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [importing, setImporting] = useState(false);
@@ -49,8 +56,14 @@ export default function CollectResultPanel({ taskId, disabled = false, onImporte
       taskId
         ? listCandidateJobs({ collectTaskId: taskId, status: "pending" })
         : Promise.resolve([]),
-    [taskId],
+    [taskId, refreshKey],
   );
+
+  useEffect(() => {
+    // 切换批次时不能保留上一批的候选 id 或导入反馈，否则可能误导入旧批次条目。
+    setSelectedIds([]);
+    setLastResult(null);
+  }, [taskId]);
 
   if (!taskId) return null;
 

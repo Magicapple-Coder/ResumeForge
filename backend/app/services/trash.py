@@ -226,6 +226,31 @@ def restore(db: Session, key: str, item_id: int) -> bool:
     return True
 
 
+def restore_many(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """批量恢复（单事务提交）；逐条复用 ``restore`` 的 "在回收站里才算数" 语义。
+
+    与单条 ``restore`` 一样**只认已在回收站里的记录**：不在回收站里（已被恢复/彻底删除/
+    类型未知）的逐条记 ``ok=False``，不拖累同批其它条目。
+    """
+    restored = 0
+    results: list[dict[str, Any]] = []
+    for item in items:
+        key = str(item.get("type_key") or "").strip()
+        item_id = item.get("id")
+        ok = False
+        spec = spec_or_none(key)
+        if spec is not None and isinstance(item_id, int):
+            candidate = db.get(spec.model, item_id)
+            if candidate is not None and is_deleted(candidate):
+                candidate.deleted_at = None
+                restored += 1
+                ok = True
+        results.append({"type_key": key, "id": item_id, "ok": ok})
+    db.commit()
+    logger.info("批量恢复完成：成功 %s 条 / 共 %s 条", restored, len(items))
+    return {"restored": restored, "results": results}
+
+
 def purge(db: Session, key: str, item_id: int) -> bool:
     """**彻底删除**一条内容（真删，不可恢复）。
 
@@ -242,6 +267,27 @@ def purge(db: Session, key: str, item_id: int) -> bool:
     db.commit()
     logger.info("已彻底删除 type=%s id=%s", key, item_id)
     return True
+
+
+def purge_many(db: Session, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """批量彻底删除（单事务提交）；语义同单条 ``purge``（只删已在回收站里的，二次确认由前端做）。"""
+    purged = 0
+    results: list[dict[str, Any]] = []
+    for item in items:
+        key = str(item.get("type_key") or "").strip()
+        item_id = item.get("id")
+        ok = False
+        spec = spec_or_none(key)
+        if spec is not None and isinstance(item_id, int):
+            candidate = db.get(spec.model, item_id)
+            if candidate is not None and is_deleted(candidate):
+                db.delete(candidate)
+                purged += 1
+                ok = True
+        results.append({"type_key": key, "id": item_id, "ok": ok})
+    db.commit()
+    logger.info("批量彻底删除完成：删除 %s 条 / 共 %s 条", purged, len(items))
+    return {"purged": purged, "results": results}
 
 
 def empty(db: Session, *, key: str = "") -> int:
@@ -272,7 +318,9 @@ __all__ = [
     "list_trashed",
     "live_only",
     "purge",
+    "purge_many",
     "restore",
+    "restore_many",
     "soft_delete",
     "spec_or_none",
     "trash_only",

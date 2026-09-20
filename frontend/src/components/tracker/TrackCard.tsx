@@ -4,7 +4,8 @@
  * 排序上把「下一步」放在状态旁边：秋招真正会被漏掉的是"9 月 20 日前确认面试时间"
  * 这种带截止时间的事，而不是"我投过这家"。
  */
-import { Button, Popconfirm, Space, Tag, Tooltip, Typography } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Space, Tag, Tooltip, Typography } from "antd";
 import type { Track } from "../../types";
 import {
   TRACK_SOURCE_LABELS,
@@ -12,6 +13,7 @@ import {
   TRACK_STATUS_LABELS,
   isActiveStatus,
 } from "../../types";
+import { useRowActionMenu } from "../common/rowActionMenu";
 
 interface Props {
   track: Track;
@@ -30,6 +32,7 @@ function isOverdue(dateText: string): boolean {
 }
 
 export default function TrackCard({ track, onEdit, onDelete }: Props) {
+  const buildMenu = useRowActionMenu();
   const overdue = isOverdue(track.next_action_date);
 
   return (
@@ -42,19 +45,28 @@ export default function TrackCard({ track, onEdit, onDelete }: Props) {
           {track.stage_note && <Tag>{track.stage_note}</Tag>}
         </Space>
         <Space size={4}>
-          <Button size="small" type="link" onClick={onEdit}>
-            编辑
-          </Button>
-          <Popconfirm
-            title="删除这条进度记录？"
-            okText="确认删除"
-            cancelText="取消"
-            onConfirm={onDelete}
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: buildMenu([
+                { key: "edit", label: "编辑", onClick: onEdit },
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  confirm: "删除这条进度记录？",
+                  onClick: onDelete,
+                },
+              ]),
+            }}
           >
-            <Button size="small" type="link" danger>
-              删除
-            </Button>
-          </Popconfirm>
+            <Button
+              size="small"
+              type="text"
+              icon={<MoreOutlined />}
+              aria-label={`更多操作 ${track.company || track.title || "进度"}`}
+            />
+          </Dropdown>
         </Space>
       </header>
 

@@ -60,17 +60,24 @@ _SALARY_SUFFIX = re.compile(rf"\s*({_SALARY_BODY})\s*$")
 
 # 「任职要求」这一段的可能小标题。**按出现位置取最早的一个**，而不是按本表的顺序——
 # 文案里先后顺序不固定，按表顺序会让"岗位职责在前、任职要求在后"被切反。
+# 标题后常紧跟「：」/「:」（全角半角都有），``str.find`` 按前缀命中，所以不用把带冒号的
+# 变体各写一遍。
 _REQUIREMENT_HEADINGS = (
     "任职要求",
     "岗位要求",
+    "职位要求",
     "任职资格",
     "任职条件",
-    "职位要求",
     "资格要求",
     "技能要求",
+    "能力要求",
     "我们希望你",
     "我们希望您",
 )
+# 「职位描述」这一段的可能小标题。本身不是切分点，而是"描述段确实存在"的证据：
+# 当要求类标题出现得太靠前（不足 ``_MIN_DESCRIPTION_BEFORE_REQUIREMENTS``）时，只有
+# 描述段里存在这类标题，才认为"前面有职责、后面有要求"是真实的，否则整篇留在描述里。
+_DESCRIPTION_HEADINGS = ("岗位职责", "工作内容", "职位描述", "职责描述", "岗位描述", "职位介绍")
 # 标题前面可能出现的开括号：往前吞掉它们，让要求段从 `【任职要求】` 完整开头。
 _HEADING_OPENERS = "【〔「《（(＜<"
 
@@ -146,18 +153,26 @@ def split_job_sections(value: object) -> tuple[str, str]:
     以前一律整段塞进描述、要求留空，用户看到的就是"两件事被混在一起"。
     这里按真实存在的小标题切：取**最早出现**的要求类标题作为切分点，之前是描述、之后是要求。
 
-    切分点太靠前（整篇本来就只有要求、没有职责段）时**不切**，把全文留在描述里——
-    否则会产出一个空的「职位描述」，那比不切更难看。
+    两条健壮化规则：
+
+    - 要求类标题出现得太靠前时，原本一律不切（避免把"整篇只有要求"切出空描述）；现在只要
+      描述段里存在「岗位职责 / 工作内容 / 职位描述」这类**描述段标题**，就说明前面确实有职责段，
+      即使描述段偏短也照切——否则"岗位职责：…\n任职要求：…"这种紧凑 JD 会整个挤进职位描述。
+    - 无任何要求类标题时保持原样：全文留在描述里（没有可切的分界，硬切只会更糟）。
     """
     text = normalize_text(value)
     if not text:
         return "", ""
     cut = _earliest_heading_index(text)
-    if cut is None or cut < _MIN_DESCRIPTION_BEFORE_REQUIREMENTS:
+    if cut is None:
         return text, ""
     description = text[:cut].strip()
     requirements = text[cut:].strip()
     if not description:
+        return text, ""
+    # 切分点太靠前（描述段不足阈值）时，只有"描述段里确实有描述类标题"才认可这次切分；
+    # 否则视为"整篇只有要求"，全文留在描述里——不产出一个空「职位描述」。
+    if cut < _MIN_DESCRIPTION_BEFORE_REQUIREMENTS and not _has_description_heading(description):
         return text, ""
     return description, requirements
 
@@ -168,6 +183,11 @@ def _earliest_heading_index(text: str) -> int | None:
     if not indexes:
         return None
     return _widen_to_heading_start(text, min(indexes))
+
+
+def _has_description_heading(text: str) -> bool:
+    """描述段里是否存在「岗位职责 / 工作内容 / 职位描述」这类描述类标题。"""
+    return any(text.find(heading) >= 0 for heading in _DESCRIPTION_HEADINGS)
 
 
 def _widen_to_heading_start(text: str, index: int) -> int:

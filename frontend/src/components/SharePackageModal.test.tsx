@@ -137,7 +137,9 @@ describe("SharePackageModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "resume.html" }));
 
-    await waitFor(() => expect(apiMocks.downloadSharePackageFile).toHaveBeenCalledWith(1, "resume.html"));
+    await waitFor(() =>
+      expect(apiMocks.downloadSharePackageFile).toHaveBeenCalledWith(1, "resume.html"),
+    );
     expect(downloadMocks.downloadBlob).toHaveBeenCalledTimes(1);
   });
 
@@ -187,8 +189,6 @@ describe("SharePackageModal", () => {
     await waitFor(() => expect(apiMocks.revealSharePackage).toHaveBeenCalledWith(1));
 
     fireEvent.click(screen.getByRole("button", { name: /复制路径/ }));
-    await waitFor(() =>
-      expect(clipboardMocks.copyText).toHaveBeenCalledWith("C:\\tmp\\share\\1"),
-    );
+    await waitFor(() => expect(clipboardMocks.copyText).toHaveBeenCalledWith("C:\\tmp\\share\\1"));
   });
 });

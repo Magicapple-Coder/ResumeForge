@@ -24,6 +24,7 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/data/ats_keywords.json", "ATS 本地检测的通用关键词词库"),
     ("app/prompts/apply_greeting.md", "自动投递招呼语生成提示词"),
     ("app/prompts/assistant_system.md", "AI 助手系统提示词"),
+    ("app/services/feature_catalog.py", "助手功能目录（能力地图动态生成依赖）"),
     ("app/prompts/application_status.md", "求职进度识别的提示词"),
     ("app/prompts/assistant_welcome.md", "求职助手的默认引导对话"),
     ("app/prompts/claim_draft.md", "从资料草拟事实台账条目的提示词"),

@@ -34,6 +34,7 @@ from ..schemas.resume import (
     ResumeContent,
     ResumeFavoriteUpdate,
     ResumeLayoutUpdate,
+    ResumeNoteUpdate,
     ResumeOut,
     ResumeRenderRequest,
     ResumeSuggestionsOut,
@@ -471,6 +472,7 @@ def _to_resume_out(record: ResumeRecord) -> ResumeOut:
         model=record.model,
         enhancement_enabled=record.enhancement_enabled,
         enhancement_level=record.enhancement_level,
+        note=record.note or "",
         template=record.template or DEFAULT_TEMPLATE,
         format_name=record.format_name or "",
         # 这个字段漏了不会报错，只会让保存成功却读不回来——界面上表现为"按了没反应"。
@@ -595,6 +597,22 @@ def rename_resume(
     if record is None or trash.is_deleted(record):
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     record.title = payload.title
+    db.commit()
+    db.refresh(record)
+    return _to_resume_out(record)
+
+
+@router.patch("/{resume_id}/note", response_model=ResumeOut)
+def update_resume_note(
+    resume_id: int,
+    payload: ResumeNoteUpdate,
+    db: Session = Depends(get_db),
+):
+    """只更新简历备注（列表默认可见、详情可编辑）。"""
+    record = trash.get_live(db, ResumeRecord, resume_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
+    record.note = payload.note
     db.commit()
     db.refresh(record)
     return _to_resume_out(record)

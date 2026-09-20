@@ -259,6 +259,16 @@ body {
   margin-bottom: 10px;
 }
 
+/* 步骤标题是"这一步是什么"的主锚点，要比正文/要点明显更重、更醒目：
+   用强调色 + 略大字号，并留出比正文更大的下间距，和下方要点拉开层级。 */
+.user-guide-step-copy h4.ant-typography {
+  margin-bottom: 16px;
+  color: #16365c;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 /* 描述是"这一步做什么"的导读，与下方要点列表区分层级：浅一档的灰、更宽的行距，
    并留出更多下边距，避免和要点粘在一起。 */
 .user-guide-description {
@@ -272,19 +282,20 @@ body {
   margin: 10px 0 0;
   /* ul 用 flex 布局时浏览器不渲染默认的 ::marker 圆点，于是每个要点之间只剩 6px
      空隙，长条目视觉上连成"一整段"。这里显式取消默认圆点、改用统一的小圆点标记，
-     让每一条都一眼可辨，又不抢正文的注意力；间距也从 6px 放宽到 10px，更耐扫读。 */
+     让每一条都一眼可辨，又不抢正文的注意力；间距也从 6px 放宽到 16px，每条之间留白
+     更足、更易逐条扫读（标题 vs 正文 vs 要点 的层级也更分明）。 */
   padding-left: 0;
   color: #4b5563;
-  line-height: 1.8;
+  line-height: 2;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
 }
 
 .user-guide-points li {
   position: relative;
-  padding-left: 16px;
+  padding-left: 18px;
 }
 
 .user-guide-points li::before {

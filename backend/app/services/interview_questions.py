@@ -55,14 +55,42 @@ def _load_prompt(name: str) -> str:
     return (PROMPTS_DIR / name).read_text(encoding="utf-8")
 
 
+# 重试时追加到用户消息末尾的约束：要求模型只产出纯 JSON，不再夹带解释或代码围栏。
+_RETRY_CONSTRAINT = (
+    "\n\n【严格要求】只输出一个 JSON 对象，不要任何解释文字，不要使用 Markdown 代码围栏，"
+    "直接输出可被 JSON 解析的内容（去掉尾随逗号）。"
+)
+
+
 async def _chat_json(provider: BaseLLMProvider, prompt: str, label: str) -> dict[str, Any]:
+    """调用模型并解析 JSON；解析失败时**自动重试一次**（追加更严格的约束）。
+
+    两次都失败才抛出 ``LLMError``，错误信息附带原始返回的前 200 字符便于排查。
+    """
     raw = await provider.chat(
         [
             {"role": "system", "content": _UNTRUSTED_SYSTEM},
             {"role": "user", "content": prompt},
         ]
     )
-    return parse_json_object(raw, label=label)
+    try:
+        return parse_json_object(raw, label=label)
+    except LLMError:
+        # 第一次解析失败：追加约束重试一次，不把第一次的脏数据当成终态。
+        pass
+
+    retry_prompt = prompt + _RETRY_CONSTRAINT
+    raw_retry = await provider.chat(
+        [
+            {"role": "system", "content": _UNTRUSTED_SYSTEM},
+            {"role": "user", "content": retry_prompt},
+        ]
+    )
+    try:
+        return parse_json_object(raw_retry, label=label)
+    except LLMError as exc:
+        snippet = raw_retry[:200]
+        raise LLMError(f"{exc}（原始返回前 200 字符：{snippet}）") from exc
 
 
 def _parse_item(value: Any) -> InterviewQuestionItem | None:

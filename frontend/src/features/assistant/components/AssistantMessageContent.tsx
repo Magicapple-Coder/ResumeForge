@@ -378,14 +378,17 @@ export function MessageToolCalls({ calls }: { calls: AssistantToolCall[] }) {
 export function MessageReasoning({
   reasoning,
   truncated = false,
+  active = false,
 }: {
   reasoning?: string;
   truncated?: boolean;
+  /** 正在流式思考时为 true：标题旁亮脉冲点，思考结束后停（A2）。 */
+  active?: boolean;
 }) {
   if (!reasoning || !reasoning.trim()) return null;
   return (
     <Collapse
-      className="assistant-reasoning"
+      className={`assistant-reasoning${active ? " assistant-reasoning--active" : ""}`}
       size="small"
       data-testid="message-reasoning"
       items={[
@@ -394,6 +397,7 @@ export function MessageReasoning({
           label: (
             <span className="assistant-reasoning-label" aria-label="思考过程">
               思考过程
+              {active && <span className="assistant-reasoning-dot" aria-hidden="true" />}
             </span>
           ),
           children: (

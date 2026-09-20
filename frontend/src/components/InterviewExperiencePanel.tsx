@@ -1,9 +1,11 @@
 /** 面经知识库（R-15）：真实面经的增删改查，可绑定岗位、沉淀真实问题清单。 */
-import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   App,
   Button,
   Card,
+  DatePicker,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -13,9 +15,10 @@ import {
   Space,
   Spin,
   Tag,
-  Tooltip,
   Typography,
 } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { useCallback, useEffect, useState } from "react";
 import {
   createInterviewExperience,
@@ -23,12 +26,9 @@ import {
   listInterviewExperiences,
   updateInterviewExperience,
 } from "../api/interviewExperiences";
-import {
-  EXPERIENCE_ROUND_TYPES,
-  EXPERIENCE_SOURCES,
-  EXPERIENCE_SOURCE_LABELS,
-} from "../types";
+import { EXPERIENCE_ROUND_TYPES, EXPERIENCE_SOURCES, EXPERIENCE_SOURCE_LABELS } from "../types";
 import type { ExperienceSource, InterviewExperience, InterviewExperiencePayload } from "../types";
+import { useRowActionMenu } from "./common/rowActionMenu";
 
 interface Props {
   jobOptions: { value: number; label: string }[];
@@ -44,6 +44,7 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
   const [editing, setEditing] = useState<InterviewExperience | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<InterviewExperiencePayload>();
+  const buildMenu = useRowActionMenu();
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -108,22 +109,14 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
     }
   };
 
-  const remove = (experience: InterviewExperience) => {
-    Modal.confirm({
-      title: "删除这条面经？",
-      content: "删除后可在回收站里找回，不会立刻彻底删除。",
-      okText: "删除",
-      cancelText: "取消",
-      onOk: async () => {
-        try {
-          await deleteInterviewExperience(experience.id);
-          message.success("已删除");
-          await loadList();
-        } catch (error) {
-          message.error(error instanceof Error ? error.message : "删除失败");
-        }
-      },
-    });
+  const doRemove = async (experience: InterviewExperience) => {
+    try {
+      await deleteInterviewExperience(experience.id);
+      message.success("已删除");
+      await loadList();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "删除失败");
+    }
   };
 
   return (
@@ -163,24 +156,35 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
           renderItem={(item) => (
             <List.Item
               actions={[
-                <Tooltip key="edit" title="编辑">
+                <Dropdown
+                  key="more"
+                  trigger={["click"]}
+                  menu={{
+                    items: buildMenu([
+                      {
+                        key: "edit",
+                        label: "编辑",
+                        icon: <EditOutlined />,
+                        onClick: () => openEdit(item),
+                      },
+                      {
+                        key: "delete",
+                        label: "删除",
+                        danger: true,
+                        icon: <DeleteOutlined />,
+                        confirm: "删除这条面经？删除后可在回收站里找回。",
+                        onClick: () => void doRemove(item),
+                      },
+                    ]),
+                  }}
+                >
                   <Button
                     type="text"
                     size="small"
-                    icon={<EditOutlined />}
-                    aria-label={`编辑面经 ${item.title || item.company}`}
-                    onClick={() => openEdit(item)}
+                    icon={<MoreOutlined />}
+                    aria-label={`更多操作 ${item.title || item.company}`}
                   />
-                </Tooltip>,
-                <Button
-                  key="delete"
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  aria-label={`删除面经 ${item.title || item.company}`}
-                  onClick={() => remove(item)}
-                />,
+                </Dropdown>,
               ]}
             >
               <List.Item.Meta
@@ -252,7 +256,10 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
             />
           </Form.Item>
           <Form.Item label="正文（面试过程、怎么答的）" name="content">
-            <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} placeholder="记录面试流程与心得" />
+            <Input.TextArea
+              autoSize={{ minRows: 3, maxRows: 8 }}
+              placeholder="记录面试流程与心得"
+            />
           </Form.Item>
           <Form.Item label="被问到的真实问题" name="questions" extra="逐条回车添加，会沉淀进知识库">
             <Select mode="tags" placeholder="输入后回车" open={false} suffixIcon={null} />
@@ -281,8 +288,14 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
                 options={EXPERIENCE_ROUND_TYPES.map((value) => ({ value, label: value }))}
               />
             </Form.Item>
-            <Form.Item label="面试日期" name="interview_date" style={{ flex: 1 }}>
-              <Input maxLength={10} placeholder="YYYY-MM-DD" />
+            <Form.Item
+              label="面试日期"
+              name="interview_date"
+              style={{ flex: 1 }}
+              getValueProps={(value: string) => ({ value: value ? dayjs(value) : null })}
+              normalize={(value: Dayjs | null) => (value ? value.format("YYYY-MM-DD") : "")}
+            >
+              <DatePicker style={{ width: "100%" }} />
             </Form.Item>
           </Space>
         </Form>

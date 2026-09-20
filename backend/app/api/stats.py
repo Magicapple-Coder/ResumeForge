@@ -15,7 +15,7 @@ from ..models.claim import VERIFICATION_PENDING, ClaimRecord
 from ..models.job import JOB_STATUS_OPEN, Job
 from ..models.profile import utcnow
 from ..models.resume import ResumeRecord
-from ..models.tracker import ACTIVE_STATUSES, ApplicationTrack
+from ..models.tracker import ACTIVE_STATUSES, STALLED_DAYS, ApplicationTrack
 from ..schemas.job import JobOut
 from ..schemas.resume import ResumeBrief
 from ..schemas.search import PendingClaimBrief, Stats
@@ -25,8 +25,6 @@ router = APIRouter(prefix="/api/stats", tags=["stats"])
 
 # 首页各列表的条数。够看清"最近发生了什么"即可，看全在各自的页面里。
 _LATEST_LIMIT = 5
-# "有段时间没动静"的判定：超过这么多天没有任何更新的进行中记录会被点名。
-_STALLED_DAYS = 7
 
 
 @router.get("", response_model=Stats)
@@ -65,13 +63,20 @@ def get_stats(db: Session = Depends(get_db)):
 
     # 进行中的投递：ACTIVE_STATUSES 是"还没走到终态"的那几个；其中久未更新的单独计数，
     # 因为"卡住了"比"在推进"更需要用户去看一眼。
-    active_tracks = (
+    # 阈值与判定口径来自 ``models/tracker``，求职看板的 ``stalled_count`` 读的是同一份
+    # （两处结论由 ``test_stalled_count_matches_stats_endpoint`` 钉住一致）。这里仍走 SQL
+    # 过滤而不是取回全表再用 ``is_stalled`` 筛——首页是热路径，而 ``updated_at < cutoff``
+    # 与 ``is_stalled`` 的 ``(now - updated_at) > 7d`` 严格等价。
+    stalled_cutoff = utcnow() - timedelta(days=STALLED_DAYS)
+    stalled_application_count = (
         db.query(ApplicationTrack)
-        .filter(trash.live_only(ApplicationTrack))
-        .filter(ApplicationTrack.status.in_(tuple(ACTIVE_STATUSES)))
+        .filter(
+            trash.live_only(ApplicationTrack),
+            ApplicationTrack.status.in_(tuple(ACTIVE_STATUSES)),
+            ApplicationTrack.updated_at < stalled_cutoff,
+        )
+        .count()
     )
-    stalled_cutoff = utcnow() - timedelta(days=_STALLED_DAYS)
-    stalled_application_count = active_tracks.filter(ApplicationTrack.updated_at < stalled_cutoff).count()
 
     # 最近投递结果：只取成功条目，失败在看板上有专门的地方看。
     # 按 finished_at 排序——"最近投出去的那个"是投递**结束**的时刻，不是入队的时刻。

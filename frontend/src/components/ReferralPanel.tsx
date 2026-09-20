@@ -7,6 +7,7 @@ import {
   CloseOutlined,
   DeleteOutlined,
   EditOutlined,
+  MoreOutlined,
   PlusOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -15,22 +16,24 @@ import {
   Button,
   Card,
   Col,
+  DatePicker,
+  Dropdown,
   Empty,
   Form,
   Input,
   List,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
   Spin,
   Statistic,
   Tag,
-  Tooltip,
   Typography,
   Upload,
 } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { useCallback, useEffect, useState } from "react";
 import {
   createReferral,
@@ -43,6 +46,7 @@ import {
 import { REFERRAL_STATUS_COLORS, REFERRAL_STATUS_LABELS, referralImageUrl } from "../types";
 import type { Referral, ReferralPayload, ReferralStats, ReferralStatus } from "../types";
 import { classifyAttachment, IMAGE_ACCEPT, MAX_ATTACHMENT_BYTES } from "../utils/attachments";
+import { useRowActionMenu } from "./common/rowActionMenu";
 
 /** 与后端 ``schemas/referral.MAX_NOTE_IMAGES`` 保持一致。 */
 const MAX_NOTE_IMAGES = 9;
@@ -70,6 +74,7 @@ export default function ReferralPanel({ jobOptions = [], trackOptions = [] }: Pr
   const [uploadingImages, setUploadingImages] = useState(false);
   const [noteImages, setNoteImages] = useState<string[]>([]);
   const [form] = Form.useForm<ReferralPayload>();
+  const buildMenu = useRowActionMenu();
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -244,38 +249,35 @@ export default function ReferralPanel({ jobOptions = [], trackOptions = [] }: Pr
           renderItem={(item) => (
             <List.Item
               actions={[
-                <Tooltip key="edit" title="编辑">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    aria-label={`编辑内推 ${item.referrer_name || item.position}`}
-                    onClick={() => openEdit(item)}
-                  />
-                </Tooltip>,
-                <Popconfirm
-                  key="delete"
-                  title="删除这条内推？"
-                  description="删除后可在回收站里找回，不会立刻彻底删除。"
-                  okText="删除"
-                  okButtonProps={{
-                    danger: true,
-                    "aria-label": `确认删除内推 ${item.referrer_name || item.position}`,
+                <Dropdown
+                  key="more"
+                  trigger={["click"]}
+                  menu={{
+                    items: buildMenu([
+                      {
+                        key: "edit",
+                        label: "编辑",
+                        icon: <EditOutlined />,
+                        onClick: () => openEdit(item),
+                      },
+                      {
+                        key: "delete",
+                        label: "删除",
+                        danger: true,
+                        icon: <DeleteOutlined />,
+                        confirm: "删除这条内推？删除后可在回收站里找回。",
+                        onClick: () => void remove(item),
+                      },
+                    ]),
                   }}
-                  cancelText="取消"
-                  cancelButtonProps={{
-                    "aria-label": `取消删除内推 ${item.referrer_name || item.position}`,
-                  }}
-                  onConfirm={() => void remove(item)}
                 >
                   <Button
                     type="text"
                     size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={`删除内推 ${item.referrer_name || item.position}`}
+                    icon={<MoreOutlined />}
+                    aria-label={`更多操作 ${item.referrer_name || item.position}`}
                   />
-                </Popconfirm>,
+                </Dropdown>,
               ]}
             >
               <List.Item.Meta
@@ -362,9 +364,7 @@ export default function ReferralPanel({ jobOptions = [], trackOptions = [] }: Pr
             </Form.Item>
           </Space>
           <Form.Item label="状态" name="status">
-            <Select
-              options={REFERRAL_STATUS_LABELS_OPTIONS()}
-            />
+            <Select options={REFERRAL_STATUS_LABELS_OPTIONS()} />
           </Form.Item>
           <Form.Item label="关联岗位（选填，删除岗位不影响内推）" name="job_id">
             <Select allowClear showSearch optionFilterProp="label" options={jobOptions} />
@@ -372,8 +372,14 @@ export default function ReferralPanel({ jobOptions = [], trackOptions = [] }: Pr
           <Form.Item label="转化关联漏斗（选填，进入面试及以上即视为转化）" name="track_id">
             <Select allowClear showSearch optionFilterProp="label" options={trackOptions} />
           </Form.Item>
-          <Form.Item label="投递日期" name="submitted_at" extra="YYYY-MM-DD，留空表示未知">
-            <Input maxLength={10} placeholder="YYYY-MM-DD" />
+          <Form.Item
+            label="投递日期"
+            name="submitted_at"
+            extra="留空表示未知"
+            getValueProps={(value: string) => ({ value: value ? dayjs(value) : null })}
+            normalize={(value: Dayjs | null) => (value ? value.format("YYYY-MM-DD") : "")}
+          >
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item label="图片备注（选填，最多 9 张）">
             <Upload

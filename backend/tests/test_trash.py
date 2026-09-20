@@ -182,6 +182,83 @@ def test_purge_refuses_items_that_are_not_in_the_trash(db_session, client):
     assert db_session.get(Job, job.id) is not None
 
 
+# ===== 批量恢复 / 批量彻底删除 =====
+
+
+def test_batch_restore_brings_back_every_selected_item(db_session, client):
+    a = _create(db_session, "job")
+    b = _create(db_session, "job")
+    c = _create(db_session, "claim")
+    client.delete(f"/api/jobs/{a.id}")
+    client.delete(f"/api/jobs/{b.id}")
+    client.delete(f"/api/claims/{c.id}")
+
+    response = client.post(
+        "/api/trash/restore",
+        json={"items": [{"type_key": "job", "id": a.id}, {"type_key": "claim", "id": c.id}]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["restored"] == 2
+    assert {r["id"] for r in body["results"] if r["ok"]} == {a.id, c.id}
+    # 恢复的回到列表；没被选中的 b 仍在回收站里。
+    assert _count(client.get("/api/jobs").json()) == 1
+    assert b.id in {item["id"] for item in client.get("/api/trash").json()["items"]}
+
+
+def test_batch_restore_reports_failures_per_item(db_session, client):
+    a = _create(db_session, "job")
+    client.delete(f"/api/jobs/{a.id}")
+
+    body = client.post(
+        "/api/trash/restore",
+        json={
+            "items": [
+                {"type_key": "job", "id": a.id},
+                {"type_key": "job", "id": 999999},
+                {"type_key": "不存在", "id": 1},
+            ]
+        },
+    ).json()
+
+    assert body["restored"] == 1
+    outcomes = {(r["type_key"], r["id"]): r["ok"] for r in body["results"]}
+    assert outcomes[("job", a.id)] is True
+    assert outcomes[("job", 999999)] is False
+    assert outcomes[("不存在", 1)] is False
+
+
+def test_batch_purge_removes_selected_items_for_good(db_session, client):
+    a = _create(db_session, "job")
+    b = _create(db_session, "job")
+    client.delete(f"/api/jobs/{a.id}")
+    client.delete(f"/api/jobs/{b.id}")
+
+    body = client.post(
+        "/api/trash/purge", json={"items": [{"type_key": "job", "id": a.id}]}
+    ).json()
+
+    assert body["purged"] == 1
+    assert body["results"][0]["ok"] is True
+    db_session.expunge_all()
+    assert db_session.get(Job, a.id) is None
+    # 没被选中的 b 仍在回收站里，不受影响。
+    assert db_session.get(Job, b.id) is not None
+
+
+def test_batch_purge_refuses_items_not_in_the_trash(db_session, client):
+    a = _create(db_session, "job")
+
+    body = client.post(
+        "/api/trash/purge", json={"items": [{"type_key": "job", "id": a.id}]}
+    ).json()
+
+    assert body["purged"] == 0
+    assert body["results"][0]["ok"] is False
+    assert db_session.get(Job, a.id) is not None
+
+
 def test_empty_trash_reports_how_many_were_removed(db_session, client):
     """清空要回报**真正删掉多少条**——用户点"清空"时最想知道的就是这个数。"""
     for _ in range(2):

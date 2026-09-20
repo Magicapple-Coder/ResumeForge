@@ -25,11 +25,11 @@ from docx.shared import Mm, Pt, RGBColor
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
 from .pdf_exporter import (
-    PHOTO_WIDTH,
     _PX_TO_MM,
     _PX_TO_PT,
     _photo_bytes,
     _resolve_font_paths,
+    crop_image_to_cover,
     decide_fit_scale,
     measure_content_height,
     resolve_accent,
@@ -126,14 +126,32 @@ def _header(doc, resume: ResumeContent, *, accent: tuple[int, int, int], layout,
             picture_paragraph = doc.add_paragraph()
             picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             picture_paragraph.paragraph_format.space_after = Mm(0)
-            picture_paragraph.add_run().add_picture(BytesIO(photo), width=Mm(PHOTO_WIDTH))
+            # 与 PDF 同一口径：先按模板照片框的比例做 object-fit: cover 的居中裁剪
+            # （`crop_image_to_cover`，一处实现两处共用），宽度给了之后高度随图片
+            # 自身宽高比走——裁过之后它恰好就是模板的 `photo_height_ratio`。
+            picture_paragraph.add_run().add_picture(
+                BytesIO(
+                    crop_image_to_cover(
+                        photo, layout.photo_width_ratio / layout.photo_height_ratio
+                    )
+                ),
+                width=Mm(layout.gap_mm(layout.photo_width_ratio)),
+            )
         except Exception:  # noqa: BLE001 - 照片坏了不能阻断导出
             pass
 
-    name_line = resume.name + (f"　{resume.gender}" if resume.gender else "")
+    # 姓名与性别各用各的 run：姓名是姓名字号/粗体/强调色，性别是 `.name-extra` 的口径
+    # （extra 字号/常规字重/muted 灰）——此前拼成一个 run，性别跟着姓名一起变大变粗。
     name_paragraph = _paragraph(doc)
-    name_run = name_paragraph.add_run(name_line)
+    name_run = name_paragraph.add_run(resume.name)
     _set_run_font(name_run, size_pt=base * layout.name_ratio * _PX_TO_PT, bold=True, color=accent)
+    if resume.gender:
+        gender_run = name_paragraph.add_run(f"　{resume.gender}")
+        _set_run_font(
+            gender_run,
+            size_pt=base * layout.name_extra_ratio * _PX_TO_PT,
+            color=_MUTED_COLOR,
+        )
 
     if resume.job_intent:
         intent_paragraph = _paragraph(doc)

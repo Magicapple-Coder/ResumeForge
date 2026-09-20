@@ -91,6 +91,10 @@ export default function ApplyPage() {
 
   const status = detail?.status ?? task?.status;
   const running = status ? isActiveTaskStatus(status) : false;
+  const collectRefreshKey =
+    task?.kind === "collect"
+      ? `${task.id}-${detail?.status ?? task.status}-${detail?.finished_at ?? ""}`
+      : "";
 
   const control = async (action: "pause" | "resume" | "stop") => {
     if (!task) return;
@@ -126,7 +130,7 @@ export default function ApplyPage() {
         </Button>
       </div>
 
-      <CurrentSiteBar />
+      <CurrentSiteBar refreshKey={collectRefreshKey} />
 
       <BrowserStatusBar />
 

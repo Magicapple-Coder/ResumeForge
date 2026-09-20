@@ -32,3 +32,21 @@ export interface TrashSummary {
 export interface TrashEmptyResult {
   removed: number;
 }
+
+/** 批量操作里的一条：类型 key + 该类型下的记录主键。 */
+export interface TrashBatchItem {
+  type_key: string;
+  id: number;
+}
+
+/** 批量恢复结果：逐条反馈哪几条成功、哪几条没成。 */
+export interface TrashRestoreBatchResult {
+  restored: number;
+  results: Array<TrashBatchItem & { ok: boolean }>;
+}
+
+/** 批量彻底删除结果（不可恢复；二次确认由前端负责）。 */
+export interface TrashPurgeBatchResult {
+  purged: number;
+  results: Array<TrashBatchItem & { ok: boolean }>;
+}

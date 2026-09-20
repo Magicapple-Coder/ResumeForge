@@ -237,21 +237,34 @@
 }
 
 /* 简历预览弹窗的底部操作条：**吸附在弹窗底部**，内容再长也不用翻到最后才点得到。
-   `flex-wrap` 不只是为了窄屏——原来这一行是两个不换行的分组做 space-between，
-   一旦宽度不够就会横向溢出，于是弹窗体底部冒出一条横向滚动条（用户截图反馈过）。 */
+   按钮区是 CSS Grid：每个按钮独占一格、block 拉满整格，自动铺满整行、不留右侧空当
+   （原先 flex space-between 在窄一档时右边会留出大片空白）。「下载 PDF」主按钮独占
+   底部一整行，保持醒目。 */
 .resume-detail-footer {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px 12px;
+  width: 100%;
   margin-top: 16px;
   padding: 12px 0 4px;
   background: var(--rf-surface, #fff);
   border-top: 1px solid var(--rf-border, #f0f0f0);
+}
+
+/* 「下载 PDF」主按钮组：独占整行、保持醒目，不再和上方按钮挤在同一排抢宽度。 */
+.resume-detail-footer-export {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+/* 生成弹窗里插入的额外操作（重新生成 / 去简历中心 / 完成）也独占整行。 */
+.resume-detail-footer-extra {
+  grid-column: 1 / -1;
 }
 
 /* ===== 版面诊断与「自动一页」 ===== */

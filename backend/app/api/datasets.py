@@ -15,11 +15,13 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from .. import database
 from ..services.datasets import (
     activate_dataset,
+    create_dataset,
     delete_dataset,
     export_dataset,
     import_dataset,
@@ -72,6 +74,22 @@ def _translate(exc: Exception) -> HTTPException:
 def read_datasets(request: Request) -> list[dict]:
     _require_loopback(request)
     return list_datasets()
+
+
+class _DatasetCreateIn(BaseModel):
+    """新建空数据集的请求体：只收一个自定义名称。"""
+
+    name: str = Field(min_length=1, max_length=64)
+
+
+@router.post("")
+def create(request: Request, payload: _DatasetCreateIn) -> dict:
+    """新建一份空数据集（自定义名称），返回描述；创建后可激活（激活后为空视图）。"""
+    _require_loopback(request)
+    try:
+        return create_dataset(payload.name, database.engine)
+    except Exception as exc:
+        raise _translate(exc) from exc
 
 
 @router.post("/import")

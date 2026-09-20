@@ -17,10 +17,15 @@ import { getSiteHealth, listSites } from "../../api/apply";
 import { useApi } from "../../hooks/useApi";
 import { type SiteHealthList, type SiteList, siteDisplayName, siteHealthFor } from "../../types";
 
-export default function CurrentSiteBar() {
+interface Props {
+  /** 采集批次完成时变化，让刚产生的站点健康度结论立即刷新。 */
+  refreshKey?: string | number;
+}
+
+export default function CurrentSiteBar({ refreshKey = 0 }: Props) {
   const { data } = useApi<SiteList>(listSites, []);
   // 健康度单独取：它随每次采集变化，而站点清单基本不变，合在一起反而会互相牵制。
-  const { data: health } = useApi<SiteHealthList>(getSiteHealth, []);
+  const { data: health } = useApi<SiteHealthList>(getSiteHealth, [refreshKey]);
 
   // 读取失败或没有站点时不渲染，绝不挡住页面其它功能。
   if (!data || !data.current) return null;

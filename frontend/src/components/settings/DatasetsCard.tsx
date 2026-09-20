@@ -4,6 +4,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  PlusOutlined,
   SwapOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -16,6 +17,7 @@ import {
   List,
   Modal,
   Popconfirm,
+  Space,
   Tag,
   Tooltip,
   Typography,
@@ -40,6 +42,10 @@ interface Props {
   deletingId: string | null;
   renameTarget: DatasetInfo | null;
   renameValue: string;
+  /** 新建空数据集（D9）：按钮 loading 与命名弹窗状态。 */
+  creating: boolean;
+  createOpen: boolean;
+  createName: string;
   onExport: (dataset: DatasetInfo) => void;
   onImport: (file: File, name: string) => void;
   onActivate: (dataset: DatasetInfo) => void;
@@ -48,6 +54,10 @@ interface Props {
   onConfirmRename: () => void;
   onCancelRename: () => void;
   onDelete: (dataset: DatasetInfo) => void;
+  onOpenCreate: () => void;
+  onCreateNameChange: (value: string) => void;
+  onConfirmCreate: () => void;
+  onCancelCreate: () => void;
 }
 
 function formatSize(bytes: number): string {
@@ -71,6 +81,9 @@ export default function DatasetsCard({
   deletingId,
   renameTarget,
   renameValue,
+  creating,
+  createOpen,
+  createName,
   onExport,
   onImport,
   onActivate,
@@ -79,8 +92,12 @@ export default function DatasetsCard({
   onConfirmRename,
   onCancelRename,
   onDelete,
+  onOpenCreate,
+  onCreateNameChange,
+  onConfirmCreate,
+  onCancelCreate,
 }: Props) {
-  const busy = exporting || importing || switchingId !== null || deletingId !== null;
+  const busy = exporting || importing || switchingId !== null || deletingId !== null || creating;
   const active = datasets.find((item) => item.is_active);
 
   return (
@@ -89,14 +106,19 @@ export default function DatasetsCard({
         title="数据集"
         className="settings-card"
         extra={
-          <Button
-            icon={<DownloadOutlined />}
-            loading={exporting}
-            disabled={busy || !active}
-            onClick={() => active && onExport(active)}
-          >
-            导出当前数据集
-          </Button>
+          <Space wrap>
+            <Button icon={<PlusOutlined />} disabled={busy} onClick={onOpenCreate}>
+              新建空数据集
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exporting}
+              disabled={busy || !active}
+              onClick={() => active && onExport(active)}
+            >
+              导出当前数据集
+            </Button>
+          </Space>
         }
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
@@ -234,6 +256,30 @@ export default function DatasetsCard({
           value={renameValue}
           maxLength={64}
           onChange={(event) => onRenameValueChange(event.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        title="新建空数据集"
+        open={createOpen}
+        okText="创建"
+        cancelText="取消"
+        confirmLoading={creating}
+        destroyOnHidden
+        onOk={onConfirmCreate}
+        onCancel={onCancelCreate}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="新建后进入数据集列表，可随时切换过去；激活后是一份空数据（岗位、简历、资料都从零开始）。"
+        />
+        <Input
+          value={createName}
+          maxLength={64}
+          placeholder="数据集名称（例如：秋招专用）"
+          onChange={(event) => onCreateNameChange(event.target.value)}
         />
       </Modal>
     </>

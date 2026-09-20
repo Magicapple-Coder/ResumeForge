@@ -147,12 +147,13 @@ export default function AssistantMessageList({
                   <span className="assistant-quoted-text">{item.context.quoted.excerpt}</span>
                 </div>
               ) : null}
-              <AssistantMessageContent content={item.content} sourceMap={item.context.source_map} />
-              <MessageAttachments attachments={item.attachments} />
+              {/* 思考过程置顶（A2）：先给思考，再给正文——用户最关心"它想清楚没"。 */}
               <MessageReasoning
                 reasoning={item.context.reasoning}
                 truncated={item.context.reasoning_truncated}
               />
+              <AssistantMessageContent content={item.content} sourceMap={item.context.source_map} />
+              <MessageAttachments attachments={item.attachments} />
               <MessageSources sources={item.context.sources ?? []} />
               <MessageToolCalls calls={item.context.tool_calls ?? []} />
               {item.status === "error" && item.error && <Alert type="error" message={item.error} />}
@@ -198,6 +199,7 @@ export default function AssistantMessageList({
               {formatDateTime(pendingSentAt)}
             </Typography.Text>
           </div>
+          <MessageReasoning reasoning={streamingReasoning} active />
           <AssistantMessageContent
             content={streamingText || progressText || "正在思考…"}
             sourceMap={streamingSourceMap}
@@ -205,7 +207,6 @@ export default function AssistantMessageList({
           <StreamingStatus
             message={streamingText ? "正在生成回答" : progressText || "正在准备回答"}
           />
-          <MessageReasoning reasoning={streamingReasoning} />
           <MessageSources sources={streamingSources} />
           <MessageToolCalls calls={streamingTools} />
         </article>

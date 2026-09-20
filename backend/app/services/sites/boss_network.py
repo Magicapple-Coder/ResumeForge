@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 from .boss_text import normalize_text, split_job_sections, split_title_salary
 
@@ -119,6 +120,8 @@ def _skill_tags(values: Any) -> list[str]:
     if not isinstance(values, list):
         return result
     for item in values:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("tagName") or item.get("skillName")
         tag = _text(item, 40)
         if tag and tag not in result:
             result.append(tag)
@@ -134,12 +137,75 @@ def _int_or_none(value: Any) -> int | None:
     return number if number >= 0 else None
 
 
-def _job_items(payload: Any) -> list[dict[str, Any]]:
-    """从列表响应里取出岗位数组；结构不认识时返回空列表。"""
+def _first(mapping: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    return None
+
+
+def _data_container(payload: Any) -> dict[str, Any] | None:
+    """只认 BOSS 自己的 ``zpData`` 容器。
+
+    **不接受的泛化名字（``data`` / ``result``）是有意的**，不是漏了：这两个词太通用，
+    而 `looks_like_search` 是"在页面发出的几十个响应里挑一个"的判据——放宽容器名会让
+    无关接口的响应也被判成岗位列表。容器改名时返回 ``None``，上层据此**明确按"抓不到"
+    处理并退回 DOM**（DOM 那条路照样能采到岗位，只是字段少些），比赌一个泛化键安全。
+    """
     if not isinstance(payload, dict):
-        return []
-    data = payload.get("zpData")
-    if not isinstance(data, dict):
+        return None
+    value = payload.get("zpData")
+    return value if isinstance(value, dict) else None
+
+
+def api_error(payload: Any) -> tuple[str, str] | None:
+    """返回 BOSS 明确给出的非零错误码；无错误码或成功响应返回 ``None``。"""
+    if not isinstance(payload, dict) or "code" not in payload:
+        return None
+    code = _text(payload.get("code"), 40)
+    if code in {"", "0"}:
+        return None
+    message = _text(
+        payload.get("message") or payload.get("msg") or payload.get("zpMessage"), 500
+    )
+    return code, message
+
+
+def _looks_like_job_item(item: dict[str, Any]) -> bool:
+    title = _first(item, "jobName", "jobTitle", "positionName", "title")
+    if not _text(title):
+        return False
+    identity_keys = {
+        "encryptJobId",
+        "encryptId",
+        "brandName",
+        "companyName",
+        "cityName",
+        "areaName",
+        "lowSalary",
+        "salaryMin",
+        "salaryDesc",
+    }
+    return any(key in item for key in identity_keys)
+
+
+def _job_url(item: dict[str, Any], job_id: str) -> str:
+    raw = _text(_first(item, "jobUrl", "jobHref", "detailUrl", "url"), 1000)
+    if raw:
+        return urljoin("https://www.zhipin.com/", raw)
+    return f"https://www.zhipin.com/job_detail/{job_id}.html" if job_id else ""
+
+
+def _job_items(payload: Any) -> list[dict[str, Any]]:
+    """取 ``zpData.jobList`` 这个位置的岗位数组；结构不认识时返回空列表。
+
+    容器与键都**只认 BOSS 自己的名字**：改名即视为"结构不认识"，由调用方返回 ``None``
+    并退回 DOM。返回空列表而不是报错是不行的——那会被上层说成"这次真的没搜到"，
+    用户于是以为关键词太窄（见 ``parse_search_response`` 的说明）。
+    """
+    data = _data_container(payload)
+    if data is None:
         return []
     items = data.get("jobList")
     if not isinstance(items, list):
@@ -162,13 +228,15 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
     results: list[dict[str, Any]] = []
     untitled = 0
     for item in items:
-        job_id = _text(item.get("encryptJobId"))
+        job_id = _text(_first(item, "encryptJobId", "encryptId", "jobId"))
         # BOSS 的详情页地址可以从 encryptJobId 拼出来；拼不出来时留空，
         # 上层会退回"点开卡片拿 href"那条路。
-        url = f"https://www.zhipin.com/job_detail/{job_id}.html" if job_id else ""
+        url = _job_url(item, job_id)
         # 岗位名与薪资在**接口里也可能粘在一起**（新版列表把两者放在同一个节点里），
         # 所以统一过一遍拆分：标题只留岗位名；拆出来的薪资只在接口没给数字时兜底。
-        title, title_salary = split_title_salary(item.get("jobName"))
+        title, title_salary = split_title_salary(
+            _first(item, "jobName", "jobTitle", "positionName", "title")
+        )
         if not title:
             # **读不出岗位名的卡片不算一条结果**。这一条是"站点改版"的报警器：
             # 卡片内字段一旦改名（`jobName` → 别的名字），以前会安静地解析出 `title=""` 的
@@ -179,30 +247,45 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
         results.append(
             {
                 "title": title,
+                # 公司名**只从 `brandName` 取**。读不出来就留空串，而不是退到别的键或默认值：
+                # 这张卡片的价值在岗位名，公司名缺了不该把卡片丢掉，但也不该由一个相似的名字
+                # 顶上来（"不为缺失的字段编造内容"，见 test_site_contract_drift 的断言）。
                 "company": _text(item.get("brandName")),
-                "location": _text(item.get("cityName"))
-                or _text(item.get("areaDistrict")),
+                "location": _text(
+                    _first(item, "cityName", "areaDistrict", "areaName", "locationName")
+                ),
                 # 优先用数字字段拼出来（口径统一），拼不出来时才用接口给的展示文本。
                 "salary": format_salary(
-                    item.get("lowSalary"), item.get("highSalary"), item.get("salaryMonth")
+                    _first(item, "lowSalary", "salaryLow", "salaryMin"),
+                    _first(item, "highSalary", "salaryHigh", "salaryMax"),
+                    _first(item, "salaryMonth", "salaryMonths"),
                 )
-                or _text(item.get("salaryDesc"))
+                or _text(_first(item, "salaryDesc", "salaryText", "salary"))
                 or title_salary,
                 "url": url,
                 "extra": {
                     "encrypt_job_id": job_id,
-                    "encrypt_boss_id": _text(item.get("encryptBossId")),
-                    "experience": _text(item.get("jobExperience")),
-                    "degree": _text(item.get("jobDegree")),
-                    "industry": _text(item.get("brandIndustry")),
-                    "scale": _text(item.get("brandScaleName")),
-                    "stage": _text(item.get("brandStageName")),
-                    "skills": _skill_tags(item.get("skills")),
-                    "hr_active": _text(item.get("bossOnline") or "") == "true"
-                    or _text(item.get("bossActiveTimeDesc")),
+                    "encrypt_boss_id": _text(
+                        _first(item, "encryptBossId", "encryptRecruiterId")
+                    ),
+                    "experience": _text(
+                        _first(item, "jobExperience", "experienceName", "experience")
+                    ),
+                    "degree": _text(_first(item, "jobDegree", "degreeName", "education")),
+                    "industry": _text(_first(item, "brandIndustry", "industryName")),
+                    "scale": _text(_first(item, "brandScaleName", "companyScale")),
+                    "stage": _text(_first(item, "brandStageName", "financingStage")),
+                    "skills": _skill_tags(_first(item, "skills", "skillList")),
+                    "hr_active": _text(_first(item, "bossOnline", "recruiterOnline"))
+                    == "true"
+                    or _text(_first(item, "bossActiveTimeDesc", "activeDesc")),
                     # 原始数字（元/月）：界面上的"15-25K"是格式化结果，做薪资区间筛选要原始值。
-                    "salary_low": _int_or_none(item.get("lowSalary")),
-                    "salary_high": _int_or_none(item.get("highSalary")),
+                    "salary_low": _int_or_none(
+                        _first(item, "lowSalary", "salaryLow", "salaryMin")
+                    ),
+                    "salary_high": _int_or_none(
+                        _first(item, "highSalary", "salaryHigh", "salaryMax")
+                    ),
                 },
             }
         )
@@ -231,45 +314,61 @@ def parse_detail_response(payload: Any) -> dict[str, Any] | None:
     """
     if not isinstance(payload, dict):
         return None
-    data = payload.get("zpData")
-    if not isinstance(data, dict):
+    data = _data_container(payload)
+    if data is None:
         return None
+    # 内层容器同样**只认 `jobInfo`**。详情侧的宽容体现在下一行：容器没了、但 `zpData` 里
+    # 直接带着岗位名与正文时仍按详情处理（详情只有一条记录，靠内容特征就能确认）。
+    # 这与列表侧"容器改名即失败"的不对称是有意的，别为了"统一风格"把它收紧。
     detail = data.get("jobInfo")
     if not isinstance(detail, dict):
-        detail = data if data.get("jobName") else None
+        detail = data if _first(data, "jobName", "jobTitle", "positionName") else None
     if not isinstance(detail, dict):
         return None
 
-    description_html = _strip_html(detail.get("postDescription"))
+    raw_description = _first(
+        detail, "postDescription", "jobDescription", "description", "descriptionHtml"
+    )
+    if not isinstance(raw_description, str):
+        return None
+    description_html = _strip_html(raw_description)
     if not description_html:
         return None
     # 接口只给一整段 ``postDescription``，而界面/模型上「职位描述」与「任职要求」是两个字段。
     # 以前一律整段塞进描述、要求留空，用户看到的就是"两件事混在一起"；这里按真实存在的小标题
     # 切分（切不出来就不切，把全文留在描述里，绝不造一个空的描述字段）。
     description, requirements = split_job_sections(description_html)
-    boss = data.get("bossInfo") if isinstance(data.get("bossInfo"), dict) else {}
-    brand = data.get("brandInfo") if isinstance(data.get("brandInfo"), dict) else {}
+    boss_value = _first(data, "bossInfo", "recruiterInfo", "hrInfo")
+    brand_value = _first(data, "brandInfo", "brandComInfo", "companyInfo")
+    boss = boss_value if isinstance(boss_value, dict) else {}
+    brand = brand_value if isinstance(brand_value, dict) else {}
 
     return {
-        "job_title": _text(detail.get("jobName")),
-        "company": _text(brand.get("brandName")) or _text(boss.get("brandName")),
+        "job_title": _text(_first(detail, "jobName", "jobTitle", "positionName")),
+        "company": _text(_first(brand, "brandName", "companyName", "name"))
+        or _text(_first(boss, "brandName", "companyName"))
+        or _text(_first(detail, "brandName", "companyName")),
         "description": description,
         # 切不出独立的要求段时留空是**如实**的：接口本来就没有把它单列出来，
         # 该段内容仍然完整地留在描述里，不会丢。
         "requirements": requirements,
-        "url": f"https://www.zhipin.com/job_detail/{_text(detail.get('encryptJobId'))}.html"
-        if detail.get("encryptJobId")
-        else "",
+        "url": _job_url(
+            detail, _text(_first(detail, "encryptJobId", "encryptId", "jobId"))
+        ),
         "extra": {
-            "degree": _text(detail.get("jobDegree")),
-            "experience": _text(detail.get("jobExperience")),
-            "skills": _skill_tags(detail.get("skills")),
-            "hr_active_time": _text(boss.get("activeTimeDesc")),
-            "hr_name": _text(boss.get("name")),
-            "hr_title": _text(boss.get("title")),
-            "industry": _text(brand.get("brandIndustry")),
-            "scale": _text(brand.get("brandScaleName")),
-            "stage": _text(brand.get("brandStageName")),
+            "degree": _text(_first(detail, "jobDegree", "degreeName", "education")),
+            "experience": _text(
+                _first(detail, "jobExperience", "experienceName", "experience")
+            ),
+            "skills": _skill_tags(_first(detail, "skills", "skillList")),
+            "hr_active_time": _text(
+                _first(boss, "activeTimeDesc", "activeDesc", "lastActiveTime")
+            ),
+            "hr_name": _text(_first(boss, "name", "recruiterName", "hrName")),
+            "hr_title": _text(_first(boss, "title", "position", "hrTitle")),
+            "industry": _text(_first(brand, "brandIndustry", "industryName")),
+            "scale": _text(_first(brand, "brandScaleName", "companyScale")),
+            "stage": _text(_first(brand, "brandStageName", "financingStage")),
         },
     }
 
@@ -288,8 +387,8 @@ def search_has_more(payload: Any) -> bool | None:
     """
     if not isinstance(payload, dict):
         return None
-    data = payload.get("zpData")
-    if not isinstance(data, dict):
+    data = _data_container(payload)
+    if data is None:
         return None
     for key in ("hasMore", "has_more"):
         value = data.get(key)
@@ -302,13 +401,18 @@ def looks_like_detail(payload: Any) -> bool:
     """这个响应体是不是岗位详情。"""
     if not isinstance(payload, dict):
         return False
-    data = payload.get("zpData")
-    if not isinstance(data, dict):
+    data = _data_container(payload)
+    if data is None:
         return False
     detail = data.get("jobInfo")
-    if isinstance(detail, dict) and detail.get("postDescription"):
+    if isinstance(detail, dict) and _first(
+        detail, "postDescription", "jobDescription", "description", "descriptionHtml"
+    ):
         return True
-    return bool(data.get("jobName") and data.get("postDescription"))
+    return bool(
+        _first(data, "jobName", "jobTitle", "positionName")
+        and _first(data, "postDescription", "jobDescription", "description")
+    )
 
 
 __all__ = [
@@ -316,6 +420,7 @@ __all__ = [
     "DETAIL_MARKERS",
     "SEARCH_MARKER",
     "SEARCH_MARKERS",
+    "api_error",
     "format_salary",
     "looks_like_detail",
     "looks_like_search",

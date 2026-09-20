@@ -190,3 +190,43 @@ def test_requirement_heading_is_chosen_by_position_not_by_table_order():
 def test_section_split_handles_empty_input():
     assert split_job_sections(None) == ("", "")
     assert split_job_sections("") == ("", "")
+
+
+def test_splits_a_compact_jd_when_a_description_heading_precedes_requirements():
+    """描述段很短、要求段紧跟其后：只要有「岗位职责」这类描述标题，就该切，而不是整段挤进描述。"""
+    text = "岗位职责：负责后端开发。任职要求：熟悉Java，熟悉Python。"
+
+    description, requirements = split_job_sections(text)
+
+    assert description == "岗位职责：负责后端开发。"
+    assert requirements == "任职要求：熟悉Java，熟悉Python。"
+
+
+def test_does_not_split_when_requirements_are_early_and_no_description_heading():
+    """要求标题靠前、又没有描述段标题 → 整篇只有要求，留在描述里。"""
+    text = "任职要求：熟悉Java，熟悉Python，有三年以上经验。"
+
+    description, requirements = split_job_sections(text)
+
+    assert description == text
+    assert requirements == ""
+
+
+def test_splits_on_a_broadened_requirement_heading():
+    """「能力要求」这类变体也要能命中切分。"""
+    text = "岗位职责：负责服务端开发、性能优化等日常工作内容若干。" * 2 + "能力要求：熟悉网络编程。"
+
+    description, requirements = split_job_sections(text)
+
+    assert "能力要求" not in description
+    assert requirements.startswith("能力要求")
+
+
+def test_description_and_requirements_are_not_mixed():
+    """切分后描述段不含要求、要求段不含描述段标题（description/requirements 不混）。"""
+    text = "岗位职责：负责前端架构与开发。任职要求：三年以上经验，熟悉 React。"
+
+    description, requirements = split_job_sections(text)
+
+    assert "任职要求" not in description
+    assert "岗位职责" not in requirements

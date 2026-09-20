@@ -8,6 +8,18 @@ from app.services.resume_diff import (
 )
 
 
+def test_to_lines_replaces_photo_with_a_placeholder():
+    """照片是 base64 data URL：diff 输出里不能出现长串，且要保留「[图片]」占位。"""
+    base64_blob = "data:image/png;base64," + ("A" * 512)
+    lines = _to_lines({"name": "张三", "photo": base64_blob})
+    text = "\n".join(lines)
+    assert base64_blob not in text
+    assert "AAAA" not in text  # 长串本身也不该泄漏
+    assert "[图片]" in text
+    # 占位仍保留 photo 键，且两份不同照片的简历 diff 时不会被误判成内容变化。
+    assert _to_lines({"photo": base64_blob}) == _to_lines({"photo": "data:image/png;base64," + ("B" * 512)})
+
+
 def test_to_lines_is_deterministic_and_key_sorted():
     content_a = {"name": "张三", "skills": [{"name": "Python", "level": "熟练"}]}
     content_b = {"skills": [{"name": "Python", "level": "熟练"}], "name": "张三"}

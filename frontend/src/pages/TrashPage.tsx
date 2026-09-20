@@ -25,10 +25,18 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { TableRowSelection } from "antd/es/table/interface";
 import { useState } from "react";
-import { emptyTrash, getTrash, purgeTrashItem, restoreTrashItem } from "../api/trash";
+import {
+  emptyTrash,
+  getTrash,
+  purgeTrashItem,
+  purgeTrashItems,
+  restoreTrashItem,
+  restoreTrashItems,
+} from "../api/trash";
 import { useApi } from "../hooks/useApi";
-import type { TrashItem } from "../types";
+import type { TrashBatchItem, TrashItem } from "../types";
 
 const ALL = "__all__";
 
@@ -41,6 +49,7 @@ function deletedAtText(value: string | null): string {
 export default function TrashPage() {
   const { message } = App.useApp();
   const [type, setType] = useState<string>(ALL);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const { data, loading, error, reload } = useApi(
     () => getTrash(type === ALL ? {} : { type }),
     [type],
@@ -49,6 +58,37 @@ export default function TrashPage() {
   const labels = data?.labels ?? {};
   const items = data?.items ?? [];
   const counts = data?.counts ?? {};
+
+  const selectedItems = (): TrashBatchItem[] =>
+    items
+      .filter((item) => selectedKeys.includes(`${item.type}-${item.id}`))
+      .map((item) => ({ type_key: item.type, id: item.id }));
+
+  const batchRestore = async () => {
+    const chosen = selectedItems();
+    if (chosen.length === 0) return;
+    try {
+      const result = await restoreTrashItems(chosen);
+      message.success(`已恢复 ${result.restored} 条`);
+      setSelectedKeys([]);
+      await reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "批量恢复失败");
+    }
+  };
+
+  const batchPurge = async () => {
+    const chosen = selectedItems();
+    if (chosen.length === 0) return;
+    try {
+      const result = await purgeTrashItems(chosen);
+      message.success(`已彻底删除 ${result.purged} 条`);
+      setSelectedKeys([]);
+      await reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "批量彻底删除失败");
+    }
+  };
 
   const options = [
     { label: `全部（${data?.total ?? 0}）`, value: ALL },
@@ -142,6 +182,11 @@ export default function TrashPage() {
     },
   ];
 
+  const rowSelection: TableRowSelection<TrashItem> = {
+    selectedRowKeys: selectedKeys,
+    onChange: (keys) => setSelectedKeys(keys.map(String)),
+  };
+
   return (
     <div className="trash-page">
       <div className="trash-page-head">
@@ -169,6 +214,26 @@ export default function TrashPage() {
               清空{type === ALL ? "回收站" : "这一类"}
             </Button>
           </Popconfirm>
+        )}
+        {selectedKeys.length > 0 && (
+          <Space>
+            <Button icon={<UndoOutlined />} onClick={() => void batchRestore()}>
+              批量恢复（{selectedKeys.length}）
+            </Button>
+            <Popconfirm
+              title={`彻底删除选中的 ${selectedKeys.length} 条？`}
+              description="将永久删除，无法恢复。"
+              okText="彻底删除"
+              okButtonProps={{ danger: true, "aria-label": "确认批量彻底删除" }}
+              cancelText="取消"
+              cancelButtonProps={{ "aria-label": "取消批量彻底删除" }}
+              onConfirm={() => void batchPurge()}
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                批量彻底删除
+              </Button>
+            </Popconfirm>
+          </Space>
         )}
       </div>
 
@@ -205,6 +270,7 @@ export default function TrashPage() {
           columns={columns}
           dataSource={items}
           pagination={false}
+          rowSelection={rowSelection}
         />
       )}
     </div>

@@ -34,6 +34,7 @@ const RESUME: ResumeBrief = {
   company: "示例制造企业",
   source: "manual",
   favorite: false,
+  note: "",
   model: "",
   enhancement_enabled: false,
   enhancement_level: "balanced",
@@ -156,5 +157,18 @@ describe("ResumesPage 通用简历", () => {
     const row = (await screen.findByText(RESUME.title)).closest("tr");
     expect(within(row as HTMLElement).getByText(RESUME.job_title)).toBeInTheDocument();
     expect(within(row as HTMLElement).queryByText("通用简历")).toBeNull();
+  });
+});
+
+describe("ResumesPage 备注列", () => {
+  it("把简历备注直接展示在列表里（B5）", async () => {
+    apiMocks.listResumes.mockResolvedValue({
+      items: [{ ...RESUME, note: "重点跟进，本周五前回复" }],
+      total: 1,
+    });
+    renderPage();
+    await screen.findByText(RESUME.title);
+
+    expect(screen.getByText("重点跟进，本周五前回复")).toBeInTheDocument();
   });
 });

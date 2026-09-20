@@ -64,7 +64,9 @@ export default function ExportOptionsModal({ recordId, open, onClose }: Props) {
         });
         downloadBlob(result.blob, result.filename);
         if (result.pages && result.pageLimit && result.pages > result.pageLimit) {
-          message.warning(`「${format}」共 ${result.pages} 页，超过所选 ${result.pageLimit} 页上限。`);
+          message.warning(
+            `「${format}」共 ${result.pages} 页，超过所选 ${result.pageLimit} 页上限。`,
+          );
         }
       }
       message.success("已开始导出");

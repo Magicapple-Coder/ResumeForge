@@ -67,6 +67,8 @@ class ScriptedCdpClient(CdpClient):
 
     def navigate(self, url: str, *, timeout=None):
         self.navigations.append(url)
+        if isinstance(self.ready, dict) and not self.ready.get("url"):
+            self.ready["url"] = url
         return {}
 
     def send(self, method, params=None, *, timeout=None):
@@ -117,7 +119,7 @@ def test_build_search_url_maps_keyword_city_and_page():
     )
 
     assert "query=%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91" in url
-    assert "city=%E6%9D%AD%E5%B7%9E" in url
+    assert "city=101210100" in url
     assert url.endswith("page=3")
 
 
@@ -136,6 +138,7 @@ def test_salary_experience_education_are_locally_filtered_instead_of_unmapped():
     assert adapter.unmapped_conditions(CollectQuery(keywords=["后端"], city="北京")) == []
     # 声明了这三项，采集器才会执行本地筛选。
     assert adapter.post_filter_conditions == ("薪资", "经验", "学历")
+    assert adapter.requires_resume is False
 
 
 def test_an_adapter_without_the_capability_still_reports_conditions_as_unmapped():
@@ -163,6 +166,7 @@ def test_an_adapter_without_the_capability_still_reports_conditions_as_unmapped(
             raise AssertionError
 
     assert _PlainAdapter.post_filter_conditions == ()
+    assert _PlainAdapter.requires_resume is True
 
 
 def test_parse_search_payload_builds_results():
@@ -299,7 +303,7 @@ def test_timeout_message_when_document_never_finishes_loading():
     adapter = boss()
     client = ScriptedCdpClient(
         ready={
-            "url": "https://www.zhipin.com/web/geek/job?x",
+            "url": adapter.build_search_url(CollectQuery(keywords=["后端"]), 1),
             "title": "搜索中",
             "matched": 0,
             "explicitly_empty": False,
@@ -321,7 +325,7 @@ def test_timeout_message_when_page_is_loaded_but_has_no_cards():
     adapter = boss()
     client = ScriptedCdpClient(
         ready={
-            "url": "https://www.zhipin.com/web/geek/job?x",
+            "url": adapter.build_search_url(CollectQuery(keywords=["后端"]), 1),
             "title": "职位搜索",
             "matched": 0,
             "explicitly_empty": False,
@@ -484,7 +488,14 @@ def test_open_apply_requires_a_source_url():
 def test_open_apply_reuses_the_tab_and_confirms_the_entry_is_present():
     adapter = boss()
     client = ScriptedCdpClient(
-        {"rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"}}
+        {
+            "rf:apply-entry": {
+                "found": True,
+                "matched": 1,
+                "url": FAKE_JOB.source_url,
+                "title": "t",
+            }
+        }
     )
 
     adapter.open_apply(client, FAKE_JOB)
@@ -511,8 +522,11 @@ def test_fill_and_submit_success_sends_the_greeting():
     client = ScriptedCdpClient(
         {
             "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
+            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
             "rf:form-controls": json.dumps({"controls": []}),
             "rf:greeting-state": {"found": True, "required": True, "url": "u", "title": "t"},
+            "rf:fill-greeting": {"ok": True, "value": "您好，很感兴趣。"},
+            "rf:click-send": {"ok": True, "label": "发送"},
             "rf:submit-state": {"success": True, "url": "u", "title": "t"},
         }
     )
@@ -529,6 +543,7 @@ def test_fill_and_submit_blocks_when_a_required_greeting_is_empty():
     client = ScriptedCdpClient(
         {
             "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
+            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
             "rf:form-controls": json.dumps({"controls": []}),
             "rf:greeting-state": {"found": True, "required": True, "url": "u", "title": "t"},
         }
@@ -545,8 +560,11 @@ def test_fill_and_submit_propagates_a_captcha_at_submit():
     client = ScriptedCdpClient(
         {
             "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
+            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
             "rf:form-controls": json.dumps({"controls": []}),
             "rf:greeting-state": {"found": True, "required": False, "url": "u", "title": "t"},
+            "rf:fill-greeting": {"ok": True, "value": "您好"},
+            "rf:click-send": {"ok": True, "label": "发送"},
             "rf:submit-state": {"captcha": True, "url": "u", "title": "t"},
         }
     )
@@ -697,7 +715,9 @@ def test_falls_back_to_job_links_when_the_card_selector_misses():
             "rf:collect */": json.dumps({"items": [], "has_next": False}),
         },
         ready={
-            "url": "https://www.zhipin.com/web/geek/jobs?query=x&city=&page=1",
+            "url": adapter.build_search_url(CollectQuery(keywords=["前端"]), 1).replace(
+                "/web/geek/job?", "/web/geek/jobs?"
+            ),
             "matched": 3,
             "explicitly_empty": False,
             "ready_state": "complete",
@@ -729,7 +749,9 @@ def test_reports_a_diagnostic_instead_of_a_silent_zero_when_nothing_is_found():
             ),
         },
         ready={
-            "url": "https://www.zhipin.com/web/geek/jobs?query=x&city=&page=1",
+            "url": adapter.build_search_url(CollectQuery(keywords=["前端"]), 1).replace(
+                "/web/geek/job?", "/web/geek/jobs?"
+            ),
             "matched": 3,  # 页面等待认为"有内容"，但两套 DOM 脚本都取不到
             "explicitly_empty": False,
             "ready_state": "complete",

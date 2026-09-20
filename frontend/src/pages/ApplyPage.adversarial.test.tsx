@@ -193,8 +193,8 @@ describe("投递队列准入拦截分支", () => {
     );
 
     expect(await screen.findByText("不投")).toBeInTheDocument();
-    expect(screen.getByText("需逐条确认")).toBeInTheDocument();
-    expect(screen.getByText("未分析")).toBeInTheDocument();
+    expect(await screen.findByText("需逐条确认")).toBeInTheDocument();
+    expect(await screen.findByText("未分析")).toBeInTheDocument();
   });
 
   it("starts the whole queue when nothing is selected (use_queue=true)", async () => {
@@ -215,6 +215,31 @@ describe("投递队列准入拦截分支", () => {
     fireEvent.click(start);
 
     await waitFor(() => expect(apiMocks.createApplyTask).toHaveBeenCalledWith({ use_queue: true }));
+  });
+
+  it("submits selected job ids instead of queue row ids", async () => {
+    apiMocks.listQueue.mockResolvedValue([
+      queueItem({ id: 1, job_id: 11 }),
+      queueItem({ id: 2, job_id: 12, job_title: "数据开发" }),
+    ]);
+    apiMocks.createApplyTask.mockResolvedValue(task("running"));
+
+    render(
+      <AntdApp>
+        <ApplyPage />
+      </AntdApp>,
+    );
+
+    await screen.findByText("数据开发");
+    const checkboxes = screen.getAllByRole("checkbox");
+    // Ant Table 的第一个是全选框，后面才是两行。勾第二行：queue id=2、job id=12。
+    fireEvent.click(checkboxes[2]);
+    fireEvent.click(screen.getByRole("button", { name: /开始投递/ }));
+
+    await waitFor(() =>
+      expect(apiMocks.createApplyTask).toHaveBeenCalledWith({ job_ids: [12], use_queue: false }),
+    );
+    expect(apiMocks.createApplyTask).not.toHaveBeenCalledWith({ job_ids: [2], use_queue: false });
   });
 
   it("disables 开始投递 when a task is already running", async () => {

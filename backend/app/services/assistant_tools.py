@@ -56,7 +56,7 @@ from .interview import answered_rounds
 from .job_service import create_job_record, update_job_record
 from ..schemas.knowledge import KnowledgeCreate, KnowledgeUpdate
 from ..schemas.reminder import ReminderCreate
-from .analytics import build_dashboard
+from .analytics import build_dashboard, dashboard_brief
 from .interview_experience_service import list_experiences
 from .interview_history import list_question_banks, list_reviews
 from .knowledge_service import (
@@ -1741,7 +1741,10 @@ def _tool_update_knowledge(db: Session, arguments: dict) -> ToolResult:
 
 
 def _tool_get_analytics_overview(db: Session, _arguments: dict) -> ToolResult:
-    dashboard = build_dashboard(db)
+    # 下发给助手的是看板的**摘要视图**（``dashboard_brief``），不是整份：全部标量保留，
+    # 逐月趋势 / 周内七桶 / 内推状态这些长数组丢掉，公司榜裁到前几名。模型拿一个 24 元素
+    # 的趋势数组做不了有用的事，反而稀释了它该看的标量。同一份口径，只是少传几段。
+    dashboard = dashboard_brief(build_dashboard(db))
     return ToolResult(
         text=json.dumps(dashboard, ensure_ascii=False),
         summary="查看了求职统计看板",

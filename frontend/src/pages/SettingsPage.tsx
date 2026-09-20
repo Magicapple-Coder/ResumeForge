@@ -4,6 +4,7 @@ import { App, Button, Form, Tabs, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activateDataset,
+  createDataset,
   deleteDataset,
   deleteLLMConfigRecord,
   exportDataset,
@@ -148,6 +149,9 @@ export default function SettingsPage() {
   const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<DatasetInfo | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [datasetCreating, setDatasetCreating] = useState(false);
+  const [createDatasetOpen, setCreateDatasetOpen] = useState(false);
+  const [createDatasetName, setCreateDatasetName] = useState("");
 
   const loadDatasetList = useCallback(async () => {
     setDatasetsLoading(true);
@@ -232,6 +236,27 @@ export default function SettingsPage() {
       message.error(err instanceof Error ? err.message : "删除数据集失败");
     } finally {
       setDeletingDatasetId(null);
+    }
+  };
+
+  const createEmptyDataset = async () => {
+    const name = createDatasetName.trim();
+    if (!name) {
+      message.warning("请填写数据集名称");
+      return;
+    }
+    if (datasetCreating) return;
+    setDatasetCreating(true);
+    try {
+      const created = await createDataset(name);
+      await loadDatasetList();
+      setCreateDatasetOpen(false);
+      setCreateDatasetName("");
+      message.success(`已新建数据集「${created.name}」，可在列表里切换到它`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "新建数据集失败");
+    } finally {
+      setDatasetCreating(false);
     }
   };
 
@@ -596,6 +621,9 @@ export default function SettingsPage() {
                   deletingId={deletingDatasetId}
                   renameTarget={renameTarget}
                   renameValue={renameValue}
+                  creating={datasetCreating}
+                  createOpen={createDatasetOpen}
+                  createName={createDatasetName}
                   onExport={(dataset) => void runDatasetExport(dataset)}
                   onImport={(file, name) => void importDatasetFile(file, name)}
                   onActivate={(dataset) => void switchDataset(dataset)}
@@ -609,6 +637,15 @@ export default function SettingsPage() {
                     if (renamingDatasetId === null) setRenameTarget(null);
                   }}
                   onDelete={(dataset) => void removeDataset(dataset)}
+                  onOpenCreate={() => {
+                    setCreateDatasetName("");
+                    setCreateDatasetOpen(true);
+                  }}
+                  onCreateNameChange={setCreateDatasetName}
+                  onConfirmCreate={() => void createEmptyDataset()}
+                  onCancelCreate={() => {
+                    if (!datasetCreating) setCreateDatasetOpen(false);
+                  }}
                 />
               </>
             ),
@@ -620,7 +657,9 @@ export default function SettingsPage() {
               <>
                 <div className="settings-section-head">
                   <div className="settings-section-titles">
-                    <Typography.Text type="secondary">应用本身的版本、更新与提醒行为。</Typography.Text>
+                    <Typography.Text type="secondary">
+                      应用本身的版本、更新与提醒行为。
+                    </Typography.Text>
                   </div>
                 </div>
                 <ReminderPopupCard />

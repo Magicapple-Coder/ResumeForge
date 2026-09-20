@@ -11,17 +11,19 @@ import {
   ArrowUpOutlined,
   DeleteOutlined,
   EditOutlined,
+  MoreOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
   App,
   Button,
+  Dropdown,
   Empty,
   Form,
   Input,
+  Menu,
   Modal,
-  Popconfirm,
   Select,
   Skeleton,
   Space,
@@ -50,6 +52,7 @@ import {
   type ApplyTask,
   type ResumeBrief,
 } from "../../types";
+import { useRowActionMenu } from "../common/rowActionMenu";
 
 interface Props {
   /** 有任务正在运行时为真：禁止重复开始。 */
@@ -191,17 +194,49 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [editing, setEditing] = useState<ApplyQueueItem | null>(null);
   const [busy, setBusy] = useState(false);
+  // 右键菜单：记录鼠标位置与目标行，用定位式 Menu 渲染（避免把 <tr> 包进 Dropdown 造成行重建竞态）。
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    record: ApplyQueueItem;
+  } | null>(null);
+  const buildMenu = useRowActionMenu();
 
   useEffect(() => {
     if (error) message.error(error);
   }, [error, message]);
 
   const items = useMemo(() => data ?? [], [data]);
+  const pendingItems = useMemo(
+    () => items.filter((item) => item.status === "pending" && item.job_id !== null),
+    [items],
+  );
 
   const refresh = () => {
     setReloadKey((value) => value + 1);
     onChanged?.();
   };
+
+  /**
+   * 右键菜单项：与「···」菜单一致（编辑 / 移出队列）。移出队列走 Modal.confirm。
+   */
+  const contextMenuItems = (record: ApplyQueueItem) =>
+    buildMenu([
+      {
+        key: "edit",
+        label: "编辑",
+        icon: <EditOutlined />,
+        onClick: () => setEditing(record),
+      },
+      {
+        key: "remove",
+        label: "移出队列",
+        danger: true,
+        icon: <DeleteOutlined />,
+        confirm: "移出投递队列？",
+        onClick: () => void remove(record),
+      },
+    ]);
 
   const move = async (index: number, delta: number) => {
     const target = index + delta;
@@ -235,7 +270,21 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
   };
 
   const start = async () => {
-    const chosen = selectedIds.length > 0 ? [...selectedIds] : undefined;
+    // Table 的 rowKey 是队列条目 id，而后端 /apply/tasks 的 job_ids 明确要求岗位 id。
+    // 两种 id 通常不同，直接提交 selectedIds 会投错岗位，甚至在碰巧存在同号岗位时静默误投。
+    const chosen =
+      selectedIds.length > 0
+        ? items
+            .filter(
+              (item): item is ApplyQueueItem & { job_id: number } =>
+                selectedIds.includes(item.id) && item.status === "pending" && item.job_id !== null,
+            )
+            .map((item) => item.job_id)
+        : undefined;
+    if (selectedIds.length > 0 && chosen?.length === 0) {
+      message.warning("选中的条目已经不可投递，请刷新队列后重试");
+      return;
+    }
     setBusy(true);
     try {
       const task = await createApplyTask(
@@ -296,47 +345,58 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
       key: "actions",
       width: 210,
       render: (_, item, index) => (
-        <Space>
-          <Tooltip title="上移">
-            <Button
-              size="small"
-              aria-label={`上移 ${item.job_title}`}
-              icon={<ArrowUpOutlined />}
-              disabled={index === 0 || busy}
-              onClick={() => void move(index, -1)}
-            />
-          </Tooltip>
-          <Tooltip title="下移">
-            <Button
-              size="small"
-              aria-label={`下移 ${item.job_title}`}
-              icon={<ArrowDownOutlined />}
-              disabled={index === items.length - 1 || busy}
-              onClick={() => void move(index, 1)}
-            />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              aria-label={`编辑 ${item.job_title}`}
-              onClick={() => setEditing(item)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="移出投递队列？"
-            okText="移出"
-            cancelText="取消"
-            onConfirm={() => void remove(item)}
-          >
-            <Button
-              size="small"
-              danger
-              aria-label={`移出 ${item.job_title}`}
-              icon={<DeleteOutlined />}
-            />
-          </Popconfirm>
-        </Space>
+        <div
+          className="apply-queue-actions"
+          style={{ display: "flex", justifyContent: "flex-end", marginLeft: "auto" }}
+        >
+          <Space>
+            <Tooltip title="上移">
+              <Button
+                size="small"
+                aria-label={`上移 ${item.job_title}`}
+                icon={<ArrowUpOutlined />}
+                disabled={index === 0 || busy}
+                onClick={() => void move(index, -1)}
+              />
+            </Tooltip>
+            <Tooltip title="下移">
+              <Button
+                size="small"
+                aria-label={`下移 ${item.job_title}`}
+                icon={<ArrowDownOutlined />}
+                disabled={index === items.length - 1 || busy}
+                onClick={() => void move(index, 1)}
+              />
+            </Tooltip>
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: buildMenu([
+                  {
+                    key: "edit",
+                    label: "编辑",
+                    icon: <EditOutlined />,
+                    onClick: () => setEditing(item),
+                  },
+                  {
+                    key: "remove",
+                    label: "移出队列",
+                    danger: true,
+                    icon: <DeleteOutlined />,
+                    confirm: "移出投递队列？",
+                    onClick: () => void remove(item),
+                  },
+                ]),
+              }}
+            >
+              <Button
+                size="small"
+                aria-label={`更多操作 ${item.job_title}`}
+                icon={<MoreOutlined />}
+              />
+            </Dropdown>
+          </Space>
+        </div>
       ),
     },
   ];
@@ -344,7 +404,9 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
   const rowSelection: TableRowSelection<ApplyQueueItem> = {
     selectedRowKeys: selectedIds,
     onChange: (keys) => setSelectedIds(keys.map(Number)),
-    getCheckboxProps: (item) => ({ disabled: item.status !== "pending" || busy }),
+    getCheckboxProps: (item) => ({
+      disabled: item.status !== "pending" || item.job_id === null || busy,
+    }),
   };
 
   if (loading && !data) return <Skeleton active paragraph={{ rows: 5 }} />;
@@ -364,7 +426,7 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
           type="primary"
           icon={<PlayCircleOutlined />}
           loading={busy}
-          disabled={disabled || items.length === 0}
+          disabled={disabled || pendingItems.length === 0}
           onClick={() => void start()}
         >
           开始投递
@@ -382,6 +444,12 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
           pagination={false}
           rowSelection={rowSelection}
           scroll={{ x: "max-content" }}
+          onRow={(record) => ({
+            onContextMenu: (event) => {
+              event.preventDefault();
+              setContextMenu({ x: event.clientX, y: event.clientY, record });
+            },
+          })}
         />
       )}
 
@@ -394,6 +462,31 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
             setEditing(null);
           }}
         />
+      )}
+
+      {contextMenu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 1050 }}
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setContextMenu(null);
+            }}
+          />
+          <Menu
+            style={{
+              position: "fixed",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 1060,
+              minWidth: 150,
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
+            }}
+            items={contextMenuItems(contextMenu.record)}
+            onClick={() => setContextMenu(null)}
+          />
+        </>
       )}
     </div>
   );

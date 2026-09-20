@@ -24,21 +24,15 @@ const RESULT = {
   groups: [
     {
       type: "基础题",
-      questions: [
-        { question: "请自我介绍", purpose: "考察表达", answer_hint: "按 STAR 展开" },
-      ],
+      questions: [{ question: "请自我介绍", purpose: "考察表达", answer_hint: "按 STAR 展开" }],
     },
     {
       type: "项目深挖题",
-      questions: [
-        { question: "交易系统难点", purpose: "考察取舍", answer_hint: "说清个人边界" },
-      ],
+      questions: [{ question: "交易系统难点", purpose: "考察取舍", answer_hint: "说清个人边界" }],
     },
     {
       type: "反问HR题",
-      questions: [
-        { question: "团队如何协作", purpose: "了解团队", answer_hint: "问成长路径" },
-      ],
+      questions: [{ question: "团队如何协作", purpose: "了解团队", answer_hint: "问成长路径" }],
     },
   ],
 };
@@ -100,11 +94,7 @@ describe("QuestionBankPanel", () => {
     expect(apiMocks.generateQuestionBank).toHaveBeenCalledWith({ job_id: 1, resume_id: null });
 
     fireEvent.click(screen.getByRole("button", { name: /开始模拟面试/ }));
-    expect(onStartSession).toHaveBeenCalledWith([
-      "请自我介绍",
-      "交易系统难点",
-      "团队如何协作",
-    ]);
+    expect(onStartSession).toHaveBeenCalledWith(["请自我介绍", "交易系统难点", "团队如何协作"]);
   });
 
   it("接口报错时透出中文错误", async () => {

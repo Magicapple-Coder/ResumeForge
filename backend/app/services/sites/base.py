@@ -56,6 +56,9 @@ class CollectQuery:
     salary_min: int | None = None
     experience: str = ""
     education: str = ""
+    # 岗位类型标注（校招/实习/社招）；空串 = 不限。**不透传给站点查询**，
+    # 只随采集结果入库（与薪资/经验/学历"采集后本地筛选"口径一致）。
+    job_type: str = ""
     page: int = 1
 
 
@@ -106,6 +109,8 @@ class SiteAdapter(ABC):
     # 界面据此如实标注，避免用户对着一个不支持的能力反复尝试。默认两者都支持。
     supports_collect: bool = True
     supports_apply: bool = True
+    # 是否必须先生成/选择一份岗位版简历才能投递。纯在线沟通型站点可声明为 False。
+    requires_resume: bool = True
     # 这些采集条件**不映射到查询参数**，而是采集后按**接口返回的岗位字段**本地筛选
     # （见 ``services/apply/collect_filters.py``）。
     #

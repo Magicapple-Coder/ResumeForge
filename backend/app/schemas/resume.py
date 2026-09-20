@@ -18,6 +18,8 @@ MAX_RESUME_PAGES = 3
 ResumeFontScale = Literal["small", "standard", "large"]
 MIN_CUSTOM_INSTRUCTION_CHARS = 0
 MAX_CUSTOM_INSTRUCTION_CHARS = 2000
+# 简历备注的上限：列表默认可见（ellipsis + tooltip）、详情可编辑。
+MAX_RESUME_NOTE_CHARS = 2000
 
 
 class GenerateOptions(BaseModel):
@@ -142,6 +144,8 @@ class ResumeBrief(BaseModel):
     model: str
     enhancement_enabled: bool
     enhancement_level: Literal["light", "balanced", "strong"]
+    # 用户给这份简历写的备注（列表默认可见，详情可编辑）。
+    note: str = Field(default="", max_length=MAX_RESUME_NOTE_CHARS)
     # 生成/最近一次渲染时使用的版式参数，重新打开预览或导出时保持一致。
     template: str = "classic"
     format_name: str = ""
@@ -200,6 +204,13 @@ class ResumeTitleUpdate(BaseModel):
         if not cleaned:
             raise ValueError("简历名称不能为空")
         return cleaned
+
+
+class ResumeNoteUpdate(BaseModel):
+    """只更新简历备注，避免改备注时覆盖整份简历内容。"""
+
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=MAX_RESUME_NOTE_CHARS)
 
 
 class ResumeSuggestion(BaseModel):

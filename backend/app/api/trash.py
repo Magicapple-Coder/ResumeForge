@@ -12,7 +12,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas.trash import TrashEmptyOut, TrashItemOut, TrashSummaryOut
+from ..schemas.trash import (
+    TrashBatchRequest,
+    TrashEmptyOut,
+    TrashItemOut,
+    TrashPurgeBatchOut,
+    TrashRestoreBatchOut,
+    TrashSummaryOut,
+)
 from ..services import trash
 
 logger = logging.getLogger(__name__)
@@ -73,3 +80,15 @@ def empty_trash(
     if type:
         _require_spec(type)
     return TrashEmptyOut(removed=trash.empty(db, key=type))
+
+
+@router.post("/restore", response_model=TrashRestoreBatchOut)
+def restore_items(payload: TrashBatchRequest, db: Session = Depends(get_db)):
+    """批量恢复（安全，无需二次确认）。逐条反馈哪几条成功、哪几条没成。"""
+    return trash.restore_many(db, [item.model_dump() for item in payload.items])
+
+
+@router.post("/purge", response_model=TrashPurgeBatchOut)
+def purge_items(payload: TrashBatchRequest, db: Session = Depends(get_db)):
+    """批量**彻底删除**（不可恢复；二次确认由前端负责）。逐条反馈哪几条成功、哪几条没成。"""
+    return trash.purge_many(db, [item.model_dump() for item in payload.items])

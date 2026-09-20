@@ -16,8 +16,10 @@ from ..database import get_db
 from ..schemas.interview_history import (
     InterviewReviewRecordCreate,
     InterviewReviewRecordOut,
+    InterviewReviewRecordUpdate,
     QuestionBankRecordCreate,
     QuestionBankRecordOut,
+    QuestionBankRecordUpdate,
 )
 from ..services import interview_history
 
@@ -54,6 +56,17 @@ def remove_question_bank(record_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="题库历史不存在或已被删除")
 
 
+@router.patch("/question-banks/{record_id}", response_model=QuestionBankRecordOut)
+def update_question_bank_entry(
+    record_id: int, payload: QuestionBankRecordUpdate, db: Session = Depends(get_db)
+):
+    """局部更新题库历史（历史记录富还原：把新生成的参考答案写回同一条记录）。"""
+    record = interview_history.update_question_bank(db, record_id, payload)
+    if record is None:
+        raise HTTPException(status_code=404, detail="题库历史不存在或已被删除")
+    return record
+
+
 @router.get("/reviews", response_model=list[InterviewReviewRecordOut])
 def read_reviews(
     limit: int = Query(default=100, ge=1, le=200), db: Session = Depends(get_db)
@@ -79,4 +92,14 @@ def read_review(record_id: int, db: Session = Depends(get_db)):
 @router.delete("/reviews/{record_id}", status_code=204)
 def remove_review(record_id: int, db: Session = Depends(get_db)):
     if not interview_history.delete_review(db, record_id):
+        raise HTTPException(status_code=404, detail="复盘历史不存在或已被删除")
+
+
+@router.patch("/reviews/{record_id}", response_model=InterviewReviewRecordOut)
+def update_review_entry(
+    record_id: int, payload: InterviewReviewRecordUpdate, db: Session = Depends(get_db)
+):
+    """局部更新复盘历史（历史记录富还原：把新复盘/反向优化结果写回同一条记录）。"""
+    record = interview_history.update_review(db, record_id, payload)
+    if record is None:
         raise HTTPException(status_code=404, detail="复盘历史不存在或已被删除")

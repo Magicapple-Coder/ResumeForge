@@ -75,4 +75,17 @@ describe("AssistantComposer 引用追问", () => {
     renderComposer();
     expect(screen.queryByText(/引用/)).toBeNull();
   });
+
+  it("长引用时取消按钮仍渲染且可点击（不会被挤掉）", () => {
+    const longExcerpt =
+      "这是一段会占满整行的超长被引用回答内容，应当被截断而不是把取消按钮挤出可视区。".repeat(30);
+    const quoted: AssistantQuotedMessage = { id: 9, role: "assistant", excerpt: longExcerpt };
+    const { props } = renderComposer({ quoted });
+
+    // 超长引用下，引用文字被截断（不再整段铺满），但「取消引用」按钮始终在 DOM 里可点。
+    const closeButton = screen.getByRole("button", { name: "取消引用" });
+    expect(closeButton).toBeInTheDocument();
+    fireEvent.click(closeButton);
+    expect(props.onClearQuote).toHaveBeenCalledTimes(1);
+  });
 });

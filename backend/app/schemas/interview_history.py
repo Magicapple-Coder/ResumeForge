@@ -48,6 +48,20 @@ class QuestionBankRecordOut(BaseModel):
     updated_at: datetime
 
 
+class QuestionBankRecordUpdate(BaseModel):
+    """局部更新题库历史（历史记录富还原：把新生成的参考答案写回同一条记录）。
+
+    只接受需要回写的字段；未提供的字段保持原值。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[QuestionBankGroup] | None = Field(default=None, max_length=len(QUESTION_BANK_TYPES))
+    job_title: str | None = Field(default=None, max_length=MAX_BANK_TITLE_CHARS)
+    company: str | None = Field(default=None, max_length=MAX_BANK_TITLE_CHARS)
+    resume_title: str | None = Field(default=None, max_length=MAX_RESUME_TITLE_CHARS)
+
+
 class InterviewReviewRecordCreate(BaseModel):
     """保存一次面试复盘：真实问题清单 + 答题思路 + 反向优化建议。"""
 
@@ -83,9 +97,26 @@ class InterviewReviewRecordOut(BaseModel):
     updated_at: datetime
 
 
+class InterviewReviewRecordUpdate(BaseModel):
+    """局部更新复盘历史（历史记录富还原：把新复盘/反向优化结果写回同一条记录）。
+
+    只接受需要回写的字段；未提供的字段保持原值。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    questions: list[str] | None = Field(default=None, max_length=MAX_REVIEW_QUESTIONS)
+    analysis: dict | None = Field(default=None)
+    suggestions: list[dict] | None = Field(default=None, max_length=MAX_REVIEW_SUGGESTIONS)
+    job_title: str | None = Field(default=None, max_length=MAX_BANK_TITLE_CHARS)
+    company: str | None = Field(default=None, max_length=MAX_BANK_TITLE_CHARS)
+    resume_title: str | None = Field(default=None, max_length=MAX_RESUME_TITLE_CHARS)
+
+
 __all__ = [
     "InterviewReviewRecordCreate",
     "InterviewReviewRecordOut",
+    "InterviewReviewRecordUpdate",
     "MAX_BANK_MODEL_CHARS",
     "MAX_BANK_TITLE_CHARS",
     "MAX_QUESTION_TEXT_CHARS",
@@ -94,4 +125,6 @@ __all__ = [
     "MAX_REVIEW_SUGGESTIONS",
     "QuestionBankRecordCreate",
     "QuestionBankRecordOut",
+    "QuestionBankRecordUpdate",
+    "InterviewReviewRecordUpdate",
 ]

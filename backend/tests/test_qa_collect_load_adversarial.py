@@ -388,6 +388,25 @@ def test_document_that_never_becomes_fresh_fails_instead_of_returning_old_result
     assert client.collect_calls == 0  # 没有把旧页内容当新页采回去
 
 
+def test_a_different_redirected_search_is_not_accepted_just_because_url_changed():
+    """首次导航也必须核对目标查询参数，不能把任意跳转后的搜索页当成本次筛选结果。"""
+    adapter = _adapter(timeout=0.02, poll=0.001)
+    target = adapter.build_search_url(QUERY, 1)
+    wrong = target.replace("query=%E5%90%8E%E7%AB%AF", "query=Java")
+    client = ScriptedReadyClient(
+        readiness=[
+            {"url": wrong, "matched": 6, "ready_state": "complete", "explicitly_empty": False}
+        ],
+        previous_url="about:blank",
+        collect_payload=json.dumps({"items": [{"title": "错误筛选结果"}]}),
+    )
+
+    with pytest.raises(SiteFailure, match="页面没有切换到目标地址"):
+        adapter.collect_search(client, QUERY, page=1)
+
+    assert client.collect_calls == 0
+
+
 def test_empty_keywords_and_city_do_not_crash():
     """空关键词 / 空城市：不炸、给出可理解的结果（能构造 URL 并正常走完流程）。"""
     adapter = _adapter()

@@ -29,10 +29,7 @@ interface Props {
 }
 
 export default function ResumeRiskPanel({ resumeId }: Props) {
-  const { data, loading, error, reload } = useApi(
-    () => scanResumeRisks(resumeId),
-    [resumeId],
-  );
+  const { data, loading, error, reload } = useApi(() => scanResumeRisks(resumeId), [resumeId]);
 
   const grouped = useMemo(() => {
     const map = new Map<RiskCategory, RiskPoint[]>();
@@ -103,7 +100,10 @@ export default function ResumeRiskPanel({ resumeId }: Props) {
 function RiskPointItem({ point }: { point: RiskPoint }) {
   const severity = SEVERITY[point.severity] ?? SEVERITY.medium;
   return (
-    <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 8 }} data-risk-category={point.category}>
+    <div
+      style={{ borderTop: "1px solid #f0f0f0", paddingTop: 8 }}
+      data-risk-category={point.category}
+    >
       <Space size="small" wrap>
         <Tag color={severity.color}>{severity.label}</Tag>
         {point.location && <Typography.Text type="secondary">{point.location}</Typography.Text>}

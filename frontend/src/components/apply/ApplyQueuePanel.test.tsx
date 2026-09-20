@@ -6,7 +6,7 @@
  * 不能因为 `admission` 为空就一律显示「未分析」而吞掉这个准入要求。
  */
 import { App as AntdApp } from "antd";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApplyQueueItem } from "../../types";
 import ApplyQueuePanel from "./ApplyQueuePanel";
@@ -107,5 +107,57 @@ describe("ApplyQueuePanel 准入徽标", () => {
 
     expect(await screen.findByText("需确认")).toBeInTheDocument();
     expect(screen.getByText("需逐条确认")).toBeInTheDocument();
+  });
+
+  it("队列里没有待投条目时禁用开始投递", async () => {
+    apiMocks.listQueue.mockResolvedValue([
+      { ...BASE_ITEM, status: "done" },
+      { ...BASE_ITEM, id: 2, job_id: null, job_title: "已删除岗位" },
+    ]);
+
+    render(
+      <AntdApp>
+        <ApplyQueuePanel disabled={false} onStarted={vi.fn()} />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByRole("button", { name: /开始投递/ })).toBeDisabled();
+  });
+});
+
+describe("ApplyQueuePanel 右键菜单与操作按钮位置", () => {
+  it("右键点击行弹出与「···」一致的菜单（编辑 / 移出队列）", async () => {
+    apiMocks.listQueue.mockResolvedValue([{ ...BASE_ITEM }]);
+
+    render(
+      <AntdApp>
+        <ApplyQueuePanel disabled={false} onStarted={vi.fn()} />
+      </AntdApp>,
+    );
+
+    const titleCell = await screen.findByText("后端开发");
+    const row = titleCell.closest("tr");
+    expect(row).not.toBeNull();
+
+    fireEvent.contextMenu(row as HTMLElement);
+
+    // 右键菜单出现编辑 / 移出队列。
+    expect(await screen.findByText("编辑")).toBeInTheDocument();
+    expect(screen.getByText("移出队列")).toBeInTheDocument();
+  });
+
+  it("操作按钮容器位于最右（flex + justifyContent: flex-end）", async () => {
+    apiMocks.listQueue.mockResolvedValue([{ ...BASE_ITEM }]);
+
+    render(
+      <AntdApp>
+        <ApplyQueuePanel disabled={false} onStarted={vi.fn()} />
+      </AntdApp>,
+    );
+
+    await screen.findByText("后端开发");
+    const actions = document.querySelector(".apply-queue-actions");
+    expect(actions).not.toBeNull();
+    expect(actions).toHaveStyle({ display: "flex", justifyContent: "flex-end" });
   });
 });

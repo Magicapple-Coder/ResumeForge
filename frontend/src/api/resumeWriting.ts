@@ -11,21 +11,33 @@ import type {
 } from "../types/resumeWriting";
 import { request } from "./client";
 
-export function rewriteStar(id: number, text: string, claimId?: number): Promise<StarRewriteResult> {
+export function rewriteStar(
+  id: number,
+  text: string,
+  claimId?: number,
+): Promise<StarRewriteResult> {
   return request(`/resumes/${id}/writing/star`, {
     method: "POST",
     body: JSON.stringify({ text, claim_id: claimId }),
   });
 }
 
-export function generatePhrases(id: number, text: string, modes: PhraseMode[]): Promise<PhrasesResult> {
+export function generatePhrases(
+  id: number,
+  text: string,
+  modes: PhraseMode[],
+): Promise<PhrasesResult> {
   return request(`/resumes/${id}/writing/phrases`, {
     method: "POST",
     body: JSON.stringify({ text, modes }),
   });
 }
 
-export function polishResumeText(id: number, text: string, style: PolishStyle): Promise<PolishResult> {
+export function polishResumeText(
+  id: number,
+  text: string,
+  style: PolishStyle,
+): Promise<PolishResult> {
   return request(`/resumes/${id}/writing/polish`, {
     method: "POST",
     body: JSON.stringify({ text, style }),

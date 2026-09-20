@@ -105,6 +105,10 @@ export interface InterviewQuestionItem {
   question: string;
   purpose: string;
   answer_hint: string;
+  /** 已生成的参考答案（历史记录富还原：打开历史题库时若已存在则直接展示，不必重新生成）。 */
+  answer?: string | null;
+  key_points?: string[] | null;
+  sample_phrasing?: string | null;
 }
 
 export interface QuestionBankGroup {

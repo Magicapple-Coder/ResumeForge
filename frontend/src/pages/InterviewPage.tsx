@@ -47,12 +47,15 @@ import { listResumes } from "../api/resumes";
 import InterviewExperiencePanel from "../components/InterviewExperiencePanel";
 import InterviewReviewPanel from "../components/InterviewReviewPanel";
 import QuestionBankPanel from "../components/QuestionBankPanel";
+import { RowActions } from "../components/common/RowActions";
 import type {
   InterviewBrief,
   InterviewDetail,
   InterviewDifficulty,
+  InterviewReviewRecord,
   InterviewType,
   InterviewerStyle,
+  QuestionBankRecord,
 } from "../types";
 import {
   INTERVIEW_DIFFICULTIES,
@@ -170,6 +173,9 @@ export default function InterviewPage() {
   const [activeTab, setActiveTab] = useState("session");
   const [form] = Form.useForm<SetupForm>();
   const endRef = useRef<HTMLDivElement>(null);
+  // 历史记录富还原：从「历史题库 / 历史复盘」打开某条记录后，把它传给面板用相同渲染路径展示。
+  const [bankRecord, setBankRecord] = useState<QuestionBankRecord | null>(null);
+  const [reviewRecord, setReviewRecord] = useState<InterviewReviewRecord | null>(null);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -349,132 +355,147 @@ export default function InterviewPage() {
               children: (
                 <div className="interview-setup">
                   <Card size="small" className="settings-card">
-            <Typography.Title level={5} style={{ marginTop: 0 }}>
-              面试官设定
-            </Typography.Title>
-            <Form
-              form={form}
-              layout="vertical"
-              initialValues={{
-                interviewType: "技术面",
-                difficulty: "中级",
-                interviewerStyle: "严谨专业",
-                rounds: 6,
-                focus: "",
-                persona: "",
-              }}
-              onFinish={(values) => void start(values)}
-            >
-              <div className="interview-setup-grid">
-                <Form.Item label="关联岗位（选填）" name="jobId">
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="选中后按该岗位的 JD 提问"
-                    options={jobOptions}
-                  />
-                </Form.Item>
-                <Form.Item label="面试类型" name="interviewType">
-                  <Select options={INTERVIEW_TYPES.map((value) => ({ value, label: value }))} />
-                </Form.Item>
-                <Form.Item label="难度" name="difficulty">
-                  <Select
-                    options={INTERVIEW_DIFFICULTIES.map((value) => ({ value, label: value }))}
-                  />
-                </Form.Item>
-                <Form.Item label="面试官风格" name="interviewerStyle">
-                  <Select options={INTERVIEWER_STYLES.map((value) => ({ value, label: value }))} />
-                </Form.Item>
-                <Form.Item
-                  label="轮数"
-                  name="rounds"
-                  extra={`${MIN_INTERVIEW_ROUNDS}-${MAX_INTERVIEW_ROUNDS} 轮`}
-                >
-                  <InputNumber
-                    min={MIN_INTERVIEW_ROUNDS}
-                    max={MAX_INTERVIEW_ROUNDS}
-                    style={{ width: "100%" }}
-                  />
-                </Form.Item>
-                <Form.Item
-                  label="考察重点（选填）"
-                  name="focus"
-                  extra="例如：Go 并发、分布式、项目取舍"
-                >
-                  <Input maxLength={255} placeholder="留空则按面试类型通用考察" />
-                </Form.Item>
-              </div>
-              <Form.Item
-                label="自定义面试官人设（选填）"
-                name="persona"
-                extra="例如：某大厂后端团队负责人，喜欢追问性能指标与故障处理细节。优先级高于上面的默认风格。"
-              >
-                <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} />
-              </Form.Item>
-              <Space wrap>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  icon={<PlayCircleOutlined />}
-                  loading={starting}
-                >
-                  开始面试
-                </Button>
-                <Typography.Text type="secondary">{CONFIDENCE_TIP}</Typography.Text>
-              </Space>
-            </Form>
-          </Card>
-
-          <Card size="small" className="settings-card" title="历史面试" style={{ marginTop: 16 }}>
-            {loadingList ? (
-              <Spin />
-            ) : sessions.length === 0 ? (
-              <Empty description="还没有做过模拟面试" />
-            ) : (
-              <List
-                size="small"
-                dataSource={sessions}
-                renderItem={(item) => (
-                  <List.Item
-                    actions={[
-                      <Button
-                        key="open"
-                        type="link"
-                        size="small"
-                        onClick={() => void openSession(item.id)}
+                    <Typography.Title level={5} style={{ marginTop: 0 }}>
+                      面试官设定
+                    </Typography.Title>
+                    <Form
+                      form={form}
+                      layout="vertical"
+                      initialValues={{
+                        interviewType: "技术面",
+                        difficulty: "中级",
+                        interviewerStyle: "严谨专业",
+                        rounds: 6,
+                        focus: "",
+                        persona: "",
+                      }}
+                      onFinish={(values) => void start(values)}
+                    >
+                      <div className="interview-setup-grid">
+                        <Form.Item label="关联岗位（选填）" name="jobId">
+                          <Select
+                            allowClear
+                            showSearch
+                            optionFilterProp="label"
+                            placeholder="选中后按该岗位的 JD 提问"
+                            options={jobOptions}
+                          />
+                        </Form.Item>
+                        <Form.Item label="面试类型" name="interviewType">
+                          <Select
+                            options={INTERVIEW_TYPES.map((value) => ({ value, label: value }))}
+                          />
+                        </Form.Item>
+                        <Form.Item label="难度" name="difficulty">
+                          <Select
+                            options={INTERVIEW_DIFFICULTIES.map((value) => ({
+                              value,
+                              label: value,
+                            }))}
+                          />
+                        </Form.Item>
+                        <Form.Item label="面试官风格" name="interviewerStyle">
+                          <Select
+                            options={INTERVIEWER_STYLES.map((value) => ({ value, label: value }))}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          label="轮数"
+                          name="rounds"
+                          extra={`${MIN_INTERVIEW_ROUNDS}-${MAX_INTERVIEW_ROUNDS} 轮`}
+                        >
+                          <InputNumber
+                            min={MIN_INTERVIEW_ROUNDS}
+                            max={MAX_INTERVIEW_ROUNDS}
+                            style={{ width: "100%" }}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          label="考察重点（选填）"
+                          name="focus"
+                          extra="例如：Go 并发、分布式、项目取舍"
+                        >
+                          <Input maxLength={255} placeholder="留空则按面试类型通用考察" />
+                        </Form.Item>
+                      </div>
+                      <Form.Item
+                        label="自定义面试官人设（选填）"
+                        name="persona"
+                        extra="例如：某大厂后端团队负责人，喜欢追问性能指标与故障处理细节。优先级高于上面的默认风格。"
                       >
-                        {item.status === "active" ? "继续" : "看报告"}
-                      </Button>,
-                      <Button
-                        key="delete"
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        aria-label={`删除面试 ${item.title}`}
-                        onClick={() => void remove(item)}
-                      />,
-                    ]}
+                        <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} />
+                      </Form.Item>
+                      <Space wrap>
+                        <Button
+                          type="primary"
+                          htmlType="submit"
+                          icon={<PlayCircleOutlined />}
+                          loading={starting}
+                        >
+                          开始面试
+                        </Button>
+                        <Typography.Text type="secondary">{CONFIDENCE_TIP}</Typography.Text>
+                      </Space>
+                    </Form>
+                  </Card>
+
+                  <Card
+                    size="small"
+                    className="settings-card"
+                    title="历史面试"
+                    style={{ marginTop: 16 }}
                   >
-                    <List.Item.Meta
-                      title={
-                        <Space size={6} wrap>
-                          <span>{item.title}</span>
-                          <Tag color={item.status === "active" ? "blue" : "default"}>
-                            {item.status === "active" ? "进行中" : "已结束"}
-                          </Tag>
-                          <Tag>{item.interview_type}</Tag>
-                          <Tag>{item.difficulty}</Tag>
-                        </Space>
-                      }
-                      description={`第 ${item.answered_rounds}/${item.rounds} 轮 · ${formatDateTime(item.created_at)}`}
-                    />
-                  </List.Item>
-                )}
-              />
-            )}
-          </Card>
+                    {loadingList ? (
+                      <Spin />
+                    ) : sessions.length === 0 ? (
+                      <Empty description="还没有做过模拟面试" />
+                    ) : (
+                      <List
+                        size="small"
+                        dataSource={sessions}
+                        renderItem={(item) => (
+                          <List.Item
+                            actions={[
+                              <RowActions
+                                key="actions"
+                                primary={[
+                                  {
+                                    key: "open",
+                                    label: item.status === "active" ? "继续" : "看报告",
+                                    onClick: () => void openSession(item.id),
+                                  },
+                                ]}
+                                more={[
+                                  {
+                                    key: "delete",
+                                    label: "删除这场面试",
+                                    danger: true,
+                                    icon: <DeleteOutlined />,
+                                    confirm: "删除这场面试？删除后可在回收站找回。",
+                                    onClick: () => void remove(item),
+                                  },
+                                ]}
+                              />,
+                            ]}
+                          >
+                            <List.Item.Meta
+                              title={
+                                <Space size={6} wrap>
+                                  <span>{item.title}</span>
+                                  <Tag color={item.status === "active" ? "blue" : "default"}>
+                                    {item.status === "active" ? "进行中" : "已结束"}
+                                  </Tag>
+                                  <Tag>{item.interview_type}</Tag>
+                                  <Tag>{item.difficulty}</Tag>
+                                </Space>
+                              }
+                              description={`第 ${item.answered_rounds}/${item.rounds} 轮 · ${formatDateTime(item.created_at)}`}
+                            />
+                          </List.Item>
+                        )}
+                      />
+                    )}
+                  </Card>
                 </div>
               ),
             },
@@ -486,6 +507,9 @@ export default function InterviewPage() {
                   jobOptions={jobOptions}
                   resumeOptions={resumeOptions}
                   onStartSession={startFromBank}
+                  record={bankRecord}
+                  onOpenRecord={setBankRecord}
+                  onCloseRecord={() => setBankRecord(null)}
                 />
               ),
             },
@@ -502,6 +526,9 @@ export default function InterviewPage() {
                   jobOptions={jobOptions}
                   resumeOptions={resumeOptions}
                   onGoToResume={() => navigate("/resumes")}
+                  record={reviewRecord}
+                  onOpenRecord={setReviewRecord}
+                  onCloseRecord={() => setReviewRecord(null)}
                 />
               ),
             },

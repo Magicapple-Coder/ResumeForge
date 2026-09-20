@@ -115,6 +115,62 @@
   color: rgba(0, 0, 0, 0.65);
 }
 
+/* 匹配度参考分：放在五类结论之后作补充，所以视觉上也比上面的结论区轻一档。 */
+.job-match-score {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rf-border, #f0f0f0);
+}
+
+.job-match-score-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.job-match-score-disclaimer {
+  margin: 0;
+  font-size: 12px;
+}
+
+.job-match-score-dimensions {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.job-match-score-dimensions > li + li {
+  margin-top: 8px;
+}
+
+/* 一行三项：维度名**定宽**（对齐后条形起点一致，长度才可比），条形自适应，分值定宽右对齐
+   ——数字不随条形长短跳动。
+   定宽取 104px：后端下发的五个维度里最长的是「JD 关键词覆盖」（约 95px），给足余量并
+   `nowrap`，否则它会折成两行、那一行的条形起点就跟其它行对不齐了。 */
+.job-match-score-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.job-match-score-label {
+  flex: 0 0 104px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.job-match-score-line .ant-progress {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.job-match-score-value {
+  flex: 0 0 32px;
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ===== 采集闭环：流程说明 / 本次采集结果 / 采集记录 ===== */
 
 /* 采集之后还有两步才轮到投递——这段说明是用户明确反馈"不知道下一步做什么"的回应，

@@ -108,6 +108,40 @@ def import_dataset(archive_path: Path, name: str, bind: Engine, staging_dir: Pat
     return _describe(dataset_id, target)
 
 
+def create_dataset(name: str, bind: Engine) -> dict[str, Any]:
+    """新建一份**空数据集**：全新 SQLite 文件 + 迁移到当前 head + 写元信息。
+
+    空库直接跑迁移（``0001`` → head），不必先 ``create_all``：create_all + stamp + upgrade
+    会把 ``0002`` 起的加索引/加列动作在已经建好的表上重复执行一遍而失败。
+    """
+    cleaned = name.strip()
+    if not cleaned:
+        raise DatasetError("名称不能为空")
+    if len(cleaned) > 64:
+        raise DatasetError("名称过长（最多 64 个字符）")
+
+    dataset_id = new_dataset_id()
+    target = dataset_database_file(dataset_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    new_engine = database.build_engine(database.database_url_for(target))
+    try:
+        run_database_migrations(new_engine)
+    finally:
+        new_engine.dispose()
+
+    write_metadata(
+        dataset_id,
+        {
+            "name": cleaned,
+            "source": "新建",
+            "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+    )
+    logger.info("已新建空数据集 id=%s name=%s", dataset_id, cleaned)
+    return _describe(dataset_id, target)
+
+
 def _wait_for_idle(bind: Engine) -> None:
     """等正在进行的请求把手里的连接还回池子。
 

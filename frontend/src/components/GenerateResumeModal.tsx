@@ -1,5 +1,5 @@
 /** AI 生成简历弹窗：配置岗位导向美化/篇幅 -> 流式生成 -> 预览结果（自动保存历史）。 */
-import { BulbOutlined, EditOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import {
   Alert,
   App,
@@ -10,7 +10,6 @@ import {
   Space,
   Steps,
   Switch,
-  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -32,19 +31,19 @@ import type {
   EnhancementLevel,
   Job,
   ResumeContent,
+  ResumeDetail,
   ResumeGenerateTask,
   ResumeLayout,
 } from "../types";
-import ExportButtons from "./ExportButtons";
-import ResumeEditorModal from "./ResumeEditorModal";
+import type { LayoutMeasure } from "../utils/resumeLayoutMeasure";
+import ResumeDetailPreview from "./resume/ResumeDetailPreview";
+import ResumeLayoutControls from "./ResumeLayoutControls";
+import type { ResumePreviewHandle } from "./ResumePreview";
 import {
   RESUME_GENERATION_STAGES,
   stageForProgressMessage,
   stageIndexOf,
 } from "./resumeGenerationStages";
-import ResumeLayoutControls from "./ResumeLayoutControls";
-import ResumePreview, { type ResumePreviewHandle } from "./ResumePreview";
-import ResumeSuggestionsModal from "./ResumeSuggestionsModal";
 
 /** 自定义提示词上限，与后端 GenerateOptions.custom_instruction 一致。 */
 const MAX_CUSTOM_INSTRUCTION = 2000;
@@ -60,10 +59,9 @@ interface Props {
   onClose: () => void;
 }
 
+/** 生成完成的简历记录：直接持有完整 detail，预览阶段与简历中心共享同一套界面（B3）。 */
 interface GenerateResult {
-  resume: ResumeContent;
-  warnings: string[];
-  recordId: number | null;
+  detail: ResumeDetail;
 }
 
 export default function GenerateResumeModal({ job, open, initialTitle = "", onClose }: Props) {
@@ -87,6 +85,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     scale: number;
     overflow: boolean;
   } | null>(null);
+  const [measure, setMeasure] = useState<LayoutMeasure | null>(null);
   const [pdfDirectAvailable, setPdfDirectAvailable] = useState(true);
   const [relayouting, setRelayouting] = useState(false);
   const [modelName, setModelName] = useState("");
@@ -97,9 +96,6 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   const [errorMsg, setErrorMsg] = useState("");
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [previewHtml, setPreviewHtml] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTarget, setEditorTarget] = useState<string | null>(null);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false);
   const [suggestionsResetKey, setSuggestionsResetKey] = useState(0);
 
@@ -176,12 +172,10 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     setErrorMsg("");
     setResult(null);
     setPreviewHtml("");
-    setEditorOpen(false);
-    setEditorTarget(null);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
-    setSuggestionsOpen(false);
     setLayoutStatus(null);
+    setMeasure(null);
     setCustomInstruction("");
   }, [initialTitle]);
 
@@ -189,7 +183,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     try {
       const detail = await getResume(resumeId);
       const html = await renderResume(detail.content, generationLayoutRef.current);
-      setResult({ resume: detail.content, warnings: detail.warnings, recordId: resumeId });
+      setResult({ detail });
       setPreviewHtml(html);
       setStage("preview");
     } catch (err) {
@@ -206,8 +200,6 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     setTask(null);
     setErrorMsg("");
     setResult(null);
-    setEditorOpen(false);
-    setEditorTarget(null);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
     try {
@@ -309,12 +301,13 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   };
 
   const saveEditedResume = async (content: ResumeContent) => {
-    if (!result?.recordId) {
+    const recordId = result?.detail.id;
+    if (!recordId) {
       throw new Error("简历记录尚未保存完成，请稍后再试");
     }
-    const updated = await updateResume(result.recordId, content);
+    const updated = await updateResume(recordId, content);
     const html = await renderResume(updated.content, layout);
-    setResult({ resume: updated.content, warnings: updated.warnings, recordId: updated.id });
+    setResult({ detail: updated });
     setPreviewHtml(html);
     setSuggestionsGenerated(false);
     setSuggestionsResetKey((value) => value + 1);
@@ -328,15 +321,31 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
    */
   const applyLayout = async (next: ResumeLayout) => {
     setLayout(next);
-    const resume = result?.resume;
-    if (!resume || relayouting) return;
+    const detail = result?.detail;
+    if (!detail || relayouting) return;
     setRelayouting(true);
     try {
-      const html = await renderResume(resume, next);
+      const html = await renderResume(detail.content, next);
       setPreviewHtml(html);
-      if (result?.recordId) {
-        await updateResumeLayout(result.recordId, next);
+      if (result?.detail.id) {
+        await updateResumeLayout(result.detail.id, next);
       }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "按新版式渲染失败");
+    } finally {
+      setRelayouting(false);
+    }
+  };
+
+  /** 「自动一页」已由诊断卡写回配置，这里只需按新配置重渲染一次。 */
+  const applyFittedFormat = async (formatConfig: Record<string, number | string>) => {
+    const detail = result?.detail;
+    if (!detail) return;
+    const next: ResumeLayout = { ...layout, format_config: formatConfig };
+    setLayout(next);
+    setRelayouting(true);
+    try {
+      setPreviewHtml(await renderResume(detail.content, next));
     } catch (err) {
       message.error(err instanceof Error ? err.message : "按新版式渲染失败");
     } finally {
@@ -489,95 +498,25 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
       )}
 
       {stage === "preview" && result && (
-        <div>
-          <div className="generate-layout-bar">
-            <ResumeLayoutControls
-              compact
-              layout={layout}
-              resumeId={result.recordId ?? undefined}
-              disabled={relayouting}
-              previewRef={previewRef}
-              onChange={(next) => void applyLayout(next)}
-            />
-            {relayouting && <Typography.Text type="secondary">正在按新版式渲染…</Typography.Text>}
-          </div>
-          {layoutStatus?.overflow && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message={`内容超出了 ${layout.page_limit} 页：已经整体缩小，字会偏小`}
-              action={
-                <Space>
-                  {layout.page_limit < 3 && (
-                    <Button
-                      size="small"
-                      disabled={relayouting}
-                      onClick={() =>
-                        void applyLayout({ ...layout, page_limit: layout.page_limit + 1 })
-                      }
-                    >
-                      增加到 {layout.page_limit + 1} 页
-                    </Button>
-                  )}
-                  {layout.font_scale !== "small" && (
-                    <Button
-                      size="small"
-                      disabled={relayouting}
-                      onClick={() => void applyLayout({ ...layout, font_scale: "small" })}
-                    >
-                      改为小字号
-                    </Button>
-                  )}
-                </Space>
-              }
-            />
-          )}
-          <ResumePreview
-            ref={previewRef}
-            html={previewHtml}
-            pages={layout.page_limit}
-            warnings={result.warnings}
-            onLayoutStatus={setLayoutStatus}
-            onEditTarget={(path) => {
-              if (!result.recordId) return;
-              setEditorTarget(path);
-              setEditorOpen(true);
-            }}
-          />
-          {/* 按钮组用 flex + wrap：窄屏或按钮多时换行，而不是把「完成」挤出弹窗
-              （截图反馈：右侧按钮整体溢出到弹窗外面）。 */}
-          <div className="generate-preview-footer">
+        <ResumeDetailPreview
+          detail={result.detail}
+          html={previewHtml}
+          layout={layout}
+          layoutStatus={layoutStatus}
+          measure={measure}
+          pdfDirectAvailable={pdfDirectAvailable}
+          relayouting={relayouting}
+          previewRef={previewRef}
+          onLayoutStatus={setLayoutStatus}
+          onMeasure={setMeasure}
+          onApplyLayout={(next) => void applyLayout(next)}
+          onApplyFittedFormat={(formatConfig) => void applyFittedFormat(formatConfig)}
+          onSaveEditedResume={(content) => saveEditedResume(content)}
+          suggestionsGenerated={suggestionsGenerated}
+          suggestionsResetKey={suggestionsResetKey}
+          onSuggestionsGenerated={() => setSuggestionsGenerated(true)}
+          extraActions={
             <Space wrap>
-              {result.recordId ? (
-                <ExportButtons recordId={result.recordId} pdfDirectAvailable={pdfDirectAvailable} />
-              ) : (
-                <Tag color="orange">记录保存中…</Tag>
-              )}
-            </Space>
-            <Space wrap>
-              <Button
-                icon={<EditOutlined />}
-                disabled={!result.recordId}
-                onClick={() => {
-                  setEditorTarget(null);
-                  setEditorOpen(true);
-                }}
-              >
-                微调内容
-              </Button>
-              {job && (
-                <>
-                  <Button
-                    icon={<BulbOutlined />}
-                    disabled={!result.recordId}
-                    onClick={() => setSuggestionsOpen(true)}
-                  >
-                    {suggestionsGenerated ? "查看岗位优化建议" : "生成岗位优化建议"}
-                  </Button>
-                  <Button onClick={() => navigate(`/jobs?job_id=${job.id}`)}>查看对应岗位</Button>
-                </>
-              )}
               <Button onClick={() => navigate("/resumes")}>去简历中心</Button>
               <Button icon={<ReloadOutlined />} onClick={() => void startGenerate()}>
                 重新生成
@@ -586,27 +525,9 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
                 完成
               </Button>
             </Space>
-          </div>
-        </div>
+          }
+        />
       )}
-
-      <ResumeEditorModal
-        open={editorOpen}
-        content={result?.resume ?? null}
-        initialTarget={editorTarget}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditorTarget(null);
-        }}
-        onSave={saveEditedResume}
-      />
-      <ResumeSuggestionsModal
-        open={suggestionsOpen}
-        recordId={result?.recordId ?? null}
-        resetKey={suggestionsResetKey}
-        onClose={() => setSuggestionsOpen(false)}
-        onGenerated={() => setSuggestionsGenerated(true)}
-      />
 
       {stage === "error" && (
         <div style={{ textAlign: "center", padding: "24px 0" }}>

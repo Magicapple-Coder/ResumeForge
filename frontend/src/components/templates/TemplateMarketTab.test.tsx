@@ -103,8 +103,9 @@ describe("TemplateMarketTab", () => {
     expect(screen.getByText("国企")).toBeInTheDocument();
     expect(screen.getByText("外企")).toBeInTheDocument();
     expect(screen.getByText("应届生")).toBeInTheDocument();
-    // 每套都带「使用此模板」按钮。
-    expect(screen.getAllByRole("button", { name: "使用此模板" })).toHaveLength(4);
+    // 每套都带「这套怎么选」按钮——**刻意不叫「使用此模板」**：点它只给建议、不套用配置，
+    // 按钮文案说成"使用"就是在骗人。
+    expect(screen.getAllByRole("button", { name: "这套怎么选" })).toHaveLength(4);
   });
 
   it("点预览用预设参数渲染并打开预览弹窗", async () => {
@@ -126,14 +127,16 @@ describe("TemplateMarketTab", () => {
     expect(await screen.findByText("模板市场 · 互联网")).toBeInTheDocument();
   });
 
-  it("点使用此模板提示推荐组合", async () => {
+  it("点「这套怎么选」只说建议组合，不说已经套用", async () => {
     renderTab();
     await screen.findByText("互联网");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "使用此模板" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "这套怎么选" })[0]);
 
     expect(
-      await screen.findByText(/已选用「互联网」模板组合：现代 样式 \+ 紧凑 版式 \+ 标准字号 字号/),
+      await screen.findByText(/「互联网」的建议组合：现代 样式 \+ 紧凑 版式 \+ 标准字号 字号/),
     ).toBeInTheDocument();
+    // 提示里必须给出"到哪儿去选"，否则用户听完仍不知道下一步做什么。
+    expect(screen.getByText(/用「样式」和「版式」按这个组合选一下即可/)).toBeInTheDocument();
   });
 });

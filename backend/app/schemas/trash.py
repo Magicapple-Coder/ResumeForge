@@ -35,3 +35,42 @@ class TrashEmptyOut(BaseModel):
     """
 
     removed: int = 0
+
+
+# 一次批量操作的上限：回收站不是归档区，批量也应有限度。
+MAX_TRASH_BATCH = 500
+
+
+class TrashBatchItemIn(BaseModel):
+    """批量操作里的一条（``type_key`` = 类型 key，``id`` = 该类型下的记录主键）。"""
+
+    type_key: str
+    id: int = Field(ge=1)
+
+
+class TrashBatchRequest(BaseModel):
+    """批量恢复 / 批量彻底删除的请求体。"""
+
+    items: list[TrashBatchItemIn] = Field(min_length=1, max_length=MAX_TRASH_BATCH)
+
+
+class TrashBatchResultItem(BaseModel):
+    """逐条结果：哪一条成了、哪一条没成（用户需要知道是**哪几条**）。"""
+
+    type_key: str
+    id: int
+    ok: bool
+
+
+class TrashRestoreBatchOut(BaseModel):
+    """批量恢复的结果（恢复是安全的，无需二次确认）。"""
+
+    restored: int = 0
+    results: list[TrashBatchResultItem] = Field(default_factory=list)
+
+
+class TrashPurgeBatchOut(BaseModel):
+    """批量彻底删除的结果（不可恢复；二次确认由前端负责）。"""
+
+    purged: int = 0
+    results: list[TrashBatchResultItem] = Field(default_factory=list)

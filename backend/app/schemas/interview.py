@@ -143,6 +143,10 @@ def _validate_choice(value: str, allowed: tuple[str, ...], label: str) -> str:
 # 反问 HR 题（候选人反向了解公司与岗位）。三类即时生成、不落库。
 QUESTION_BANK_TYPES = ("基础题", "项目深挖题", "反问HR题")
 
+# 参考答案（单题）字段的长度上限，复用于题库历史里持久化的参考答案。
+MAX_QUESTION_ANSWER_CHARS = 10_000
+MAX_SAMPLE_PHRASING_CHARS = 5_000
+
 MAX_QUESTION_BANK_PER_TYPE = 8
 MAX_ANALYSIS_QUESTION_CHARS = 2000
 MAX_ANALYSIS_CONTEXT_CHARS = 20_000
@@ -150,11 +154,18 @@ MAX_OPTIMIZE_ITEMS = 20
 
 
 class InterviewQuestionItem(BaseModel):
-    """题库里的一道题：问题本身 + 考察意图 + 一句话回答提示。"""
+    """题库里的一道题：问题本身 + 考察意图 + 一句话回答提示。
+
+    可选携带已生成的参考答案（answer/key_points/sample_phrasing）：从历史记录打开题库时，
+    这些字段若已存在会被直接渲染，不必重新生成。
+    """
 
     question: str = Field(default="", max_length=2000)
     purpose: str = Field(default="", max_length=1000)
     answer_hint: str = Field(default="", max_length=2000)
+    answer: str | None = Field(default=None, max_length=MAX_QUESTION_ANSWER_CHARS)
+    key_points: list[str] | None = Field(default=None, max_length=20)
+    sample_phrasing: str | None = Field(default=None, max_length=MAX_SAMPLE_PHRASING_CHARS)
 
 
 class QuestionBankGroup(BaseModel):
@@ -221,10 +232,6 @@ class InterviewAnalysisOut(BaseModel):
     key_points: list[str] = Field(default_factory=list, max_length=20)
     follow_up: list[str] = Field(default_factory=list, max_length=20)
     pitfalls: list[str] = Field(default_factory=list, max_length=20)
-
-
-MAX_QUESTION_ANSWER_CHARS = 10_000
-MAX_SAMPLE_PHRASING_CHARS = 5_000
 
 
 class InterviewQuestionAnswerRequest(BaseModel):

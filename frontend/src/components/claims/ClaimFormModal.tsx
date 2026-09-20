@@ -9,7 +9,20 @@
  *    更快也更不容易点错。
  */
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Typography } from "antd";
+import {
+  App,
+  Button,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Switch,
+  Typography,
+} from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { useEffect } from "react";
 import { createClaim, updateClaim } from "../../api/claims";
 import type { Claim, ClaimPayload, ClaimSource, SourceType } from "../../types";
@@ -246,9 +259,15 @@ export default function ClaimFormModal({ open, claim, onClose, onSaved }: Props)
           <Form.Item name="verification_status" label="核实状态" className="claim-form-grow">
             <Select options={STATUS_OPTIONS} />
           </Form.Item>
-          {/* 日期用固定宽度：纯文本输入框给太宽会误导用户以为要填更多东西。 */}
-          <Form.Item name="last_verified" label="最近核实" className="claim-form-date">
-            <Input placeholder="YYYY-MM-DD" maxLength={10} />
+          {/* 日期用固定宽度；DatePicker 值走 Dayjs，表单里仍存 YYYY-MM-DD 字符串（E12）。 */}
+          <Form.Item
+            name="last_verified"
+            label="最近核实"
+            className="claim-form-date"
+            getValueProps={(value: string) => ({ value: value ? dayjs(value) : null })}
+            normalize={(value: Dayjs | null) => (value ? value.format("YYYY-MM-DD") : "")}
+          >
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
         </div>
 

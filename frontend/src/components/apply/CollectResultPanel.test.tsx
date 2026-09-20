@@ -115,6 +115,49 @@ describe("CollectResultPanel", () => {
     expect(await screen.findByText(/这次采集还没有待导入的岗位/)).toBeInTheDocument();
   });
 
+  it("同一批次完成后按 refreshKey 重新读取结果", async () => {
+    apiMocks.listCandidateJobs.mockResolvedValue([candidate()]);
+    const view = renderPanel({ refreshKey: "running" });
+    await screen.findByText("全栈工程师");
+    expect(apiMocks.listCandidateJobs).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <AntdApp>
+        <CollectResultPanel taskId={7} refreshKey="completed" />
+      </AntdApp>,
+    );
+
+    await waitFor(() => expect(apiMocks.listCandidateJobs).toHaveBeenCalledTimes(2));
+  });
+
+  it("切换采集批次时清空上一批的选择", async () => {
+    apiMocks.listCandidateJobs.mockImplementation(
+      ({ collectTaskId }: { collectTaskId?: number }) => {
+        const batchId = collectTaskId ?? 0;
+        return Promise.resolve([
+          candidate({
+            id: batchId,
+            collect_task_id: batchId,
+            title: batchId === 7 ? "第一批岗位" : "第二批岗位",
+          }),
+        ]);
+      },
+    );
+    const view = renderPanel({ taskId: 7 });
+    await screen.findByText("第一批岗位");
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    expect(screen.getByRole("button", { name: /导入选中的 1 个岗位/ })).toBeEnabled();
+
+    view.rerender(
+      <AntdApp>
+        <CollectResultPanel taskId={8} />
+      </AntdApp>,
+    );
+
+    await screen.findByText("第二批岗位");
+    expect(screen.getByRole("button", { name: /导入选中的岗位/ })).toBeDisabled();
+  });
+
   it("没有批次时不渲染", () => {
     apiMocks.listCandidateJobs.mockResolvedValue([]);
     const { container } = renderPanel({ taskId: null });

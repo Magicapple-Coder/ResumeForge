@@ -79,6 +79,7 @@ const RESUME_DETAIL: ResumeDetail = {
   company: "",
   source: "ai",
   favorite: false,
+  note: "",
   model: "m",
   enhancement_enabled: false,
   enhancement_level: "balanced",

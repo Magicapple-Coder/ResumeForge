@@ -75,8 +75,8 @@ export default function KnowledgeFormModal({
       }
     >
       <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-        知识库用来沉淀愿意反复查阅的成文内容：面经总结、简历技巧、求职策略、行业笔记等。
-        正文支持 Markdown，保存后会按标题、列表、表格等结构渲染。
+        知识库用来沉淀愿意反复查阅的成文内容：面经总结、简历技巧、求职策略、行业笔记等。 正文支持
+        Markdown，保存后会按标题、列表、表格等结构渲染。
       </Typography.Paragraph>
       <Form layout="vertical">
         <Form.Item label="标题" required>

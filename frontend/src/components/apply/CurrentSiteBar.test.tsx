@@ -36,9 +36,13 @@ const healthState = vi.hoisted(() => ({
   reload: vi.fn(),
   setData: vi.fn(),
 }));
+const useApiSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("../../hooks/useApi", () => ({
-  useApi: (fetcher: unknown) => (fetcher === apiMocks.getSiteHealth ? healthState : sitesState),
+  useApi: (fetcher: unknown, deps: unknown[]) => {
+    useApiSpy(fetcher, deps);
+    return fetcher === apiMocks.getSiteHealth ? healthState : sitesState;
+  },
 }));
 
 const SITE_LIST: SiteList = {
@@ -161,5 +165,21 @@ describe("CurrentSiteBar 站点健康度", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByText("不该被展示的原因")).toBeNull();
+  });
+
+  it("采集完成键变化时把新键交给健康度请求", () => {
+    const view = render(
+      <AntdApp>
+        <CurrentSiteBar refreshKey="running" />
+      </AntdApp>,
+    );
+    expect(useApiSpy).toHaveBeenCalledWith(apiMocks.getSiteHealth, ["running"]);
+
+    view.rerender(
+      <AntdApp>
+        <CurrentSiteBar refreshKey="completed" />
+      </AntdApp>,
+    );
+    expect(useApiSpy).toHaveBeenCalledWith(apiMocks.getSiteHealth, ["completed"]);
   });
 });

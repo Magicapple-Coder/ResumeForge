@@ -94,7 +94,9 @@ describe("InterviewReviewPanel", () => {
     expect(await screen.findByText(/请先选择要优化的简历/)).toBeInTheDocument();
 
     // 选简历后再次点击：产出建议列表。
-    const resumeSelect = screen.getByText("关联简历（反向优化必选）").closest(".ant-select-selector");
+    const resumeSelect = screen
+      .getByText("关联简历（反向优化必选）")
+      .closest(".ant-select-selector");
     fireEvent.mouseDown(resumeSelect!);
     fireEvent.click(await screen.findByText("我的简历"));
 
@@ -162,8 +164,9 @@ describe("InterviewReviewPanel", () => {
     fireEvent.click(screen.getByText("后端开发工程师"));
     expect(await screen.findByText("这个项目难点怎么解决？")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /删除/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "确认删除复盘历史 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(await screen.findByText("删除复盘历史"));
+    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
 
     await waitFor(() => expect(apiMocks.deleteReview).toHaveBeenCalledWith(1));
   });

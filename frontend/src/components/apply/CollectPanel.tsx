@@ -14,6 +14,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Skeleton,
   Space,
@@ -23,6 +24,7 @@ import {
 import { useEffect, useState } from "react";
 import { createCollectTask, getCollectConfig, updateCollectConfig } from "../../api/apply";
 import { useApi } from "../../hooks/useApi";
+import { formatDateTime } from "../../utils/format";
 import type { ApplyTask, ApplyTaskDetail, CollectConfig, CollectConfigOut } from "../../types";
 import CollectResultPanel from "./CollectResultPanel";
 
@@ -33,10 +35,59 @@ interface Props {
   collectTask: ApplyTaskDetail | null;
 }
 
+/** 采集结果的类型标注（C7）：仅入库标注，不参与站点筛选与去重。 */
+const JOB_TYPE_OPTIONS = [
+  { value: "校招", label: "校招" },
+  { value: "实习", label: "实习" },
+  { value: "社招", label: "社招" },
+];
+
 function unmappedConditions(task: ApplyTaskDetail | null): string[] {
   const raw = task?.config?.unmapped_conditions;
   if (!Array.isArray(raw)) return [];
   return raw.filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+// ===== 历史条件（localStorage 快照）=====
+
+const CONFIG_HISTORY_KEY = "rf.collect.configHistory";
+const CONFIG_HISTORY_LIMIT = 20;
+
+/** 一份采集条件的完整快照：保存时间与全部字段。 */
+interface CollectConfigSnapshot {
+  savedAt: string;
+  config: CollectConfig;
+}
+
+/** 读取历史条件；缺省/损坏时回退空数组。 */
+function readConfigHistory(): CollectConfigSnapshot[] {
+  try {
+    const raw = localStorage.getItem(CONFIG_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is CollectConfigSnapshot =>
+        entry && typeof entry === "object" && "savedAt" in entry && "config" in entry,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** 把条件快照写成 localStorage（覆盖写）。 */
+function writeConfigHistory(list: CollectConfigSnapshot[]): void {
+  localStorage.setItem(CONFIG_HISTORY_KEY, JSON.stringify(list));
+}
+
+/** 历史下拉的展示文案：保存时间 + 关键词/城市/类型摘要。 */
+function historySummaryLabel(snapshot: CollectConfigSnapshot): string {
+  const { config, savedAt } = snapshot;
+  const keywords = (config.keywords ?? []).slice(0, 3).join("、");
+  const keywordText = keywords || "无关键词";
+  const cityText = config.city?.trim() || "无城市";
+  const typeText = config.job_type?.trim() || "不限";
+  return `${formatDateTime(savedAt)} · ${keywordText} / ${cityText} / ${typeText}`;
 }
 
 function stringList(value: unknown): string[] {
@@ -80,22 +131,55 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
   const [starting, setStarting] = useState(false);
   // 是否保存本次抓到的站点原文。默认不勾选——往磁盘写站点数据必须由用户显式开启。
   const [saveSamples, setSaveSamples] = useState(false);
+  // 历史条件快照（localStorage 读取，最新在前）。
+  const [history, setHistory] = useState<CollectConfigSnapshot[]>(() => readConfigHistory());
+  const [historyValue, setHistoryValue] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (data) form.setFieldsValue(data);
   }, [data, form]);
+
+  /** 把当前表单整份快照存入历史（去重 + 上限 20）。 */
+  const pushHistory = (config: CollectConfig) => {
+    const savedAt = new Date().toISOString();
+    setHistory((prev) => {
+      const next = [
+        { savedAt, config },
+        ...prev.filter((entry) => JSON.stringify(entry.config) !== JSON.stringify(config)),
+      ].slice(0, CONFIG_HISTORY_LIMIT);
+      writeConfigHistory(next);
+      return next;
+    });
+    setHistoryValue(savedAt);
+  };
 
   const save = async () => {
     const values = await form.validateFields();
     setSaving(true);
     try {
       await updateCollectConfig(values);
+      pushHistory(values as CollectConfig);
       message.success("采集条件已保存");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存采集条件失败");
     } finally {
       setSaving(false);
     }
+  };
+
+  /** 选中某条历史 → 回填表单。 */
+  const applyHistory = (savedAt: string) => {
+    const snapshot = history.find((entry) => entry.savedAt === savedAt);
+    if (snapshot) {
+      form.setFieldsValue(snapshot.config);
+      setHistoryValue(savedAt);
+    }
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    setHistoryValue(undefined);
+    localStorage.removeItem(CONFIG_HISTORY_KEY);
   };
 
   const start = async () => {
@@ -153,6 +237,36 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
         }
       />
 
+      <Space size={8} wrap style={{ marginBottom: 12 }}>
+        <Select
+          aria-label="历史条件"
+          placeholder="历史条件"
+          allowClear
+          style={{ minWidth: 320 }}
+          value={historyValue}
+          onChange={(value) => {
+            if (value) applyHistory(value as string);
+            else setHistoryValue(undefined);
+          }}
+          options={history.map((entry) => ({
+            value: entry.savedAt,
+            label: historySummaryLabel(entry),
+          }))}
+        />
+        <Popconfirm
+          title="清空历史条件"
+          description="会删除全部已保存的采集条件快照，且不可恢复。"
+          okText="清空"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={clearHistory}
+        >
+          <Button size="small" type="link">
+            清空历史
+          </Button>
+        </Popconfirm>
+      </Space>
+
       <Form form={form} layout="vertical">
         <Form.Item name="keywords" label="关键词" extra="最多 10 个；与城市至少要填一个。">
           <Select mode="tags" placeholder="例如：后端开发、算法工程师" open={false} />
@@ -163,6 +277,23 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
           </Form.Item>
           <Form.Item name="per_task_limit" label="单批上限">
             <InputNumber min={1} max={200} style={{ width: 140 }} />
+          </Form.Item>
+          <Form.Item
+            name="job_type"
+            label={
+              <Space size={4}>
+                岗位类型
+                <Tag color="blue">仅标注</Tag>
+              </Space>
+            }
+            extra="只用于给采集结果标注类型，不参与站点筛选，也不影响去重"
+          >
+            <Select
+              allowClear
+              placeholder="不限"
+              style={{ width: 160 }}
+              options={JOB_TYPE_OPTIONS}
+            />
           </Form.Item>
         </Space>
 
@@ -175,7 +306,7 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
                 <Tag color="blue">采集后筛选</Tag>
               </Space>
             }
-            extra="岗位给不到这个数（按薪资上限判断）会被筛掉"
+            extra="按岗位薪资上限判断；岗位没给可判断的薪资时会保留，并标记为未能判断"
           >
             <InputNumber min={0} max={1000} style={{ width: 140 }} />
           </Form.Item>
@@ -297,7 +428,11 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
       )}
 
       {/* 采集结果只陈列、不入库：勾选后才进岗位广场。 */}
-      <CollectResultPanel taskId={collectTask?.id ?? null} disabled={disabled} />
+      <CollectResultPanel
+        taskId={collectTask?.id ?? null}
+        disabled={disabled}
+        refreshKey={`${collectTask?.status ?? ""}-${collectTask?.processed ?? 0}-${collectTask?.finished_at ?? ""}`}
+      />
     </div>
   );
 }

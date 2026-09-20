@@ -1,63 +1,39 @@
 /** 求职漏斗：自绘 SVG，不引 echarts/antv/plots。
  *
- * 每个阶段一条居中的横条，宽度与计数成正比（相对最大值）。只负责画，
- * 漏斗的阶段顺序与口径由后端 ``/api/analytics/dashboard`` 下发（见 services/analytics.py）。
+ * 每个阶段一条**居中**的横条，宽度与计数成正比（相对最大值）——"漏斗形状"本身就是信息，
+ * 所以走居中对齐而不是共享左基线。几何与封顶都在 :mod:`HorizontalBarChart` 里（公司排行
+ * 用的是同一份），这里只负责"给每一阶段配一个颜色"和开启"相对第一阶段的百分比"。
+ *
+ * 配色统一：除第一阶段（已投递总量，作为基准）用中性灰外，其余阶段统一强调蓝——漏斗
+ * 靠"居中递减的形状"表达信息，不必每段一个色。
+ *
+ * 只负责画，漏斗的阶段顺序与口径由后端 ``/api/analytics/dashboard`` 下发（见
+ * services/analytics.py）。
  */
 import type { FunnelStage } from "../../types";
+import HorizontalBarChart from "./HorizontalBarChart";
 
-const STATUS_COLORS: Record<string, string> = {
-  applied: "#8c8c8c",
-  screening: "#1677ff",
-  assessment: "#13c2c2",
-  interview: "#722ed1",
-  offer: "#52c41a",
-};
+const FIRST_STAGE_FILL = "#8c8c8c";
+const DEFAULT_FILL = "#1677ff";
 
 interface Props {
   stages: FunnelStage[];
 }
 
 export default function FunnelChart({ stages }: Props) {
-  const max = Math.max(1, ...stages.map((stage) => stage.count));
-  const width = 620;
-  const labelWidth = 96;
-  const countWidth = 56;
-  const chartWidth = width - labelWidth - countWidth;
-  const barHeight = 42;
-  const gap = 14;
-  const height = stages.length * (barHeight + gap) + 24;
-
+  // 第一阶段是总量基准，用中性灰；其余阶段统一强调蓝，靠居中形状而非颜色区分。
+  const firstKey = stages[0]?.status;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label="求职漏斗">
-      {stages.map((stage, index) => {
-        const y = 12 + index * (barHeight + gap);
-        const barWidth = Math.max(8, Math.round((stage.count / max) * chartWidth));
-        const x = labelWidth + (chartWidth - barWidth) / 2;
-        const fill = STATUS_COLORS[stage.status] ?? "#1677ff";
-        return (
-          <g key={stage.status}>
-            <text
-              x={labelWidth - 10}
-              y={y + barHeight / 2 + 4}
-              textAnchor="end"
-              fontSize={13}
-              fill="#555"
-            >
-              {stage.label}
-            </text>
-            <rect x={x} y={y} width={barWidth} height={barHeight} rx={6} fill={fill} opacity={0.9} />
-            <text
-              x={x + barWidth + 8}
-              y={y + barHeight / 2 + 4}
-              fontSize={13}
-              fill="#333"
-              fontWeight={600}
-            >
-              {stage.count}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <HorizontalBarChart
+      items={stages.map((stage) => ({
+        key: stage.status,
+        label: stage.label,
+        count: stage.count,
+      }))}
+      ariaLabel="求职漏斗"
+      align="center"
+      showPercent
+      colorFor={(key) => (key === firstKey ? FIRST_STAGE_FILL : DEFAULT_FILL)}
+    />
   );
 }

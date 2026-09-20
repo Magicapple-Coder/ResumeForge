@@ -1,19 +1,39 @@
 /** 简历中心：生成历史列表、收藏、预览与导出。 */
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { App, Button, Input, Modal, Select, Space, Spin, Table, Tag, Tooltip, Typography } from "antd";
+import {
+  App,
+  Button,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { deleteResume, listResumes, renameResume, updateResumeFavorite } from "../api/resumes";
+import {
+  deleteResume,
+  getResume,
+  listResumes,
+  renameResume,
+  updateResumeFavorite,
+  updateResumeNote,
+} from "../api/resumes";
 import { diffResume } from "../api/resumeWriting";
 import { RowActions, RowContextMenu, type RowActionItem } from "../components/common/RowActions";
 import ResumeDetailModal from "../components/ResumeDetailModal";
-import ResumeDiffView from "../components/ResumeDiffView";
+import ResumeFieldDiffView from "../components/ResumeFieldDiffView";
+import { computeFieldDiff } from "../utils/resumeFieldDiff";
+import type { DiffViewData } from "../types/resumeFieldDiff";
 import { RESUME_ENHANCEMENT_LEVELS, enhancementLevelDescription } from "../config";
 import { useApi } from "../hooks/useApi";
 import type { ResumeBrief } from "../types";
-import type { ResumeDiff } from "../types/resumeWriting";
 import { formatDateTime } from "../utils/format";
 
 export default function ResumesPage() {
@@ -23,22 +43,35 @@ export default function ResumesPage() {
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [favoriteFilter, setFavoriteFilter] = useState<boolean | undefined>();
+  const [hasJobFilter, setHasJobFilter] = useState<boolean | undefined>();
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [favoriteResumeId, setFavoriteResumeId] = useState<number | null>(null);
   const favoriteResumeIdRef = useRef<number | null>(null);
   const [renameTarget, setRenameTarget] = useState<ResumeBrief | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [noteTarget, setNoteTarget] = useState<ResumeBrief | null>(null);
+  const [noteValue, setNoteValue] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
   const [diffBase, setDiffBase] = useState<ResumeBrief | null>(null);
   const [diffAgainstId, setDiffAgainstId] = useState<number | null>(null);
-  const [diffResult, setDiffResult] = useState<ResumeDiff | null>(null);
+  const [diffResult, setDiffResult] = useState<DiffViewData | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const jobIdParam = searchParams.get("job_id");
   const jobId = jobIdParam && /^\d+$/.test(jobIdParam) ? Number(jobIdParam) : undefined;
 
   const { data, loading, reload, error } = useApi(
-    () => listResumes({ keyword, page, page_size: pageSize, job_id: jobId }),
-    [keyword, page, pageSize, jobId],
+    () =>
+      listResumes({
+        keyword,
+        page,
+        page_size: pageSize,
+        job_id: jobId,
+        favorite: favoriteFilter,
+        has_job: hasJobFilter,
+      }),
+    [keyword, page, pageSize, jobId, favoriteFilter, hasJobFilter],
   );
 
   useEffect(() => {
@@ -143,6 +176,19 @@ export default function ResumesPage() {
     },
     { title: "模型", dataIndex: "model", width: 150, render: (value) => value || "-" },
     {
+      title: "备注",
+      dataIndex: "note",
+      width: 180,
+      render: (value: string) =>
+        value ? (
+          <Typography.Text ellipsis={{ tooltip: value }} style={{ maxWidth: 180 }}>
+            {value}
+          </Typography.Text>
+        ) : (
+          <Typography.Text type="secondary">-</Typography.Text>
+        ),
+    },
+    {
       title: "美化拓展",
       key: "enhancement",
       width: 110,
@@ -201,6 +247,14 @@ export default function ResumesPage() {
       },
     },
     {
+      key: "note",
+      label: "编辑备注",
+      onClick: () => {
+        setNoteTarget(record);
+        setNoteValue(record.note ?? "");
+      },
+    },
+    {
       key: "diff",
       label: "版本对比",
       onClick: () => {
@@ -254,11 +308,33 @@ export default function ResumesPage() {
     if (!diffBase) return;
     setDiffLoading(true);
     try {
-      setDiffResult(await diffResume(diffBase.id, againstId));
+      // 同时取两份完整 content 在前端做字段级对比；后端源码 diff 仍保留，用于统计与「查看原始差异」兜底。
+      const [base, against, raw] = await Promise.all([
+        getResume(diffBase.id),
+        getResume(againstId),
+        diffResume(diffBase.id, againstId),
+      ]);
+      const field = computeFieldDiff(base.content, against.content, base.title, against.title);
+      setDiffResult({ raw, field });
     } catch (err) {
       message.error(err instanceof Error ? err.message : "版本对比失败");
     } finally {
       setDiffLoading(false);
+    }
+  };
+
+  const confirmNote = async () => {
+    if (!noteTarget || savingNote) return;
+    setSavingNote(true);
+    try {
+      await updateResumeNote(noteTarget.id, noteValue);
+      message.success("备注已保存");
+      setNoteTarget(null);
+      void reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "保存备注失败");
+    } finally {
+      setSavingNote(false);
     }
   };
 
@@ -281,6 +357,36 @@ export default function ResumesPage() {
           setPage(1);
         }}
       />
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Select
+          allowClear
+          placeholder="收藏状态"
+          style={{ width: 130 }}
+          value={favoriteFilter}
+          onChange={(value) => {
+            setFavoriteFilter(value);
+            setPage(1);
+          }}
+          options={[
+            { value: true, label: "已收藏" },
+            { value: false, label: "未收藏" },
+          ]}
+        />
+        <Select
+          allowClear
+          placeholder="岗位关联"
+          style={{ width: 140 }}
+          value={hasJobFilter}
+          onChange={(value) => {
+            setHasJobFilter(value);
+            setPage(1);
+          }}
+          options={[
+            { value: true, label: "有目标岗位" },
+            { value: false, label: "通用简历" },
+          ]}
+        />
+      </Space>
       <Table
         rowKey="id"
         columns={columns}
@@ -332,6 +438,25 @@ export default function ResumesPage() {
         />
       </Modal>
       <Modal
+        title="编辑备注"
+        open={noteTarget !== null}
+        okText="保存"
+        confirmLoading={savingNote}
+        onCancel={() => {
+          if (!savingNote) setNoteTarget(null);
+        }}
+        onOk={() => void confirmNote()}
+      >
+        <Input.TextArea
+          value={noteValue}
+          maxLength={2000}
+          showCount
+          rows={4}
+          placeholder="备注会显示在简历列表里（选填）"
+          onChange={(event) => setNoteValue(event.target.value)}
+        />
+      </Modal>
+      <Modal
         title="版本对比"
         open={diffBase !== null}
         width="min(880px, calc(100vw - 24px))"
@@ -357,11 +482,9 @@ export default function ResumesPage() {
               />
             </Space>
             {diffLoading && <Spin />}
-            {!diffLoading && diffResult && <ResumeDiffView diff={diffResult} />}
+            {!diffLoading && diffResult && <ResumeFieldDiffView data={diffResult} />}
             {!diffLoading && !diffResult && (
-              <Typography.Text type="secondary">
-                选择一份其它简历后展示三态差异。
-              </Typography.Text>
+              <Typography.Text type="secondary">选择一份其它简历后展示三态差异。</Typography.Text>
             )}
           </Space>
         )}

@@ -151,6 +151,7 @@ export default function AssistantComposer({
               type="text"
               size="small"
               aria-label="取消引用"
+              className="assistant-quote-chip-close"
               icon={<CloseOutlined />}
               onClick={onClearQuote}
             />

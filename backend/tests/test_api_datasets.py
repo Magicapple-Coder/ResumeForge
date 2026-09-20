@@ -52,6 +52,44 @@ def test_list_datasets_starts_with_only_the_main_dataset(client):
     assert items[0]["is_active"] is True
 
 
+def test_create_dataset_makes_a_named_empty_dataset(client):
+    response = client.post("/api/settings/datasets", json={"name": "校招空库"})
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["name"] == "校招空库"
+    assert created["source"] == "新建"
+    assert created["is_active"] is False
+    assert created["id"] != MAIN
+    assert {item["id"] for item in _list_datasets(client)} == {MAIN, created["id"]}
+
+
+def test_created_dataset_can_be_activated_and_starts_empty(client):
+    """新建的空数据集激活后应为**空视图**（主数据里的内容不该漏进来）。"""
+    created = client.post("/api/settings/datasets", json={"name": "空库"}).json()
+    _add_job(client, "主数据里的岗位")
+
+    assert client.post(f"/api/settings/datasets/{created['id']}/activate").status_code == 200
+    assert _job_titles(client) == set()
+
+
+def test_create_dataset_requires_a_loopback_client(client, monkeypatch):
+    monkeypatch.setattr("app.api.settings._is_loopback_request", lambda _request: False)
+
+    response = client.post("/api/settings/datasets", json={"name": "空库"})
+
+    assert response.status_code == 403
+
+
+def test_create_dataset_rejects_a_blank_name(client):
+    # 空串：schema 层拦下。
+    assert client.post("/api/settings/datasets", json={"name": ""}).status_code == 422
+    # 全是空格：schema 层放行（长度 ≥1），由服务层拒绝并给出可操作的中文提示。
+    response = client.post("/api/settings/datasets", json={"name": "   "})
+    assert response.status_code == 400
+    assert "名称不能为空" in response.json()["detail"]
+
+
 def test_import_creates_a_new_dataset_without_touching_current_data(client, tmp_path):
     """导入是可撤销的：它只新增一份数据集，当前正在用的数据一点不变。"""
     _add_job(client, "导入前的岗位")

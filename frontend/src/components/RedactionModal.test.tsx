@@ -27,9 +27,7 @@ const REDACTED = {
   job_intent: "",
   summary: "负责后端服务。",
   education: [],
-  experience: [
-    { company: "***", role: "工程师", start_date: "", end_date: "", description: [] },
-  ],
+  experience: [{ company: "***", role: "工程师", start_date: "", end_date: "", description: [] }],
   campus_experience: [],
   projects: [],
   skills: [],

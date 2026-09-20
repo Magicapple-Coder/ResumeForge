@@ -142,6 +142,11 @@ def _apply_payload(record: ApplicationTrack, payload: TrackCreate | TrackUpdate)
     record.title_key = normalize_key(payload.title)
     record.status = payload.status
     record.stage_note = payload.stage_note
+    # **这里刻意没有"默认今天"**：手工录入不可能知道投递日期（可能投递当天录，也可能
+    # 三周后照着一封通知补录），替他填今天会把记录钉在错误的月份上，在投递趋势里造出
+    # 一个从未发生过的尖峰。投递台的 :func:`record_applied` 默认今天是对的——那条路径
+    # 叫"刚投出去"，日期是确知的。两条路径的差异是正当的，别顺手"统一"掉。
+    # 表单那一侧用一键「填今天」降低留空的摩擦（见 TrackFormModal）。
     record.applied_at = payload.applied_at
     record.status_date = payload.status_date
     record.next_action = payload.next_action

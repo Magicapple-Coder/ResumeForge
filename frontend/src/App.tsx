@@ -53,7 +53,7 @@ const { Sider, Header, Content } = Layout;
  * （属于数据核对一类的低频入口）。**顺序即分组，不额外加分隔标题**——侧栏只有 200px，
  * 加分组标题会把 13 项挤成两屏。
  */
-const MENU_ITEMS = [
+export const MENU_ITEMS = [
   // 找岗位
   { key: "/", icon: <HomeOutlined />, label: "首页" },
   { key: "/jobs", icon: <SearchOutlined />, label: "岗位广场" },

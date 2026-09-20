@@ -38,6 +38,7 @@ SQLITE_REQUIRED_COLUMNS = {
         "page_limit": "INTEGER NOT NULL DEFAULT 1",
         "font_scale": "VARCHAR(16) NOT NULL DEFAULT 'standard'",
         "custom_instruction": "TEXT NOT NULL DEFAULT ''",
+        "note": "TEXT NOT NULL DEFAULT ''",
     },
     "chat_conversation": {
         "pinned": "BOOLEAN NOT NULL DEFAULT 0",
