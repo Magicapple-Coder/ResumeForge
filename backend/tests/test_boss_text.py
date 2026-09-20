@@ -9,6 +9,7 @@ import pytest
 from app.services.sites.boss_text import (
     looks_like_salary,
     normalize_text,
+    split_job_fields,
     split_job_sections,
     split_title_salary,
 )
@@ -185,6 +186,89 @@ def test_requirement_heading_is_chosen_by_position_not_by_table_order():
     _, requirements = split_job_sections(text)
 
     assert requirements.startswith("任职资格")
+
+
+def test_heading_word_inside_prose_is_not_a_section():
+    """真实用例（字节跳动 · 后端开发实习生电商安全 TikTok Shop）。
+
+    ``为符合**岗位要求**的同学`` 里的「岗位要求」是正文用词，不是小标题。旧实现只看
+    "关键词出现在哪"，于是从那里切：描述被截成
+    ``岗位职责：日常实习：面向全体在校生，为符合`` 这样一句半，而真正的「任职要求」
+    连同整篇正文一起被塞进要求段——两个字段都读不成话。
+    """
+    text = (
+        "岗位职责：日常实习：面向全体在校生，为符合岗位要求的同学提供为期3个月及以上的项目实践机会。"
+        "1、负责字节跳动国际电商业务的后端开发工作；2、负责架构设计和开发，为亿级用户提供优质服务。"
+        "任职要求：1、本科及以上学历在读，计算机、软件工程等相关专业优先；2、精通至少一门编程语言。"
+    )
+
+    description, requirements = split_job_sections(text)
+
+    # 描述段完整保留到真正的「任职要求」之前，不能被半句话截断。
+    assert "为符合岗位要求的同学" in description
+    assert "负责架构设计和开发" in description
+    assert "任职要求" not in description
+    assert requirements.startswith("任职要求：")
+    assert "精通至少一门编程语言" in requirements
+
+
+def test_heading_after_whitespace_needs_to_look_like_a_heading():
+    """空格分隔的紧凑 JD：前边界只有空白时，标题还要"长得像标题"（后接冒号）。
+
+    这样 ``…符合岗位要求 我们希望你…`` 这种正文里的词不会被当成小标题，
+    而 ``…开发。 任职要求：…`` 照样能切开。
+    """
+    prose = "岗位职责：负责后端开发，要求你熟悉常用中间件并符合岗位要求 我们希望你踏实肯干。"
+    assert split_job_sections(prose) == (prose, "")
+
+    compact = "岗位职责：负责公司核心系统的开发与维护。 任职要求：1、本科及以上学历。"
+    description, requirements = split_job_sections(compact)
+    assert description.startswith("岗位职责")
+    assert requirements.startswith("任职要求")
+
+
+def test_splits_three_sections_including_additional():
+    """三段都各归各位：职位描述 / 任职要求 / 其他招聘信息（福利待遇）。"""
+    text = (
+        "岗位职责：负责公司核心系统的开发与维护。"
+        "任职要求：1、本科及以上学历；2、熟悉 Python。"
+        "福利待遇：六险一金、弹性工作、免费三餐。"
+    )
+
+    sections = split_job_fields(text)
+
+    assert sections.description.startswith("岗位职责")
+    assert sections.requirements.startswith("任职要求")
+    assert sections.additional.startswith("福利待遇")
+    assert "免费三餐" in sections.additional
+    # 三段互不串味：福利既不在描述里、也不在要求里。
+    assert "免费三餐" not in sections.description
+    assert "免费三餐" not in sections.requirements
+
+
+def test_additional_section_after_requirements_without_description_heading():
+    """只有「任职要求 + 其他信息」两段时：描述段退化成整篇（不产出空的「职位描述」）。"""
+    text = "福利待遇：六险一金、免费三餐、弹性工作。"
+    sections = split_job_fields(text)
+
+    assert sections.description == text
+    assert sections.requirements == ""
+    assert sections.additional == ""
+
+
+def test_company_intro_heading_is_additional():
+    """公司/团队介绍这类也算「其他招聘信息」，不并进任职要求。"""
+    text = (
+        "岗位职责：负责后端服务的设计与开发，参与线上问题的排查与修复。"
+        "任职要求：本科及以上学历，熟悉 Python 与常用数据库。"
+        "团队介绍：团队负责公司核心交易链路，氛围务实。"
+    )
+
+    sections = split_job_fields(text)
+
+    assert sections.requirements.startswith("任职要求")
+    assert sections.additional.startswith("团队介绍")
+    assert "核心交易链路" not in sections.requirements
 
 
 def test_section_split_handles_empty_input():

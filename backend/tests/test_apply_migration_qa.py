@@ -49,7 +49,7 @@ PREVIOUS_REVISION = "0009_templates_and_interview"
 # 本文件的主角：只加表、不动既有列的那个迁移。
 APPLY_MIGRATION_REVISION = "0010_apply_center"
 # 当前迁移链的 head，用于"升级到底"与"声称在 head"的对照。
-HEAD_REVISION = "0020_daily_20260920_columns"
+HEAD_REVISION = "0021_candidate_additional_info"
 
 EXPECTED_INDEXES = {
     "job_match_analysis": {

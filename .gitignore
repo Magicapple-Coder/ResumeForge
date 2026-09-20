@@ -18,6 +18,12 @@ dist/
 coverage/
 *.tsbuildinfo
 node_modules/.tmp/
+# vite build 的临时输出目录。docs/AGENTS 里的构建绕行方案**要求输出到仓库外面**
+# （`--outDir D:\rf_build_tmp`），但真有人写进仓库时（一度出现过
+# `frontend/rf_build_tmp/`），构建产物不该被误提交——加一条兜住。
+# 构建产物本身可随时用 `npm run build` 重建，留着只会污染 `git status`。
+rf_build_*/
+frontend/rf_build_*/
 
 # ===== 环境与本地数据 =====
 .env

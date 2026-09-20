@@ -22,7 +22,7 @@ import re
 from typing import Any
 from urllib.parse import urljoin
 
-from .boss_text import normalize_text, split_job_sections, split_title_salary
+from .boss_text import normalize_text, split_job_fields, split_title_salary
 
 logger = logging.getLogger(__name__)
 
@@ -337,7 +337,7 @@ def parse_detail_response(payload: Any) -> dict[str, Any] | None:
     # 接口只给一整段 ``postDescription``，而界面/模型上「职位描述」与「任职要求」是两个字段。
     # 以前一律整段塞进描述、要求留空，用户看到的就是"两件事混在一起"；这里按真实存在的小标题
     # 切分（切不出来就不切，把全文留在描述里，绝不造一个空的描述字段）。
-    description, requirements = split_job_sections(description_html)
+    sections = split_job_fields(description_html)
     boss_value = _first(data, "bossInfo", "recruiterInfo", "hrInfo")
     brand_value = _first(data, "brandInfo", "brandComInfo", "companyInfo")
     boss = boss_value if isinstance(boss_value, dict) else {}
@@ -348,10 +348,12 @@ def parse_detail_response(payload: Any) -> dict[str, Any] | None:
         "company": _text(_first(brand, "brandName", "companyName", "name"))
         or _text(_first(boss, "brandName", "companyName"))
         or _text(_first(detail, "brandName", "companyName")),
-        "description": description,
-        # 切不出独立的要求段时留空是**如实**的：接口本来就没有把它单列出来，
+        "description": sections.description,
+        # 切不出独立的段落时留空是**如实**的：接口本来就没有把它单列出来，
         # 该段内容仍然完整地留在描述里，不会丢。
-        "requirements": requirements,
+        "requirements": sections.requirements,
+        # 福利待遇 / 公司介绍这类第三段（对应 ``Job.additional_info``）。
+        "additional_info": sections.additional,
         "url": _job_url(
             detail, _text(_first(detail, "encryptJobId", "encryptId", "jobId"))
         ),

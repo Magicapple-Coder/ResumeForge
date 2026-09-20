@@ -23,7 +23,7 @@ from .boss_page import (
     detect_blocker,
     selector_diagnostic,
 )
-from .boss_text import looks_like_salary, normalize_text, split_job_sections, split_title_salary
+from .boss_text import looks_like_salary, normalize_text, split_job_fields, split_title_salary
 
 logger = logging.getLogger(__name__)
 
@@ -164,12 +164,14 @@ def parse_job_detail(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise SiteFailure(FAILURE_SELECTOR_INVALID, "岗位详情返回了无法解析的内容")
     dom_requirements = normalize_text(payload.get("requirements", ""))
-    description, split_requirements = split_job_sections(payload.get("description", ""))
+    sections = split_job_fields(payload.get("description", ""))
     return {
         "job_title": normalize_text(payload.get("job_title", "")),
         "company": normalize_text(payload.get("company", "")),
-        "description": description,
-        "requirements": dom_requirements or split_requirements,
+        "description": sections.description,
+        "requirements": dom_requirements or sections.requirements,
+        # 福利待遇 / 公司介绍这类第三段（对应 ``Job.additional_info``）。
+        "additional_info": sections.additional,
         "url": str(payload.get("url", "")),
     }
 

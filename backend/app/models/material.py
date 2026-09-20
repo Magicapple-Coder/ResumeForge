@@ -77,6 +77,10 @@ class CandidateJob(Base):
     # 塞进 raw_text 会把这份结构丢掉，导入岗位时又变回"描述与要求混在一起"。
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     requirements: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # 采集带回来的「其他招聘信息」（福利待遇 / 公司介绍这类既不是职责也不是要求的内容）。
+    # 与上面两列同样的理由：采集端已经按小标题切好，这里必须原样接住再透传给正式岗位，
+    # 否则它会留在描述里、导入后「其他招聘信息」永远是空的。
+    additional_info: Mapped[str] = mapped_column(Text, default="", server_default="")
     # 产生这条候选的采集批次（``apply_task.id``）。**不建外键**：批次记录被清理掉时
     # 不该连带删掉用户还没处理的候选岗位（与 ``claim_record`` 同样的取舍）。
     collect_task_id: Mapped[int | None] = mapped_column(nullable=True)

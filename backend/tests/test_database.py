@@ -14,7 +14,7 @@ from app.main import SQLITE_REQUIRED_COLUMNS
 # 断言悄悄变成过时的期望值（而真出问题时是用户先发现）。
 _APPLICATION_TABLES = set(application_tables())
 # 当前迁移 head；每次新增 revision 时同步这里。
-_HEAD_REVISION = "0020_daily_20260920_columns"
+_HEAD_REVISION = "0021_candidate_additional_info"
 
 
 def _assert_head_schema(bind) -> None:

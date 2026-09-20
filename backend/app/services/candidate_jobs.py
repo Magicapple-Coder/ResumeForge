@@ -117,6 +117,7 @@ def stage_candidate_job(
     source_url: str = "",
     description: str = "",
     requirements: str = "",
+    additional_info: str = "",
     source: str = "",
     task_id: int | None = None,
     job_type: str = "",
@@ -134,6 +135,7 @@ def stage_candidate_job(
         source_url=source_url,
         description=description,
         requirements=requirements,
+        additional_info=additional_info,
         source=source,
         collect_task_id=task_id,
         job_type=job_type,
@@ -244,6 +246,7 @@ def import_candidates(db: Session, candidate_ids: list[int]) -> dict:
                 # 手动粘贴的候选没有这两段，退回用原文填描述（与以前的导入行为一致）。
                 description=candidate.description or candidate.raw_text,
                 requirements=candidate.requirements,
+                additional_info=candidate.additional_info,
                 note=candidate.note,
                 status=JOB_STATUS_OPEN,
                 recognition_source=(

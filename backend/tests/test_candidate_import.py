@@ -7,6 +7,7 @@
 from app.models.job import Job
 from app.models.material import CANDIDATE_JOB_IMPORTED, CANDIDATE_JOB_PENDING, CandidateJob
 from app.schemas.material import CandidateJobCreate
+from app.services.sites.boss_text import split_job_fields
 from app.services.candidate_jobs import (
     create_candidate_job,
     import_candidates,
@@ -23,6 +24,7 @@ def _stage(db_session, **overrides) -> CandidateJob:
         "source_url": "https://example.com/1",
         "description": "岗位职责：负责后端服务的设计与开发。",
         "requirements": "任职要求：三年以上经验。",
+        "additional_info": "福利待遇：六险一金、免费三餐。",
         "source": "示例站点",
         "task_id": 7,
     }
@@ -46,15 +48,54 @@ def test_import_creates_a_job_and_marks_the_candidate_imported(db_session):
     assert job.location == "天津"
     assert job.salary == "20-30K"
     assert job.source_url == "https://example.com/1"
-    # 采集已经切好的两段各归各位——不要在导入时又混回一段。
+    # 采集已经切好的三段各归各位——不要在导入时又混回一段。
     assert job.description == "岗位职责：负责后端服务的设计与开发。"
     assert job.requirements == "任职要求：三年以上经验。"
+    assert job.additional_info == "福利待遇：六险一金、免费三餐。"
     # 来源标注（沿用既有约定：写进备注便于溯源）。
     assert "来源：岗位采集" in job.note
 
     db_session.refresh(candidate)
     assert candidate.status == CANDIDATE_JOB_IMPORTED
     assert candidate.imported_job_id == job.id
+
+
+def test_import_carries_all_three_jd_sections(db_session):
+    """端到端：一份真实 JD 从切分 → 暂存 → 导入，三段都要完整落到岗位上。
+
+    这条防的是"切分做对了、但中途某一段没被透传"——candidate_job 少了
+    ``additional_info`` 那列时，第三段会在暂存这一步静默丢掉，导入后
+    「其他招聘信息」永远是空的（而前两段看起来完全正常，很难发现）。
+    """
+    text = (
+        "岗位职责：负责公司核心系统的开发与维护。"
+        "任职要求：1、本科及以上学历；2、熟悉 Python。"
+        "福利待遇：六险一金、弹性工作、免费三餐。"
+    )
+    sections = split_job_fields(text)
+    candidate = stage_candidate_job(
+        db_session,
+        title="后端开发",
+        company="A公司",
+        source_url="https://example.com/9",
+        description=sections.description,
+        requirements=sections.requirements,
+        additional_info=sections.additional,
+        source="示例站点",
+        task_id=7,
+    )
+    db_session.commit()
+
+    import_candidates(db_session, [candidate.id])
+
+    job = db_session.query(Job).one()
+    assert job.description.startswith("岗位职责")
+    assert job.requirements.startswith("任职要求")
+    assert job.additional_info.startswith("福利待遇")
+    assert "免费三餐" in job.additional_info
+    # 三段互不串味。
+    assert "免费三餐" not in job.description
+    assert "免费三餐" not in job.requirements
 
 
 def test_manual_candidate_is_recorded_with_the_candidate_source(db_session):

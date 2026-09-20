@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
 
 # 私用区数字：U+E030+i ↔ 字符 "i"。已用真实采集数据验证过（"全栈工程师\ue032\ue033-" → "23-"）。
 _PRIVATE_USE_DIGITS = {chr(0xE030 + digit): str(digit) for digit in range(10)}
@@ -78,6 +79,19 @@ _REQUIREMENT_HEADINGS = (
 # 当要求类标题出现得太靠前（不足 ``_MIN_DESCRIPTION_BEFORE_REQUIREMENTS``）时，只有
 # 描述段里存在这类标题，才认为"前面有职责、后面有要求"是真实的，否则整篇留在描述里。
 _DESCRIPTION_HEADINGS = ("岗位职责", "工作内容", "职位描述", "职责描述", "岗位描述", "职位介绍")
+# 「其他招聘信息」这一段的可能小标题（对应 ``Job.additional_info``）：福利、公司/团队介绍
+# 这类既不属于职责也不属于要求的补充内容。**刻意不收「加分项」**——那通常写在要求段里，
+# 收进来会把要求段截断。
+_ADDITIONAL_HEADINGS = (
+    "其他招聘信息",
+    "其他信息",
+    "其他说明",
+    "福利待遇",
+    "薪酬福利",
+    "公司介绍",
+    "公司简介",
+    "团队介绍",
+)
 # 标题前面可能出现的开括号：往前吞掉它们，让要求段从 `【任职要求】` 完整开头。
 _HEADING_OPENERS = "【〔「《（(＜<"
 
@@ -146,43 +160,131 @@ def split_title_salary(value: object) -> tuple[str, str]:
     return title, match.group(1).strip()
 
 
+@dataclass(frozen=True)
+class JobSections:
+    """JD 全文里切出来的三段；切不出来的段落是空串（内容仍留在前一段，不会丢）。"""
+
+    description: str = ""
+    requirements: str = ""
+    additional: str = ""
+
+
 def split_job_sections(value: object) -> tuple[str, str]:
-    """把 JD 全文按小标题切成 ``(职位描述, 任职要求)``。
+    """把 JD 全文按小标题切成 ``(职位描述, 任职要求)`` 两段。
 
-    接口只给一整段 ``postDescription``，而界面上「职位描述」与「任职要求」是两个字段——
-    以前一律整段塞进描述、要求留空，用户看到的就是"两件事被混在一起"。
-    这里按真实存在的小标题切：取**最早出现**的要求类标题作为切分点，之前是描述、之后是要求。
+    两段的旧口径保留给只需要这两项的调用方；三段（含「其他招聘信息」）走
+    :func:`split_job_fields`，本函数是它的薄包装。
+    """
+    sections = split_job_fields(value)
+    return sections.description, sections.requirements
 
-    两条健壮化规则：
 
-    - 要求类标题出现得太靠前时，原本一律不切（避免把"整篇只有要求"切出空描述）；现在只要
-      描述段里存在「岗位职责 / 工作内容 / 职位描述」这类**描述段标题**，就说明前面确实有职责段，
-      即使描述段偏短也照切——否则"岗位职责：…\n任职要求：…"这种紧凑 JD 会整个挤进职位描述。
-    - 无任何要求类标题时保持原样：全文留在描述里（没有可切的分界，硬切只会更糟）。
+def split_job_fields(value: object) -> JobSections:
+    """把 JD 全文按小标题切成 ``职位描述 / 任职要求 / 其他招聘信息`` 三段。
+
+    接口只给一整段 ``postDescription``，而界面上这是三个字段——以前一律整段塞进描述、
+    另外两个留空，用户看到的就是"几件事被混在一起"。
+
+    切法：找出所有**像小标题**的位置（见 :func:`_looks_like_heading`），按它们在原文里的
+    先后逐段归属；切不出来的段落就是空串，**内容仍完整留在前一段里，不会丢**。
+
+    三条健壮化规则：
+
+    - 要求类标题出现得太靠前（前面不足 ``_MIN_DESCRIPTION_BEFORE_REQUIREMENTS`` 字）时，
+      只有"前面确实有描述类标题"才认可这次切分；否则视为"整篇都是要求"、一段都不切，
+      不产出一个空的「职位描述」。
+    - 无任何小标题时全文留在描述里（没有可切的分界，硬切只会更糟）。
+    - 同一段的小标题重复出现时，各段内容按原文顺序并进同一段，不覆盖、不丢。
     """
     text = normalize_text(value)
     if not text:
-        return "", ""
-    cut = _earliest_heading_index(text)
-    if cut is None:
-        return text, ""
-    description = text[:cut].strip()
-    requirements = text[cut:].strip()
-    if not description:
-        return text, ""
-    # 切分点太靠前（描述段不足阈值）时，只有"描述段里确实有描述类标题"才认可这次切分；
-    # 否则视为"整篇只有要求"，全文留在描述里——不产出一个空「职位描述」。
-    if cut < _MIN_DESCRIPTION_BEFORE_REQUIREMENTS and not _has_description_heading(description):
-        return text, ""
-    return description, requirements
+        return JobSections()
+    cuts = _heading_cuts(text)
+    if not cuts:
+        return JobSections(description=text)
+
+    requirement_indexes = [index for index, kind in cuts if kind == "requirements"]
+    if (
+        requirement_indexes
+        and requirement_indexes[0] < _MIN_DESCRIPTION_BEFORE_REQUIREMENTS
+        and not _has_description_heading(text[: requirement_indexes[0]])
+    ):
+        return JobSections(description=text)
+
+    chunks: dict[str, list[str]] = {"description": [], "requirements": [], "additional": []}
+    lead = text[: cuts[0][0]].strip()
+    if lead:
+        chunks["description"].append(lead)
+    for position, (index, kind) in enumerate(cuts):
+        end = cuts[position + 1][0] if position + 1 < len(cuts) else len(text)
+        chunk = text[index:end].strip()
+        if chunk:
+            chunks[kind].append(chunk)
+    # 描述段为空（全文以要求类/其他类标题开头，例如只有一段「福利待遇」）：与「整篇只有
+    # 要求」同一处理——全文留在描述里。一个空的「职位描述」比不切更难看，也不丢内容。
+    if not chunks["description"]:
+        return JobSections(description=text)
+    return JobSections(
+        description="\n".join(chunks["description"]).strip(),
+        requirements="\n".join(chunks["requirements"]).strip(),
+        additional="\n".join(chunks["additional"]).strip(),
+    )
 
 
-def _earliest_heading_index(text: str) -> int | None:
-    found = [text.find(heading) for heading in _REQUIREMENT_HEADINGS]
-    indexes = [index for index in found if index >= 0]
-    if not indexes:
-        return None
-    return _widen_to_heading_start(text, min(indexes))
+# 小标题的**前边界**：行首、句末标点。这是"像标题"与"正文里恰好出现的词"的分界。
+_SECTION_BOUNDARIES = "。；;！!？?.\n\r"
+# 前边界只有空白/开括号（弱边界）时，标题后面要紧跟这些才算"长得像标题"。
+_HEADING_TAIL_CHARS = "：:"
+
+
+def _looks_like_heading(text: str, index: int, heading: str) -> bool:
+    """这个位置是**小标题的开头**，还是正文里恰好出现的标题词？
+
+    实测反例（真实采集数据，字节跳动 · 后端开发实习生电商安全 TikTok Shop）：
+    ``为符合岗位要求的同学提供…`` 里的「岗位要求」是要求类标题词，却夹在句子中间。
+    旧实现只看"关键词出现在哪"，于是从那里切：描述被截成
+    ``岗位职责：日常实习：面向全体在校生，为符合`` 一句半，而真正的「任职要求」连同
+    整篇正文一起进了要求段——两个字段都读不成话。
+
+    规则：小标题必须**另起一段**——前面是行首或句末标点；前边界只有空白/开括号这种
+    弱边界时，后面还得紧跟冒号，用来排掉「…符合岗位要求 我们希望你…」这类正文。
+    """
+    cursor = index
+    while cursor > 0 and (text[cursor - 1].isspace() or text[cursor - 1] in _HEADING_OPENERS):
+        cursor -= 1
+    if cursor == 0 or text[cursor - 1] in _SECTION_BOUNDARIES:
+        return True
+    after = text[index + len(heading) : index + len(heading) + 1]
+    return after in _HEADING_TAIL_CHARS
+
+
+def _heading_cuts(text: str) -> list[tuple[int, str]]:
+    """按位置从早到晚列出**像标题**的小标题切点：``(位置, 段名)``。
+
+    段名是 ``description`` / ``requirements`` / ``additional``。每种标题串只认它**第一个
+    像标题**的出现——同一串在别处再出现（多半是正文里的用词）不再重复切。位置相同或更靠前的
+    候选取最早的那一个，避免「任职资格要求」这类嵌套标题切出两个紧挨的切点。
+    """
+    cuts: list[tuple[int, str]] = []
+    for kind, headings in (
+        ("description", _DESCRIPTION_HEADINGS),
+        ("requirements", _REQUIREMENT_HEADINGS),
+        ("additional", _ADDITIONAL_HEADINGS),
+    ):
+        for heading in headings:
+            start = 0
+            while (index := text.find(heading, start)) >= 0:
+                start = index + 1
+                if _looks_like_heading(text, index, heading):
+                    cuts.append((_widen_to_heading_start(text, index), kind))
+                    break
+    cuts.sort()
+    deduped: list[tuple[int, str]] = []
+    for index, kind in cuts:
+        if deduped and index <= deduped[-1][0]:
+            continue
+        deduped.append((index, kind))
+    return deduped
 
 
 def _has_description_heading(text: str) -> bool:
@@ -202,8 +304,10 @@ def _widen_to_heading_start(text: str, index: int) -> int:
 
 
 __all__ = [
+    "JobSections",
     "looks_like_salary",
     "normalize_text",
+    "split_job_fields",
     "split_job_sections",
     "split_title_salary",
 ]

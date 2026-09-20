@@ -305,6 +305,9 @@ class Collector:
             source_url=result.url,
             description=str(detail.get("description", "")),
             requirements=str(detail.get("requirements", "")),
+            # 福利待遇 / 公司介绍这类第三段：不带上就会一路丢到导入之后，
+            # 「其他招聘信息」永远是空的。
+            additional_info=str(detail.get("additional_info", "")),
             source=result.source or adapter.display_name,
             task_id=task_id,
             job_type=job_type,
@@ -350,6 +353,9 @@ class Collector:
                 requirements = str(detail.get("requirements") or "").strip()
                 if requirements:
                     job.requirements = requirements
+                additional = str(detail.get("additional_info") or "").strip()
+                if additional:
+                    job.additional_info = additional
                 # 技能标签是从 JD 解析出来的，补到正文后必须重算，否则搜索/匹配仍按空标签走。
                 refresh_job_keywords(job)
                 job.updated_at = utcnow()
