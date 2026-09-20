@@ -35,7 +35,7 @@ DEFAULT_BROWSER_PORT = 9333
 
 class Settings(BaseSettings):
     app_name: str = "ResumeForge"
-    app_version: str = "0.8.0"
+    app_version: str = "0.9.0"
 
     # SQLite 文件路径（相对 backend 目录），目录不存在时自动创建
     database_url: str = DEFAULT_DATABASE_URL

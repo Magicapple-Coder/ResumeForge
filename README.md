@@ -3,7 +3,7 @@
 [![CI](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-当前版本：`0.8.0` · [Release 页面](https://github.com/Magicapple-Coder/ResumeForge/releases)
+当前版本：`0.9.0` · [Release 页面](https://github.com/Magicapple-Coder/ResumeForge/releases)
 
 > 面向求职场景的个性化简历工具：录入岗位 → 维护个人资料 → AI 生成或自行编写 → 导出多格式文件。
 > 单用户本地运行，业务数据默认保存在本机；AI 功能只把生成所需内容发送给你主动配置的模型服务商。LLM API Key 由你自己配置，代码中不内置任何密钥。
