@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="docs/images/icon.png" width="96" alt="简历通 ResumeForge 图标" />
+
 # 简历通 ResumeForge
 
 [![CI](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml)
@@ -13,6 +17,8 @@
 [![GitHub stars](https://img.shields.io/github/stars/Magicapple-Coder/ResumeForge?style=flat&logo=github)](https://github.com/Magicapple-Coder/ResumeForge/stargazers)
 
 当前版本：`0.10.0` · [Release 页面](https://github.com/Magicapple-Coder/ResumeForge/releases) · [使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
+
+</div>
 
 > **面向所有岗位求职者的本地优先（local-first）AI 简历工作台。**
 > 从「录入岗位 → 维护资料 → AI 生成或自行编写 → 导出投递」是一条完整链路，再往两端延伸：
