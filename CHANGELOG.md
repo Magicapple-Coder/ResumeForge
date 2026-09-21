@@ -60,7 +60,7 @@
 - **让后端与前端测试在 Linux CI 上也能全绿（此前只有 Windows 全绿）**。三处原因、三处修法：
   - **浏览器定位在非 Windows 上是坏的**。`BrowserManager._existing_env_paths` 用 `Path(base) / r"Google\Chrome\Application\chrome.exe"` 拼接，而反斜杠在 Linux/macOS 上只是普通字符、不是路径分隔符，于是候选路径永远找不到，浏览器发现只能靠 `shutil.which` 兜底——在没装浏览器的 CI 上 7 个浏览器定位测试全部失败。现在按 `\\` 拆段后用 `Path.joinpath(*parts)` 拼接，跨平台一致；这也顺带修好了一处真实缺陷（Linux/macOS 用户以前无法靠 `PROGRAMFILES` 这类环境变量定位浏览器）。
   - **服务端 PDF 生成需要中文字体，而 Linux CI 没装**。`pdf_exporter` 已经认 Noto CJK（`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`），只是 runner 上没有这个字体，导致 14 个分享包用例在「生成 PDF」那一步报 409。修复是给 Linux job 加一步 `sudo apt-get install -y fonts-noto-cjk`（分享包这个功能本来就是要测 PDF 的，不该为了迁就 CI 而跳过）。
-  - **两个前端用例在慢速 runner 上不稳定**。`SettingsPage` 的「切换技能开关」在列表异步渲染完成前就用同步 `getByRole` 取开关（改成 `findByRole` 等它出现）；`AssistantPage` 的「流式回复隔离」用例给 10 秒上限太紧（放宽到 20 秒）。这两处都不是断言变松，只是给异步 UI 测试留足环境余量。
+  - **三处前端用例在慢速 runner 上不稳定**。`SettingsPage` 的「切换技能开关」与「删除技能前的确认」都在技能列表异步渲染完成前就用同步 `getByRole`/`getAllByRole` 取元素（分别改成 `findByRole` / `findAllByRole` 等它出现）；`AssistantPage` 的「流式回复隔离」用例给 10 秒上限太紧（放宽到 20 秒）。这三处都不是断言变松，只是给异步 UI 测试留足环境余量。
 
 - **补齐发布包的必需文件清单，让 Windows 的「启动器 + 打包」测试重新变绿**。`scripts/Build-Release.ps1` 的 `$RequiredFiles` 一度落后于 `backend/app/preflight.py` 的 `_REQUIRED_FILES` 22 项：`app/data/ats_keywords.json`、`app/services/feature_catalog.py` 与 20 个提示词文件。后果只落在开发侧——`scripts/tests/Test-Build-Release.ps1` 会抛「Build-Release.ps1 does not require 'backend/app/data/ats_keywords.json'」而让 Windows job 连续多轮失败，但**实际分发的压缩包是完整的**（`git archive` 会带上全部受追踪文件，这份清单只是发布前的自检网，不是打包过滤）。修复是把清单补齐到与 preflight 一致（50 项），并留注释说明这条单方向守卫：往 preflight 加资源而不在这里登记，测试就会变红。对终端用户**没有任何行为变化**。
 
