@@ -16,7 +16,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![GitHub stars](https://img.shields.io/github/stars/magicapple123/ResumeForge?style=flat&logo=github)](https://github.com/magicapple123/ResumeForge/stargazers)
 
-当前版本：`0.10.0` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
+当前版本：`0.10.1` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
 
 </div>
 

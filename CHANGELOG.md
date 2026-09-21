@@ -10,6 +10,31 @@
 
 ### Changed
 
+## 0.10.1 - 2026-09-21
+
+### Fixed
+
+- **仓库改名之后「检查更新」直接报错**。项目从 `Magicapple-Coder/ResumeForge` 改名为 `magicapple123/ResumeForge` 后，GitHub 对旧地址返回 **301**（实测：旧名 `releases/latest` → 301，新名 → 200），而 `update_check.py` 的 HTTP 客户端是**显式关掉重定向跟随**的（`follow_redirects=False`，为的是让"仓库不存在"这类情况被如实报出来、而不是被重定向悄悄带到别处），于是拿到的不是 200，`_fetch_latest_release` 抛 `RuntimeError`，用户点「检查更新」看到的是 `GitHub 返回了 HTTP 301`。现在默认仓库地址改为新名字。**这一条没有别的补救途径**：坏掉的恰恰是"获取新版本信息"这条路本身，所以 0.10.0 的用户只能手动下载 0.10.1。
+
+  同一次改名波及的另外两处地址**逐一实测过，改前改后都能用**，改它们只是不让地址本身继续过期：`frontend/src/config.ts` 的仓库链接由浏览器跟随 301 跳到新址；`scripts/Update-ResumeForge.ps1` 的 `Invoke-WebRequest` 默认跟随重定向（`MaximumRedirection` 默认 5）。
+
+- **后端 Windows job 在 CI 上必然撞满 30 分钟超时**（实测：28 分 30 秒只跑完 318/2149 个用例，外推需要约 3.2 小时）。根因在测试夹具而非被测代码：`clean_db` 每个用例前后各重建一次 38 张表，实测 `drop_all` + `create_all` 一次要 **436 ms**，其中删表只占 11 ms，剩下约 429 ms 全是建表——38 张表连同索引，在 SQLite 默认的 `synchronous=FULL` 下每条 DDL 都要 fsync 一次。这一步占了单个用例总耗时的 97%，也就是说**整个后端套件的运行时间几乎全是建表**；CI 的 Windows runner 磁盘慢又带 Defender 实时防护，fsync 被放大约 12 倍（单用例 0.46 s → 5.4 s）。**加并行救不了**：job 里 4/4 worker 全开却只跑到 14.8%，因为瓶颈是文件同步，多个 worker 只是排队。
+
+  修法是给 `Engine` 挂一个 `connect` 监听器，把测试库设成 `journal_mode=MEMORY` + `synchronous=OFF`。用 `MEMORY` 而不是 `OFF` 是刻意的：`OFF` 会让 `ROLLBACK` 失效，而应用代码里有依赖回滚的路径；`MEMORY` 把回滚日志放在内存里，保留回滚语义、只去掉持久性。这两项只影响**断电时能否恢复**，不影响任何一条 SQL 的语义、隔离级别或约束，且只作用于测试库（随会话结束整个删掉）；生产引擎的持久性由 `build_engine` 决定，监听器碰不到它。监听器挂在 `Engine` **类**上而不是实例上，因为 `database.rebind()` 换数据集时会新建引擎对象。
+
+  实测夹具动作 436 ms → **44.7 ms**（9.8 倍），本机全量 236 秒 → 92~101 秒；CI 上 Windows job 从"超时被杀"变为 **6 分 5 秒**通过，整轮 10 分 34 秒全绿，覆盖率与改动前一致（86.64%，门槛 80%）。
+
+- **CI 上 `pytest` 与 `vitest` 的两处工程性缺陷**（长期让 GitHub Actions 红多绿少）：
+
+  - **后端 Linux 上的浏览器定位是坏的**。`BrowserManager._existing_env_paths` 用 `Path(base) / r"Google\Chrome\Application\chrome.exe"` 拼路径，而反斜杠在 Linux/macOS 上只是普通字符、不是分隔符，于是候选路径永远找不到，7 个浏览器定位测试全挂。改为按 `\\` 拆段再 `Path.joinpath(*parts)` 拼接。这同时修好了一处**真实缺陷**：Linux/macOS 用户此前无法靠 `PROGRAMFILES` 这类环境变量定位浏览器。
+  - **服务端 PDF 需要中文字体而 Linux runner 没装**，导致 14 个分享包用例在「生成 PDF」那步报 409。CI 的 Linux job 增加一步 `apt-get install -y fonts-noto-cjk`；分享包本来就是要测 PDF 的，不为了迁就 CI 而跳过。
+  - **三处前端用例在慢速 runner 上不稳定**：`SettingsPage` 的「切换技能开关」与「删除技能前的确认」在技能列表异步渲染完成前就用同步 `getByRole`/`getAllByRole` 取元素（改为 `findByRole`/`findAllByRole` 等它出现），`SettingsPage` 的「更多操作」菜单同理；`AssistantPage` 的「流式回复隔离」用例 10 秒上限太紧（放宽到 20 秒）。这些都不是把断言改松，只是给异步 UI 测试留足环境余量。
+  - 后端测试改用 `pytest-xdist` 并行（`-n auto`），`pyproject.toml` 的覆盖率配置相应打开 `parallel = true`——否则每个 worker 抢写同一个 `.coverage` 文件，会在**所有用例都通过之后**的收尾阶段抛 `attempt to write a readonly database`。
+
+### Changed
+
+- 仓库地址同步为新名字：README 的标题与徽章、Issue 模板里的安全公告与文档链接、更新检查的默认仓库、更新脚本的默认仓库。
+
 ## 0.10.0 - 2026-09-21
 
 ### Added
