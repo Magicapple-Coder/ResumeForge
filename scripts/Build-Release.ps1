@@ -41,21 +41,48 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 # Paths a release cannot start without. backend\app\preflight.py checks the same
 # ground for the running app; Test-Build-Release.ps1 asserts the two lists agree,
 # so packaging stays verifiable on a machine that has no Python environment yet.
+# Every path here is one backend/app/preflight.py refuses to start without. The
+# list used to lag behind preflight (22 entries were missing, so the launcher and
+# release-packaging test failed on every run while the archive was in fact fine);
+# test Test-Build-Release.ps1 now compares the two lists in one direction, so a
+# new resource added to preflight without being added here turns that test red.
 $RequiredFiles = @(
     "backend/app/main.py",
     "backend/app/preflight.py",
     "backend/app/data/skills.json",
+    "backend/app/data/ats_keywords.json",
+    "backend/app/prompts/application_status.md",
+    "backend/app/prompts/apply_greeting.md",
     "backend/app/prompts/assistant_system.md",
     "backend/app/prompts/assistant_welcome.md",
+    "backend/app/prompts/claim_draft.md",
+    "backend/app/prompts/drill_common.md",
+    "backend/app/prompts/drill_contract.md",
+    "backend/app/prompts/drill_evaluate.md",
+    "backend/app/prompts/drill_review.md",
     "backend/app/prompts/image_extraction_addendum.md",
+    "backend/app/prompts/interview_analysis.md",
+    "backend/app/prompts/interview_answer.md",
+    "backend/app/prompts/interview_optimize_resume.md",
+    "backend/app/prompts/interview_questions.md",
+    "backend/app/prompts/interview_report.md",
+    "backend/app/prompts/interview_system.md",
     "backend/app/prompts/job_analysis.md",
+    "backend/app/prompts/job_match.md",
+    "backend/app/prompts/job_multi_extract.md",
     "backend/app/prompts/job_text_extract.md",
     "backend/app/prompts/profile_text_extract.md",
     "backend/app/prompts/resume_fix_json.md",
     "backend/app/prompts/resume_generate_system.md",
     "backend/app/prompts/resume_generate_user.md",
+    "backend/app/prompts/resume_phrases.md",
+    "backend/app/prompts/resume_polish.md",
     "backend/app/prompts/resume_quality_retry.md",
+    "backend/app/prompts/resume_risk.md",
+    "backend/app/prompts/resume_star.md",
     "backend/app/prompts/resume_suggestions.md",
+    "backend/app/prompts/resume_translate.md",
+    "backend/app/services/feature_catalog.py",
     "backend/app/templates/resume.html.j2",
     "backend/app/templates/resume_modern.html.j2",
     "backend/app/templates/resume_compact.html.j2",
