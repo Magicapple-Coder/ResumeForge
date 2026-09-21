@@ -39,7 +39,7 @@
 
 - **措辞标准**：去口语、空话套话与互联网黑话（"赋能""抓手""闭环"）；强动作动词开头，
   但**不得升格职责范围**——"参与"不能写成"主导"。这条是防虚构的一部分，不要放松。
-  其中点名的黑话另有**代码侧确定性检查**：`services/resume_wording.py` 的 `CLICHE_WORDS` /
+  其中点名的黑话另有**代码侧确定性检查**：`services/resume/resume_wording.py` 的 `CLICHE_WORDS` /
   `CLICHE_PHRASES`，命中后复用既有的一次质量重试（`resume_quality_retry.md`），重试后仍在时以
   warning 告知用户。名单只收高置信度词——**误判会让每次生成多花一次模型调用**，还会把用户原本
   通顺的句子改坏；`落地`、`推动`、`梳理` 等正当的简历动词不在名单内。只在启用美化拓展时检查：
@@ -136,7 +136,7 @@
 - `balanced`：从资料和参考片段提炼方法、职责和结果，重组为更完整的岗位表达。
 - `strong`：深入呈现有事实依据的架构、技术决策、难点与业务价值，但仍不能新增未经资料支持的数字、技术、角色或成果。
 
-分级指令仍位于 `backend/app/services/resume_generator.py`，前端标签位于
+分级指令仍位于 `backend/app/services/resume/resume_generator.py`，前端标签位于
 `frontend/src/config.ts`。生成编排、JSON 规范化、事实回填、一致性检查和质量门槛分别由
 `resume_generator.py`、`resume_content.py`、`resume_grounding.py`、
 `resume_consistency.py` 和 `resume_quality.py` 负责；两边调整时必须同步，并为每个等级保留

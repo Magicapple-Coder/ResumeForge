@@ -56,70 +56,37 @@ backend/app/
 ├── api/               # 路由层：校验参数、编排服务、组装响应
 ├── middleware/        # 请求关联 ID 与请求体大小限制
 ├── services/          # 业务层：核心逻辑，与框架解耦
-│   ├── llm/           # 大模型抽象（base + openai_compat + structured_output）
+│   ├── resume/         # 简历域：生成/落地/一致性/版式/模板/写作增强/风险/建议/分享
+│   ├── profile/        # 资料域：读写/相关性/上下文/预算/照片/引用/匹配/常量
+│   ├── job/            # 岗位域：服务/匹配/多源解析/需求解读
+│   ├── jd/             # JD 规则：常量/匹配/过滤/要求提取
+│   ├── assistant/      # 助手域：服务/技能/来源/联网搜索
+│   ├── interview/      # 面试域：模拟面试/题库/面经/历史
+│   ├── apply/          # 采集与投递编排：apply_service / collector / task_runner / form_engine
+│   ├── browser/        # 浏览器桥接层：cdp_client + browser_manager + page_ready + network_capture
+│   ├── sites/          # 站点适配器层：base + registry + boss（单站点实现）+ boss_network
+│   ├── llm/            # 大模型抽象（base + openai_compat + structured_output）
+│   ├── assistant_tools/ # 助手工具注册表与 handler（读/写项目数据）
+│   ├── profile_parser/  # 个人资料分区、条目、技能与边界解析
+│   ├── job_parser/      # 岗位文本字段、元数据、候选值与章节解析
+│   ├── search/          # 受限联网搜索聚合
 │   ├── profile_text_parser.py # 个人资料解析兼容门面
-│   ├── profile_parser/       # 个人资料分区、条目、技能与边界解析模块
-│   ├── job_text_parser.py    # 粘贴招聘文本解析兼容门面
-│   ├── job_parser/            # 岗位文本字段、元数据、候选值与章节解析
-│   ├── text_extraction.py     # 岗位/资料 AI 结构化抽取与本地兜底（含图片抄录锚定）
-│   ├── attachments.py         # 附件校验原语（图片/文档白名单、文件头与体积，助手与识别接口共用）
-│   ├── image_conversion.py    # bmp/tiff 转码为 PNG/JPEG（多数服务商不认这两种格式）
-│   ├── document_text.py       # PDF/DOCX 文字提取（本机完成，原始文件不外发）
+│   ├── job_text_parser.py     # 粘贴招聘文本解析兼容门面
 │   ├── jd_parser.py           # JD 规则解析兼容门面（技能标签/学历/年限）
-│   ├── jd_parser_constants.py # JD 技能、学历、年限规则常量
-│   ├── jd_parser_matching.py  # 技能词典加载、别名匹配与文本规范化
-│   ├── jd_parser_filters.py   # 技能短词的上下文误报过滤
-│   ├── jd_parser_requirements.py # 学历与经验年限提取
-│   ├── job_analysis.py # 仅依据招聘原文生成岗位需求解读
-│   ├── assistant_service.py # 助手附件校验与模型消息组装
-│   ├── assistant_web_search.py # 受限 Bing RSS 摘要搜索
-│   ├── assistant_tools.py  # 助手工具注册表与处理器（读/写项目数据）
-│   ├── assistant_skills.py # 技能持久化、系统提示拼装与知识读取
-│   ├── skill_archive.py # 技能包（.md/.zip）的安全解析与体积/路径校验
-│   ├── materials.py     # 资料箱条目的持久化与助手视图
-│   ├── candidate_jobs.py # 备选岗位暂存与导入标记
-│   ├── profile_photos.py # 多张照片与主照片同步（写回 user_profile.photo）
-│   ├── resume_templates.py # 简历模板与字号档位注册表
-│   ├── pdf_exporter.py  # 服务端 PDF 生成（fpdf2 + 系统中文字体）
-│   ├── update_check.py  # GitHub Releases 版本对比（只读、带缓存）
-│   ├── data_backup.py # 备份包导出、校验与恢复
-│   ├── datasets.py    # 多份本地数据集的导入、切换与删除
-│   ├── profile_relevance.py # 岗位相关性筛选兼容门面与流程编排
-│   ├── profile_relevance_constants.py # 相关性字段、信号、限制和数据类型
-│   ├── profile_context.py # 资料规范化与模型上下文构建
-│   ├── profile_matching.py # 岗位聚焦、条目评分与候选选择
-│   ├── profile_references.py # 总结文件清洗、分段和事实提取
-│   ├── profile_budget.py # Prompt 序列化与字符预算压缩
-│   ├── resume_generator.py  # 简历生成流式编排与兼容入口
-│   ├── resume_content.py # 模型 JSON 提取与 ResumeContent 规范化
-│   ├── resume_grounding.py # 结构化字段事实回填与兼容入口
-│   ├── resume_grounding_helpers.py # 事实匹配、证据和参考事实纯函数
-│   ├── resume_consistency.py # 生成结果与候选资料的一致性检查
-│   ├── resume_quality.py # 深度美化的确定性质量门槛
-│   ├── resume_suggestions.py # 按岗位生成简历修改建议
-│   ├── exporter.py    # 导出 JSON/Markdown/HTML
-│   ├── profile_service.py   # 个人资料读写
-│   ├── job_match.py   # 匹配分析编排：读资料与简历，产出五类结论与准入建议
-│   ├── apply/         # 采集与投递编排：apply_service / collector / task_runner / form_engine
-│   ├── browser/       # 浏览器桥接层：cdp_client（CDP 传输）+ browser_manager（投递专用浏览器）+ page_ready（页面就绪等待）+ network_capture（接口响应解析）
-│   ├── sites/         # 站点适配器层：base（契约）+ registry（按站点标识/域名分发）+ boss（单站点实现）+ boss_network（该站点的接口响应解析）
-│   ├── docx_exporter.py # Word（docx）导出：复用 ResumeLayout 版式口径，不引入第二套排版引擎
-│   ├── txt_exporter.py  # 纯文本（txt）导出
-│   ├── export_pipeline.py # 多格式导出管线：格式渲染 → 水印 → 脱敏的统一编排
-│   ├── watermark.py     # 水印后处理（HTML 覆盖层 / PDF 叠加 / Word 页眉；纯文本与 JSON 报错）
-│   ├── privacy.py       # 一键隐私脱敏（姓名/电话/邮箱/公司/学校等字段占位）
-│   ├── share_package.py # 离线分享包（脱敏快照 + 文件清单 + 本地 token + 评论回传）
-│   ├── resume_writing.py # 简历写作增强（STAR 改写 / 话术 / 润色 / 中英互译）
-│   ├── resume_diff.py   # 版本差异对比（本地 difflib，三态 diff）
-│   ├── resume_wording.py # 写作增强的措辞与话术生成
-│   ├── resume_risk.py   # 质量与合规检查（查重/敏感词/夸大/深挖风险点/合规）
-│   ├── ats_check.py     # ATS 本地检测（格式 / 关键词 / 信息位置，带免责）
-│   ├── match_scoring.py # 匹配度参考分（本地规则五维打分，仅展示、不参与准入）
-│   ├── referral_service.py # 内推管理（转化率由关联求职进度派生）
-│   ├── reminder_service.py # 日历提醒
-│   ├── interview_experience_service.py # 面经知识库
-│   ├── interview_questions.py # 个性化题库（基础/项目深挖/反问 HR）
-│   └── settings_service.py  # 运行时配置存取
+│   ├── pdf_exporter.py / docx_exporter.py / txt_exporter.py # 服务端多格式导出（复用同一版式口径）
+│   ├── exporter.py / export_pipeline.py / watermark.py / privacy.py # 导出管线（渲染→水印→脱敏）
+│   ├── data_backup.py / datasets.py # 备份包导出、校验、恢复与多数据集切换
+│   ├── analytics.py / tracker.py / tracker_extract.py # 求职统计与进度
+│   ├── claims.py / claim_draft.py # 事实台账（草拟 + 校验）
+│   ├── text_extraction.py / document_text.py / attachments.py / image_conversion.py # 识别与附件处理
+│   ├── materials.py / candidate_jobs.py # 资料箱与备选岗位
+│   ├── referral_service.py / reminder_service.py # 内推 / 提醒
+│   ├── knowledge_service.py / skill_archive.py / feature_catalog.py # 知识库 / 技能包 / 能力目录
+│   ├── match_scoring.py / ats_check.py # 参考分 / ATS 检测
+│   ├── share_package.py # 离线分享包
+│   ├── site_health.py / update_check.py # 站点健康 / 版本检查
+│   ├── conversation_export.py / drill.py / trash.py # 会话导出 / 面试深挖 / 回收站
+│   └── settings_service.py / api_key_crypto.py # 运行时配置 / API Key 静态加密
 ├── prompts/           # 提示词模板（独立于代码，方便调参）
 ├── templates/         # 简历 HTML 模板（Jinja2）
 └── data/              # 技能词典
@@ -283,7 +250,7 @@ sequenceDiagram
 
 - 采集与投递共用一个**任务运行器**：`services/apply/task_runner.py` 只负责线程生命周期、控制信号与公共收尾，`task_apply.py` 执行逐岗位投递，`task_collect.py` 执行采集批次与样例记录，`task_config.py` 解析任务配置快照。依赖从运行器单向流向执行模块，执行模块不反向导入 `TaskRunner`，避免循环依赖；原私有方法与 monkeypatch 路径保留兼容包装。任务支持暂停 / 继续 / 停止与连续失败熔断，进度按逐岗位状态与「已处理 N/M」展示，**不产出任何百分比**。
 - **准入判断单源**：能投 / 需确认 / 不投只由 `models/apply.py` 的 `admission_of()` 一处判定，匹配分析与投递服务都复用它；前端只读后端返回的 `admission` / `requires_confirm`，**不再判一次**。
-- **匹配分析**（`services/job_match.py` + `prompts/job_match.md`）读取个人资料与简历，产出硬性条件、核心能力、加分项三类逐条结论，落在「已匹配 / 表达缺口 / 证据不足 / 真实缺口 / 待确认」五类上并给出建议。它回答「你够不够」，与只读招聘原文、回答「岗位要什么」的岗位需求解读是两条独立链路；结果随岗位持久化，作为投递准入依据。
+- **匹配分析**（`services/job/job_match.py` + `prompts/job_match.md`）读取个人资料与简历，产出硬性条件、核心能力、加分项三类逐条结论，落在「已匹配 / 表达缺口 / 证据不足 / 真实缺口 / 待确认」五类上并给出建议。它回答「你够不够」，与只读招聘原文、回答「岗位要什么」的岗位需求解读是两条独立链路；结果随岗位持久化，作为投递准入依据。
 - **浏览器桥接层**：`services/browser/cdp_client.py` 只做 CDP 传输（HTTP + WebSocket），`browser_manager.py` 负责按用户选择的浏览器（自动 / Chrome / Edge / 自定义路径，**指定了就只找那一个、找不到不静默回退**）用**独立 `user-data-dir`** 拉起 / 关闭「投递专用浏览器」。Chrome 136+ 会静默忽略默认用户目录上的 `--remote-debugging-port`，因此**不能**去连用户日常浏览器，必须由应用自己拉起一个专用实例。**"在不在跑"看调试端口，不看进程句柄**：浏览器是独立进程，应用退出时**不会**去关它（登录态就持久化在专用目录里，下次启动直接沿用），应用一重启就没有它的句柄了——按句柄判断会把正在运行的窗口误报成"未启动"而拦住采集投递，且再点"启动浏览器"也救不回来（同一 `user-data-dir` 的第二次启动会被 Chromium **转交给已在运行的实例后立刻退出**，句柄依然是死的）。"归谁"是独立于"在不在跑"的另一个事实（`BrowserStatus.owned`）：`stop()` 只终止自己持有的句柄、**绝不按 PID 猜进程**，所以非本次运行拉起的窗口关不掉——界面据此禁用「关闭浏览器」并把原因**写在页面上**（禁用按钮不派发鼠标事件，挂在悬停提示里等于没写）。`page_ready.py` 是**页面就绪等待原语**：`Page.navigate` / 打开标签页只是让浏览器**开始**加载，返回时文档往往还是空的——必须在导航之后轮询到"目标选择器匹配到内容"再动手，否则会在空白文档上抓到空结果并把"什么都没做"伪装成"完成"。等待按调用方给的 `probe` / `is_ready` / `blocker` / `on_timeout` 回调运转，与站点无关、可离线测；轮询步经过 CDP 客户端（外层 `StopAwareCdpClient` 的停止检查点），因此可被用户点的"停止"打断。**超时是唯一的失败时限**：`readyState === 'complete'` 只说明文档与静态资源加载完，SPA（如 BOSS 直聘）的岗位卡片常在它**之后**才由 XHR 异步渲染，所以**不**拿 `readyState` 当"内容该出来了、再没有就是结构变化"的证据（否则首屏稍慢就会误报失败）；就绪只由"匹配到内容（或明确无结果）"判定，出现登录失效 / 验证码仍**立刻**失败，超时则按证据给出对应文案。
   两条来自真机联调的硬约束（各自都让整条链路静默失效过，见 `test_boss_page_probe.py`）：**就绪选择器不能含会被页面自身结构命中的宽松规则**——`a[href*="/job_detail/"]` 曾命中页头「职位搜索」导航项（`href` 恰为 `/job_detail/`，无 id、不以 `.html` 结尾），它比岗位卡片先渲染，导致就绪在 0.9s 就被判真、网络订阅窗口提前关闭，而 joblist 接口还没发出；现在要求岗位链接以 `.html` 结尾。**拦截判定必须看可见性**——站点把登录弹窗模板（`.sign-form` 等 6 个）与空态容器写在标记里且默认隐藏，`querySelector` 只看存在与否会让"每个详情页都要登录""每次搜索都没结果"，所以统一用 `shown()`（`getClientRects().length`）判定。
   **"这一页是不是目标页"的判据是"目标地址里的每个查询参数都在当前地址里取到相同的值"**（`same_target_page`），而不是"地址整串相等"。整串相等会被站点的地址规范化打穿——把 `/web/geek/job` 补参数、跳成 `/web/geek/jobs` 之后，**每一次正常导航都被判成"新文档还没接管"**，等满超时后报"页面没有切换到目标地址"，而页面其实早就好了（真实用户反馈就是这句）；反过来"只看路径"又太松：`?page=1` 与 `?page=2` 路径完全相同，会把"还停在上一页"认成"已到位"，翻页于是读到上一页的内容。带参数的比较正好卡在中间，两个方向都有回归测试钉住。
@@ -361,7 +328,7 @@ sequenceDiagram
       │ measureResumeLayout()：最后一个可见正文元素的底边 − 内容区顶边
       ▼
 POST /api/resumes/{id}/layout/analyze   ← 两个高度（正文占用 / 一页可用）
-      │ services/resume_layout.diagnose()：结论 + 固定顺序的建议
+      │ services/resume/resume_layout.diagnose()：结论 + 固定顺序的建议
       │ build_fit_ladder()：逐档版式 + 每档可直接注入预览的 CSS
       ▼
 「自动一页」：对每一档 → iframe 注入 css → 量一次 → 够放下就停
@@ -430,7 +397,7 @@ score_match_result(result, job_payload, profile_text, resume_text)
 
 ## 核心数据流：简历写作增强与质量合规
 
-四个 LLM 变换（`services/resume_writing.py`）+ 一个纯本地对比（`services/resume_diff.py`），
+四个 LLM 变换（`services/resume/resume_writing.py`）+ 一个纯本地对比（`services/resume/resume_diff.py`），
 都收口在 `api/resume_writing.py` 的 `POST /api/resumes/{id}/writing/{star|phrases|polish|translate}`
 与 `POST /api/resumes/{id}/diff`。
 
@@ -439,7 +406,7 @@ score_match_result(result, job_payload, profile_text, resume_text)
 - **纯空白拦截在 schema 层**：`WritingText = Annotated[str, Field(...), AfterValidator(_strip_writing_text)]`
   四个请求体共用，空串 / 纯空白直接 422，不把空内容交给模型。
 - **版本对比纯本地**：difflib 三态（added / removed / unchanged），不调用模型。
-- **质量与合规**（`services/resume_risk.py` + `services/ats_check.py`）：查重 / 敏感词 / 夸大风险 /
+- **质量与合规**（`services/resume/resume_risk.py` + `services/ats_check.py`）：查重 / 敏感词 / 夸大风险 /
   面试深挖风险点（联动事实台账）/ 合规校验 + ATS 本地检测；ATS 只做静态规则检查并带免责。
 
 ## 核心数据流：导出管线（多格式 / 水印 / 脱敏）
@@ -466,7 +433,7 @@ score_match_result(result, job_payload, profile_text, resume_text)
 - **分享包**（`services/share_package.py` + `api/share_packages.py`，`/api/share-packages`）：把一份
   简历打包成脱敏 HTML/PDF + 只读快照 + 评论回传文件 + 本地 token；权限只读 / 可评论，离线校验
   token、不做在线鉴权。删除走回收站（软删除，磁盘产物不清理）。
-- **模板市场**（`services/resume_templates.py` 的 `TEMPLATE_MARKET_PRESETS`）：互联网大厂 /
+- **模板市场**（`services/resume/resume_templates.py` 的 `TEMPLATE_MARKET_PRESETS`）：互联网大厂 /
   国企事业单位 / 外企 / 应届校园四套预设，`/api/resumes/templates` 返回带 `market` 字段的目录。
 
 ## 核心数据流：内推 / 提醒 / 面经 / 求职统计 / 知识库 / 历史记录（迁移 0018 / 0019）
@@ -481,21 +448,21 @@ score_match_result(result, job_payload, profile_text, resume_text)
 - **提醒**（`services/reminder_service.py` + `api/reminders.py`）：日历提醒，按时间升序排"接下来要做什么"；
   首页展示近期提醒并按紧急度分色（逾期 / 24 小时 / 3 天），「打开应用时弹出提醒」开关经
   `GET/PUT /api/settings/reminder-popup` 持久化。
-- **面经**（`services/interview_experience_service.py` + `api/interview_experiences.py`）：真实面经知识库。
+- **面经**（`services/interview/interview_experience_service.py` + `api/interview_experiences.py`）：真实面经知识库。
 - **求职统计**（`services/analytics.py` + `api/analytics.py`）：前端路由 `/analytics`，按四个主题分组——
   转化与卡点、时间与节奏、渠道与去向、简历与健康度。趋势图可选 `trend_months`（接口 1..24，前端提供
   近 1 / 3 / 6 个月 / 1 年）。该模块的 docstring 是**口径的权威文档**，同时写明了因数据模型不支持而
   **刻意不提供**的指标（平均推进天数 / 阶段流失率 / 面试通过率——没有状态历史表；行业——没有该字段），
   别再重复提议。跨模块复用而非各写一份：`services/ratios.py`（比率唯一实现）、`models/tracker.py` 的
   `STALLED_DAYS` / `is_stalled`（"卡住"口径，与 `/api/stats` 同源，有测试钉住两处一致）、
-  `services/resume_health.py`（简历与台账健康度，复用 `resume_completeness.find_incomplete`）。
+  `services/resume/resume_health.py`（简历与台账健康度，复用 `resume_completeness.find_incomplete`）。
   依赖 `applied_at` 的两张图在日期为空时**显示缺口计数而不是零轴**（`applied_date_gap`），
   助手侧走 `dashboard_brief` 摘要投影，不把长数组塞进上下文。
 
 迁移 `0019` 在上述四张表之外再增三张表 + 内推两列（同样是**只加表、只加列**，带 `deleted_at`
 软删除并登记进 `TRASH_SPECS`，外键 `SET NULL` + 快照字段）：
 
-- **题库历史**（`question_bank_record`，`services/interview_history.py` + `api/interview_history.py`）：
+- **题库历史**（`question_bank_record`，`services/interview/interview_history.py` + `api/interview_history.py`）：
   个性化题库的保存历史，可回看、可删除。
 - **复盘历史**（`interview_review_record`，同上）：面试复盘的保存历史。
 - **知识库**（`knowledge_entry`，`services/knowledge_service.py` + `api/knowledge.py`）：成文笔记
@@ -570,7 +537,7 @@ score_match_result(result, job_payload, profile_text, resume_text)
 - 前端只请求同源 `/api`。开发环境由 Vite 代理；生产环境必须由反向代理把 `/api` 转发到 FastAPI，并为 BrowserRouter 配置 `index.html` fallback。
 - 默认定位是本机单用户应用，后端只应监听回环地址。CORS 只限制浏览器跨域读取，不提供身份认证；没有额外认证和 TLS 时不得直接暴露到公网。
 - 请求上下文中间件同时校验声明长度和流式读取的实际长度，超限返回 413；每个响应携带 `X-Request-ID`，日志使用同一 ID 关联排查。
-- API Key 以明文保存在本地 SQLite 中。照片不进入模型上下文，但岗位、资料以及被选中的总结片段会发送给用户选择的大模型服务商。
+- API Key 在 Windows 上用系统 DPAPI 加密后保存在本地 SQLite 中（`services/api_key_crypto.py`，密文绑定当前用户与机器），非 Windows 平台保持明文。照片不进入模型上下文，但岗位、资料以及被选中的总结片段会发送给用户选择的大模型服务商。
 - 设置页只在用户点击眼睛时调用 `POST /api/settings/llm/api-key/reveal`；接口校验直接连接来源为回环地址并设置 `no-store`，前端只在临时显示状态保存明文，表单提交继续使用绑定 Base URL 的脱敏引用。
 - 助手会话、附件和来源摘要保存在本地 SQLite；当前消息中的附件、显式选择的岗位/简历/脱敏资料会发送给模型。资料上下文移除身份字段；关联简历只移除照片，其正文中的姓名和联系方式仍可能发送。助手图片附件与资料照片是不同数据路径：资料照片始终留在本地，用户主动添加到助手的图片会发送给支持图片输入的模型。
 - 上传的 PDF/DOCX 是**不可信文件**，解析在本机进行并各自设限：PDF 最多读 30 页、DOCX 只读白名单成员 `word/document.xml` 而不解压整包、提取文字总量封顶（超出时截断并提示）、图片解码像素封顶。文字提取结果只作为文本进入模型上下文，原始文件不落库也不外发；扫描件没有文字层时明确提示改用截图，而不是静默返回空结果。
@@ -582,20 +549,20 @@ score_match_result(result, job_payload, profile_text, resume_text)
 
 1. **新增模型提供商**：非 OpenAI 兼容协议时，在 `services/llm/` 新增 Provider 类，并在 `create_provider` 中按 `provider` 字段分发。
 2. **扩展岗位文本识别规则**：在 `services/job_parser/` 对应职责模块增加字段标签、候选值或章节规则，并补充 `tests/test_job_text_parser.py` 或 `tests/test_job_text_parser_edge_cases.py` 离线测试；`services/job_text_parser.py` 仅保留兼容门面和解析流程装配。
-3. **扩展 JD 标签规则**：在 `services/jd_parser_constants.py` 增加学历、年限或技能别名，在 `jd_parser_filters.py` 增加必要的上下文过滤，并补充 `tests/test_jd_parser.py`；`services/jd_parser.py` 仅负责公共入口和流程编排。
+3. **扩展 JD 标签规则**：在 `services/jd/jd_parser_constants.py` 增加学历、年限或技能别名，在 `jd_parser_filters.py` 增加必要的上下文过滤，并补充 `tests/test_jd_parser.py`；`services/jd_parser.py` 仅负责公共入口和流程编排。
 4. **新增导出格式**：在 `services/exporter.py` 加导出函数，`api/resumes.py` 的 `_EXPORT_FORMATS` 加一行。
 5. **调整美化拓展策略**：后端 `resume_generator.py` 的分级指令与前端 `config.ts` 的 `RESUME_ENHANCEMENT_LEVELS` 保持一致，并补充 `tests/test_resume_generator.py` 或 `tests/test_resume_quality_retry.py` 测试。
 6. **扩展助手附件格式**：先在 `services/attachments.py` 增加扩展名、MIME 与文件头校验（图片还要在 `image_conversion.py` 补转码），再在 `assistant_service.py` 接入上下文转换并补充边界测试；不要只改前端 `accept`。新增文档类型时把解析放在 `document_text.py`，并同时给识别接口的 `documents` 字段留出入口。
 7. **新增招聘站点适配器**：在 `services/sites/` 增加一个实现 `base.py` 契约的适配器并在 `registry.py` 注册其域名即可，采集与投递业务层不改；站点改版只影响该适配器。表单填写的通用启发式在 `services/apply/form_engine.py`，与具体站点解耦。**前端无需跟着改**：`GET /api/apply/sites` 下发的站点列表（`SiteOptionOut` / `SiteListOut`）是界面展示"当前招聘网站"与站点清单的唯一来源，前端组件里不写死任何站点名，因此新注册的站点会自动出现在界面上；适配器可用 `supports_collect` / `supports_apply` 如实声明本站点支持的能力。
 8. **调整匹配分析或招呼语提示词**：改 `prompts/job_match.md` / `prompts/apply_greeting.md`；若输出结构变化，需同步 `schemas/job_match.py` 的校验 schema 与 `frontend/src/types/apply.ts` 的类型镜像（前端类型与 `models/apply.py` 常量逐字对应）。
 9. **扩展面试深挖**：证据状态、追问类型、复练题型的取值只在 `models/drill.py` 定义一次，新增要同步 `frontend/src/types/drill.ts`（前端枚举逐字对应）。**改状态机只改 `should_promote()` 一处**——判定、界面、复盘都走它；"有证据才 verified"那道闸门在 `services/drill.parse_verdict`。四个提示词（`drill_contract.md` / `drill_evaluate.md` / `drill_review.md` / 共用的 `drill_common.md`）与 `preflight.py` 的完整性清单要一起维护，漏登记会被测试拦下。
-10. **调整版面诊断规则**：阈值与下限集中在 `services/resume_layout.py` 顶部（`FILL_*` / `MIN_*`），建议文案在 `_suggestions()`，改完补 `tests/test_resume_layout.py`。**模板的版式默认值必须与模板文件一致**——`TEMPLATE_LAYOUT_DEFAULTS` 与 `TEMPLATES_DIR` 下的 CSS 由 `test_resume_templates.py` / `test_resume_layout.py` 逐项核对，改了模板不更新会直接测试失败。新增样式模板要同时加：模板文件、`RESUME_TEMPLATES` 条目、`TEMPLATE_LAYOUT_DEFAULTS` 条目（三处缺一不可，测试会指出来）。
+10. **调整版面诊断规则**：阈值与下限集中在 `services/resume/resume_layout.py` 顶部（`FILL_*` / `MIN_*`），建议文案在 `_suggestions()`，改完补 `tests/test_resume_layout.py`。**模板的版式默认值必须与模板文件一致**——`TEMPLATE_LAYOUT_DEFAULTS` 与 `TEMPLATES_DIR` 下的 CSS 由 `test_resume_templates.py` / `test_resume_layout.py` 逐项核对，改了模板不更新会直接测试失败。新增样式模板要同时加：模板文件、`RESUME_TEMPLATES` 条目、`TEMPLATE_LAYOUT_DEFAULTS` 条目（三处缺一不可，测试会指出来）。
 11. **扩展求职进度**：状态与来源的取值只在 `models/tracker.py` 定义一次，新增要同步 `frontend/src/types/tracker.ts`（前端枚举逐字对应）并在 `api/tracker.py` 的筛选校验里放行。**改合并规则只改 `resolve_status()` 一处**——预览、执行、投递台回写都走它。识别提示词改 `prompts/application_status.md`；本地降级的状态信号表在 `services/tracker_extract.py` 的 `_STATUS_SIGNALS`，顺序是"越明确越优先"，调整时注意别让「感谢投递…安排面试」这类自动回执被判成面试邀请。
 12. **扩展事实台账**：核实状态、承担程度、分类的取值只在 `models/claim.py` 定义一次；新增取值要同步 `frontend/src/types/claim.ts`（前端枚举逐字对应）并在 `api/claims.py` 的过滤校验里放行。改进建议规则集中在 `services/claims.py` 的 `claim_warnings()`——它是单选函数，新增规则不影响其它链路。新增**未完成标记**要同时改 `models/claim.py` 的 `PLACEHOLDER_MARKERS` 与前端同名常量，否则界面不会高亮、导出也不会拦。草拟提示词改 `prompts/claim_draft.md` 与 `schemas/claim.py` 的对应字段。
 13. **新增匹配参考分维度**：在 `services/match_scoring.py` 的 `MATCH_SCORE_DIMENSIONS` 追加一条 `DimensionSpec` 并给 `_SUB_SCORERS` 注册同 key 的打分函数；维度权重与总分口径集中在这一处。参考分**只读、不落库、不参与准入**，新增维度不得改 `admission_of`。
 14. **扩展导出管线 / 水印 / 脱敏**：新增导出格式在 `services/export_pipeline.py` 的格式渲染注册表加一行，并给 `watermark.apply_watermark` 与 `privacy.redact` 声明支持范围（无版面概念的格式报明确错误）；`schemas/export.py` 的 `ExportFormat` 与前端 `types/export.ts` 逐字一致。
 15. **新增回收站类型**：新表若带 `deleted_at` 列，必须在 `services/trash.py` 的 `TRASH_SPECS` 加一行，否则会出现"删了就找不到"的半软删；`tests/test_trash.py::test_every_deleted_at_table_is_registered` 会扫全库钉住这层一一对应。
-16. **扩展简历写作增强**：变换的取值（话术 mode / 润色 style / 翻译 direction）与 `frontend/src/types/resumeWriting.ts` 逐字一致；提示词在 `prompts/resume_{star,phrases,polish,translate}.md`，输出结构变化需同步 `schemas/resume_writing.py`。质量合规的规则在 `services/resume_risk.py` 与 `services/ats_check.py`，新增检查项补 `tests/test_resume_risk.py` / `tests/test_ats.py`。
+16. **扩展简历写作增强**：变换的取值（话术 mode / 润色 style / 翻译 direction）与 `frontend/src/types/resumeWriting.ts` 逐字一致；提示词在 `prompts/resume_{star,phrases,polish,translate}.md`，输出结构变化需同步 `schemas/resume_writing.py`。质量合规的规则在 `services/resume/resume_risk.py` 与 `services/ats_check.py`，新增检查项补 `tests/test_resume_risk.py` / `tests/test_ats.py`。
 
 ## 测试策略
 

@@ -10,6 +10,16 @@
 
 ### Changed
 
+- **API Key 在 Windows 上改用系统 DPAPI 加密存储**。密钥不再以明文落库：`services/api_key_crypto.py`
+  用 `CryptProtectData` 把密钥加密成绑定当前用户与机器的密文（`dpapi:v1:` + base64），保存与配置记录
+  两条写入路径都加密；读取时解密。旧库透明兼容——不带前缀的历史明文仍按明文读，下次保存自动加密；
+  非 Windows 平台保持明文（本地单用户取舍，不引入跨平台钥匙串依赖）。备份/恢复不变：导出前仍会把
+  密钥置空。
+- **后端代码重组（无行为变化）**：`services/` 顶层按域收进 `resume/`、`profile/`、`job/`、`jd/`、
+  `assistant/`、`interview/` 六个子目录；`assistant_tools.py` 拆成 `assistant_tools/` 子包、
+  `apply_service.py` 拆成域模块，简历落库与版式解析收进 `services/resume/`。对外 API、数据表、配置
+  与行为均不变，仅改善可读性与导航。
+
 ## 0.10.1 - 2026-09-21
 
 ### Fixed
