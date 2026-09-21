@@ -246,6 +246,7 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 - **启动器里调用原生命令要看 stderr。** `$ErrorActionPreference = "Stop"` 下，任何原生命令写到 stderr 的输出都会变成终止性错误——"预期会失败"的探测（比如在空 venv 上 `import`）必须先把它降成 `Continue` 再读 `$LASTEXITCODE`。
 - 改完必须跑 `scripts/tests/Test-Start-ResumeForge.ps1`；它无法覆盖的（真机首次安装、镜像可用性）要在交付说明里写清楚验证到什么程度。
 - **`uninstall.cmd` / `scripts/Uninstall-ResumeForge.ps1` 是唯一会主动删东西的入口**，改它必须跑 `scripts/tests/Test-Uninstall-ResumeForge.ps1`。三条不能退让的性质：默认只删启动器生成的东西（`backend\data` 与 `backend\.env` 要留着，`-Purge` 才删）、**永远不删源码**、只在真正的 checkout 里运行。测试全部在临时目录里复制一份脚本来跑，不会碰当前仓库。
+- **往 `backend/app/preflight.py` 的 `_REQUIRED_FILES` 加资源时，必须同步加到 `scripts/Build-Release.ps1` 的 `$RequiredFiles`。** 这是单方向守卫：`scripts/tests/Test-Build-Release.ps1` 会断言"preflight 要的每一样，打包清单都要点名"，漏一项就会让 Windows 的「启动器 + 打包」测试抛 `Build-Release.ps1 does not require 'backend/app/data/xxx'` 而变红——2026-09-21 就是因为它落后 22 项（`ats_keywords.json`、`feature_catalog.py` 与 20 个提示词）让 Windows job 连续多轮失败。注意这份清单是**发布前自检网，不是打包过滤**：`git archive` 本来就会带上全部受追踪文件，漏登记只红测试、不丢文件。
 
 ## 版本与发布
 
