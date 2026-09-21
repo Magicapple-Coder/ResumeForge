@@ -200,11 +200,46 @@ npm audit --registry=https://registry.npmjs.org
 - 指南里每一步的 `path` 必须指向 `App.tsx` 中真实存在的路由；改路由名时 `UserGuideModal.test.tsx` 会失败并指出是哪一步，照着改。
 - `docs/user-guide.md` 的对应章节与「常见问题排查」要一起改：两者讲的是同一批功能，只改一处会互相矛盾。
 
+## README（项目主页）与截图
+
+README 是这个仓库的门面，也是对用户可见功能的**权威清单**。改它时有三条硬约束：
+
+- **`## ✨ 功能特性` 这一段里只能有那一张表。** `backend/tests/test_assistant_knowledge_audit.py` 会把该段落下
+  每一行的第一列提取出来，与 `README_FEATURE_KEYS` **双向**比对（多一行、少一行、改名都会变红），因为这就是
+  "加了功能却没登记给求职助手"的防呆闸门。所以新增的截图、说明、目录都放到**别的段落**里——在该段里加一张
+  `| 📸 界面一览 | … |` 这样的表格会被当成一个新的功能行，直接让守卫失败。
+- **顶部必须有 `当前版本：\`X.Y.Z\``**，`test_version_consistency.py` 会比对它和 `frontend/package.json`；
+  `scripts/bump_version.py` 也依赖这一行的格式来做替换，改格式会让发版脚本报"期望匹配 1 处，实际 0 处"。
+- **截图必须来自真实运行的应用，且数据必须是虚构的。** 仓库里不允许出现真实用户的姓名、手机号、邮箱、公司名或
+  简历原文（含截图里的浏览器书签栏、任务栏、通知气泡）。做法是先用隔离的演示库启动前后端，再截图：
+
+  ```powershell
+  # 1. 造一份虚构演示数据，并顺手把 58 个只读接口跑一遍自检
+  #    （演示数据写坏 schema 的后果是"某个页面打不开"，所以先撞一次墙）
+  backend\.venv\Scripts\python.exe scripts\seed_demo_data.py --check
+
+  # 2. 用这份库启动后端：**不要**动 backend\data\resume_forge.db
+  cd backend
+  $env:PYTHONUTF8 = "1"; $env:DATABASE_URL = "sqlite:///D:/ResumeForge/runtime/demo/demo.db"
+  .venv\Scripts\python.exe -m uvicorn app.main:app --port 8123
+
+  # 3. 前端指向它。注意 Vite 默认只监听 [::1]：要用 localhost 访问，127.0.0.1 会连不上
+  cd ..\frontend
+  $env:VITE_BACKEND_URL = "http://127.0.0.1:8123"
+  .\node_modules\.bin\vite --port 5199 --strictPort
+  ```
+
+  截图脚本见 `runtime/demo/tools/shoot.js`（本机临时工具，不进仓库：`playwright-core` + 系统已装的 Chromium），
+  产物写进 `docs/images/`。**截完把图压到 1440 宽**（2x 原图 17 张接近 6 MB，压完约 4 MB）再提交。
+  `scripts/seed_demo_data.py` 的虚构性由 `backend/tests/test_seed_demo_data.py` 守着——改了演示数据记得跑它。
+
 ## 启动链路（`start.cmd` / `scripts/`）
 
 首次启动必须能在**什么都没装**的电脑上跑通，这是它的唯一职责。改这几个文件时注意：
 
-- **`scripts/*.ps1` 必须保持纯 ASCII。** Windows PowerShell 5.1 会把无 BOM 的 UTF-8 脚本按 ANSI/GBK 读，中文注释会导致解析失败。`scripts/tests/Test-Start-ResumeForge.ps1` 会逐个字节校验这条。
+- **`scripts/*.ps1` 里的非 ASCII 字符必须配 UTF-8 BOM。** 真正的规则不是"纯 ASCII"，而是**"有非 ASCII 就必须带 BOM"**：`start.cmd` 走的是 Windows PowerShell 5.1，它把**无 BOM** 的文件按 ANSI 码页解码，于是中文的 UTF-8 字节在中Windows 上被当成 GBK——注释会变成乱码，而**字符串会直接把脚本读崩**（2026-09-21 实测：把 `ResumeForge.Process.ps1` 的 BOM 去掉，PS 5.1 报 33 处语法错误）。加了 BOM 就一切正常。所以启动器的中文提示是允许的，前提是带 BOM。
+  - 这条**必须在字节层面校验**：PowerShell 7 解析无 BOM 的文件完全正常，所以任何 pwsh 侧的语法检查（包括本仓库的启动器测试在 pwsh 下跑）和 CI 都看不见这个缺陷。`scripts/tests/Test-Start-ResumeForge.ps1` 现在逐个文件检查"有非 ASCII 就必须有 BOM"。
+  - 注意**不要**把这条与下面那条混淆：`backend/requirements*.txt` 才是**必须纯 ASCII**（那条由同一个测试逐字节校验），因为 pip 24.x 会用 locale 编码去解码无 BOM 的 requirements 文件。
 - **`backend/requirements.txt` 必须保持纯 ASCII。** pip 24.x 在文件无 BOM 时会用 locale 编码（中文 Windows 是 cp936）解码，一个中文注释就会让首次 `pip install` 直接抛 `UnicodeDecodeError`。同一条校验也在启动器测试里。
 - **接受的 Python 版本是 3.10 – 3.13**，常量在 `scripts/Start-ResumeForge.ps1`（`$MinimumPythonVersion` / `$MaximumPythonVersion`）。上限存在的原因是依赖锁定版本还没有新解释器的轮子；升级依赖后要同步改这里和 README、`docs/upgrading.md` 的说明。
 - **不要手写 `cmd /c "…"` 命令行。** 把 `.cmd` 直接交给 `Start-Process -FilePath`，它会自己套好 `cmd.exe` 的引号；手写的话 `-ArgumentList` 不加引号而 `/s /c` 会剥掉首尾引号，路径含空格就起不来。

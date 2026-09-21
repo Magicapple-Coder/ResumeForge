@@ -68,6 +68,22 @@ npm run build
 
 涉及界面交互时，还应手动验证对应流程及常见空状态、错误状态和窄屏布局。涉及用户可见行为、依赖、配置或数据库兼容性的改动，请同步更新 `README.md`、相关 `docs/` 文档及 `CHANGELOG.md`。
 
+## 演示数据与截图
+
+`README.md` 与 `docs/` 里的截图必须来自**真实运行**的应用，而截图里的数据必须**全是虚构的**。两件事各有一个入口：
+
+```powershell
+# 生成虚构演示数据，并把 58 个只读接口跑一遍自检（会写到 runtime/demo/demo.db）
+backend\.venv\Scripts\python.exe scripts\seed_demo_data.py --check
+```
+
+演示数据的人物、公司、学校统一用「示例」前缀，手机号固定 `0000`、邮箱走 `example.com` 保留域；这条由
+`backend/tests/test_seed_demo_data.py` 守着。改演示数据后请跑它。截图流程（用隔离的 `DATABASE_URL` 启
+后端、前端指向它、截完压到 1440 宽）写在 [AGENTS.md](AGENTS.md) 的「README（项目主页）与截图」里。
+
+**不要**把自己的真实资料、真实简历或真实岗位链接填进演示数据，也不要直接拿 `backend/data/resume_forge.db`
+截图——那等于把个人信息发到公开仓库首页上。
+
 ## Pull Request
 
 - 一个 PR 聚焦一个主题，并说明原因、影响范围和验证结果。
