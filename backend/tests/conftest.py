@@ -8,6 +8,7 @@
 """
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 import tempfile
 
@@ -18,6 +19,8 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"  # noqa: E402
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
 
 from app import database  # noqa: E402
 from app.database import Base, SessionLocal, get_db  # noqa: E402
@@ -27,6 +30,40 @@ from app.dataset_registry import (  # noqa: E402
     write_active_dataset_id,
 )
 from app.main import app  # noqa: E402
+
+
+@event.listens_for(Engine, "connect")
+def _relax_test_database_durability(dbapi_connection, _connection_record) -> None:
+    """关掉测试库的落盘同步——``clean_db`` 每个用例都重建 38 张表，而 fsync 是全部成本。
+
+    实测（本机 Windows）``drop_all`` + ``create_all`` 一次要 **436 ms**，其中删表只占
+    11 ms，剩下约 429 ms 全是 **建表**：38 张表连同索引，在 SQLite 默认的
+    ``synchronous=FULL`` 下每条 DDL 都要 fsync 一次。这一个动作就占了单个用例总耗时的
+    97%，也就是说**整个后端套件的运行时间几乎全是建表**。换成 ``journal_mode=MEMORY`` +
+    ``synchronous=OFF`` 后是 **44.7 ms**（快 9.8 倍）。
+
+    为什么必须动它：GitHub 的 Windows runner 磁盘慢、且带 Defender 实时防护，fsync 被
+    放大了约 12 倍——实测每个用例 5.4 s（本机 0.46 s），2149 个用例跑 28 分钟才到 15%，
+    外推要 **3.2 小时**，而后端 job 的超时是 30 分钟。加并行救不了这个：瓶颈是文件同步，
+    4 个 worker 只是排队。
+
+    为什么在测试里改是安全的：这两项只影响**断电时能否恢复**，不影响任何一条 SQL 的语义、
+    隔离级别或约束。测试库随会话结束整个删掉（见 ``cleanup_test_db``），没有需要扛住崩溃
+    的数据；生产引擎的持久性由 ``app/database.build_engine`` 决定，这里碰不到它。
+
+    监听器挂在 ``Engine`` **类**上而不是实例上：``database.rebind()`` 换数据集时会新建引擎
+    对象，挂在实例上的监听器会漏掉那些新引擎。
+    """
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        # journal_mode 会返回一行结果，必须取走，否则连接上会留着一个未读完的语句。
+        cursor.execute("PRAGMA journal_mode=MEMORY")
+        cursor.fetchone()
+        cursor.execute("PRAGMA synchronous=OFF")
+    finally:
+        cursor.close()
 
 
 def _reset_to_test_database() -> None:
