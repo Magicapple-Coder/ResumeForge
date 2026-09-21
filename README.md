@@ -4,8 +4,8 @@
 
 # 简历通 ResumeForge
 
-[![CI](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Magicapple-Coder/ResumeForge/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Magicapple-Coder/ResumeForge?label=release&color=2f81f7)](https://github.com/Magicapple-Coder/ResumeForge/releases)
+[![CI](https://github.com/magicapple123/ResumeForge/actions/workflows/ci.yml/badge.svg)](https://github.com/magicapple123/ResumeForge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/magicapple123/ResumeForge?label=release&color=2f81f7)](https://github.com/magicapple123/ResumeForge/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10--3.13-3776AB?logo=python&logoColor=white)](docs/user-guide.md)
 [![Node.js](https://img.shields.io/badge/Node.js-20.19%2B-339933?logo=nodedotjs&logoColor=white)](docs/user-guide.md)
@@ -14,9 +14,9 @@
 [![SQLite](https://img.shields.io/badge/SQLite-local--first-003B57?logo=sqlite&logoColor=white)](docs/architecture.md)
 [![Tests](https://img.shields.io/badge/tests-2%2C700%2B%20passing-success)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![GitHub stars](https://img.shields.io/github/stars/Magicapple-Coder/ResumeForge?style=flat&logo=github)](https://github.com/Magicapple-Coder/ResumeForge/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/magicapple123/ResumeForge?style=flat&logo=github)](https://github.com/magicapple123/ResumeForge/stargazers)
 
-当前版本：`0.10.0` · [Release 页面](https://github.com/Magicapple-Coder/ResumeForge/releases) · [使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
+当前版本：`0.10.0` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
 
 </div>
 
@@ -223,7 +223,7 @@ ResumeForge 的做法是**把"事实"从"表述"里拆出来，单独管一份**
 ## 🚀 快速开始
 
 ```powershell
-git clone https://github.com/Magicapple-Coder/ResumeForge.git
+git clone https://github.com/magicapple123/ResumeForge.git
 cd ResumeForge
 ```
 
@@ -483,10 +483,10 @@ cd frontend; npm run format:check; npm run lint; npm test
 
 ## 📄 许可证
 
-[MIT](LICENSE) © 2026 Magicapple-Coder
+[MIT](LICENSE) © 2026 magicapple123
 
 ## ⭐ Star 历史
 
 如果这个项目帮你少踩了一个坑，给个 Star 会让我知道它值得继续维护。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Magicapple-Coder/ResumeForge&type=Date)](https://star-history.com/#Magicapple-Coder/ResumeForge&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=magicapple123/ResumeForge&type=Date)](https://star-history.com/#magicapple123/ResumeForge&Date)

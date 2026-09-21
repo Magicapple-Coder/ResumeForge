@@ -21,7 +21,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptRoot
-$Repository = if ($env:RESUMEFORGE_UPDATE_REPO) { $env:RESUMEFORGE_UPDATE_REPO } else { "Magicapple-Coder/ResumeForge" }
+$Repository = if ($env:RESUMEFORGE_UPDATE_REPO) { $env:RESUMEFORGE_UPDATE_REPO } else { "magicapple123/ResumeForge" }
 $ArchiveUrl = "https://github.com/$Repository/archive/refs/heads/main.zip"
 
 # Paths that belong to the user or to the local environment; never overwritten.

@@ -5,7 +5,7 @@ export const APP_NAME_EN = "ResumeForge";
 
 /** 公开仓库地址可被部署环境覆盖；默认值用于开源发行版的导航入口。 */
 export const GITHUB_REPO =
-  import.meta.env.VITE_GITHUB_REPO?.trim() || "https://github.com/Magicapple-Coder/ResumeForge";
+  import.meta.env.VITE_GITHUB_REPO?.trim() || "https://github.com/magicapple123/ResumeForge";
 
 /** 大模型预设：选择后自动填充 Base URL 与模型名，省去查文档的麻烦 */
 export interface LLMPreset {
