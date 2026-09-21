@@ -150,6 +150,7 @@ class CityResolver:
         self._loaded = False
 
     def resolve(self, city: str) -> str:
+        """把城市名/9 位编码解析成 BOSS 城市编码；常用城市有离线启动缓存，无法识别抛 CityResolutionError。"""
         raw_city = _text(city)
         value = _normalise_alias(raw_city)
         if not value:

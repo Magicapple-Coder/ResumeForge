@@ -69,6 +69,7 @@ def _sources(message: ChatMessage) -> list[dict[str, str]]:
 
 
 def conversation_to_markdown(conversation: ChatConversation, messages: list[ChatMessage]) -> str:
+    """把一段助手会话导出为 Markdown：标题、逐条消息、附件、工具操作与去重后的来源。"""
     lines = [
         f"# {conversation.title or '求职助手对话'}",
         "",

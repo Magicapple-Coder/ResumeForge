@@ -220,6 +220,7 @@ class SampleRecordingCdpClient(CdpClient):
     def send(
         self, method: str, params: dict[str, Any] | None = None, *, timeout: float | None = None
     ) -> dict[str, Any]:
+        """转发 CDP 命令；顺带把 getResponseBody 的响应正文记录为站点样例。"""
         result = self._inner.send(method, params, timeout=timeout)
         if method == "Network.getResponseBody" and isinstance(params, dict):
             request_id = str(params.get("requestId") or "")

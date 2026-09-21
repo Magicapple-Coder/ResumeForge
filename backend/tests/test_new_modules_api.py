@@ -14,7 +14,7 @@ from app.services.data_backup import (
     BackupError,
     inspect_archive,
 )
-from app.services.resume_templates import FONT_SCALES
+from app.services.resume.resume_templates import FONT_SCALES
 from app.services.update_check import _is_newer
 
 PHOTO_PNG = (
@@ -405,7 +405,7 @@ def test_a_long_note_still_keeps_its_source_line():
     之前是先拼再整体截断：正文一长，刚加上的"来源："就被裁没了，功能静默失效——
     用户以为这条是手填的，而实际上它来自图片识别。
     """
-    from app.services.job_service import MAX_JOB_NOTE_CHARS, note_with_source
+    from app.services.job.job_service import MAX_JOB_NOTE_CHARS, note_with_source
 
     long_note = "备" * MAX_JOB_NOTE_CHARS
     merged = note_with_source(long_note, "图片识别")

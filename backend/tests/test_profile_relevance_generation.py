@@ -3,8 +3,8 @@
 import json
 
 from app.schemas.resume import GenerateOptions
-from app.services.profile_relevance import build_targeted_profile_context
-from app.services.resume_generator import (
+from app.services.profile.profile_relevance import build_targeted_profile_context
+from app.services.resume.resume_generator import (
     ResumeGenerator,
     check_consistency,
     coerce_resume,

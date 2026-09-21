@@ -1,7 +1,6 @@
 """简历接口：流式生成（SSE）、历史记录、预览渲染与导出。"""
 import json
 import logging
-from datetime import datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -47,27 +46,34 @@ from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.pdf_exporter import ResumePDFError, font_available
 from ..services.privacy import RedactionOptions as PrivacyRedactionOptions, redact
-from ..services.profile_service import get_profile_detail, to_profile_out
-from ..services.resume_completeness import find_incomplete, incomplete_detail
-from ..services.resume_generate_runner import (
+from ..services.profile.profile_service import get_profile_detail, to_profile_out
+from ..services.resume.resume_completeness import find_incomplete, incomplete_detail
+from ..services.resume.resume_generate_runner import (
     ResumeGenerateRunnerError,
     get_resume_generate_runner,
 )
-from ..services.resume_generator import ResumeGenerator
-from ..services.resume_layout import (
+from ..services.resume.resume_generator import ResumeGenerator
+from ..services.resume.resume_record import (
+    build_manual_title,
+    record_format_config,
+    resolved_format_name,
+    resolved_style_name,
+    save_record,
+)
+from ..services.resume.resume_layout import (
     STATUS_OVERFLOW,
     build_fit_ladder,
     diagnose,
     fit_room_report,
 )
-from ..services.resume_suggestions import generate_suggestions
-from ..services.resume_template_store import (
+from ..services.resume.resume_suggestions import generate_suggestions
+from ..services.resume.resume_template_store import (
     custom_format_options,
     custom_template_options,
     resolve_format_config,
     resolve_style_template,
 )
-from ..services.resume_templates import (
+from ..services.resume.resume_templates import (
     DEFAULT_FONT_SCALE,
     DEFAULT_PAGE_LIMIT,
     DEFAULT_TEMPLATE,
@@ -142,45 +148,12 @@ def _format_sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _record_format_config(db: Session, record: ResumeRecord) -> dict:
-    """这份简历实际生效的版式配置：具名格式模板 + 只属于它的覆盖。
-
-    预览、导出、PDF 都必须走这一个函数——三处各解析一次的话，很容易出现
-    "预览里字号收紧了、导出的 PDF 没有"，而用户只有在下载之后才会发现。
-    """
-    config = dict(resolve_format_config(db, record.format_name))
-    config.update(validated_format_config(record.format_config))
-    return config
-
-
-def _resolved_format_name(db: Session, name: str) -> str:
-    """格式模板名只有在能解析出配置时才存进记录；否则存空串（用模板自带版式）。"""
-    key = (name or "").strip()
-    if not key:
-        return ""
-    return key if resolve_format_config(db, key) else ""
-
-
-def _resolved_style_name(db: Session, name: str) -> str:
-    """样式模板名：内置的存规范化名字，自制模板存**用户起的名字**。
-
-    不能用 ``template_spec()`` 的结果：它会把查不到的名字悄悄换成默认内置模板，于是
-    "用自制模板生成"的记录里存的是 classic，重新打开预览就变回内置样式——用户以为
-    自己选的模板没生效。
-    """
-    key = (name or "").strip()
-    if not key:
-        return DEFAULT_TEMPLATE
-    builtin_name, user_html = resolve_style_template(db, key)
-    return key if user_html else builtin_name
-
-
 @router.post("/generate")
 async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db)):
     """流式生成简历（SSE）。
 
     ``job_id`` 为空表示生成**通用简历**（不针对任何岗位）。事件类型见
-    services/resume_generator.py 文档；生成结果成功落库后，依次发送携带记录 id 的
+    services/resume/resume_generator.py 文档；生成结果成功落库后，依次发送携带记录 id 的
     saved 事件和最终 done 事件。
     """
     job = db.get(Job, payload.job_id) if payload.job_id is not None else None
@@ -228,7 +201,7 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
                 yield _format_sse(event)
             if parsed is not None and done_event is not None:
                 with SessionLocal() as save_db:
-                    record = _save_record(
+                    record = save_record(
                         save_db,
                         parsed,
                         warnings,
@@ -259,79 +232,6 @@ async def generate_resume(payload: GenerateRequest, db: Session = Depends(get_db
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-def _save_record(
-    db: Session,
-    content: dict,
-    warnings: list[str],
-    job: JobOut | None,
-    raw: str,
-    model: str,
-    enhancement_enabled: bool,
-    enhancement_level: str,
-    source: str = "ai",
-    requested_title: str = "",
-    template: str = DEFAULT_TEMPLATE,
-    format_name: str = "",
-    page_limit: int = 1,
-    font_scale: str = DEFAULT_FONT_SCALE,
-    custom_instruction: str = "",
-    commit: bool = True,
-) -> ResumeRecord:
-    """生成结果落库（在流结束后的同一请求内调用）。
-
-    ``job is None`` 是通用简历：没有公司与岗位，``job_title`` 沿用正文里的求职意向
-    （与 ``POST /manual`` 在无岗位时已有的约定一致），标题回退到「…-通用简历-时间戳」。
-    """
-    name = str(content.get("name") or "简历").strip()[:48]
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    if job is None:
-        company = ""
-        job_title = str(content.get("job_intent") or "").strip()[:128]
-        title = f"{name}-通用简历-{timestamp}"
-    else:
-        company = (job.company.strip() or "未命名公司")[:80]
-        job_title = job.title.strip()[:80]
-        title = f"{name}-{company}-{job_title}-{timestamp}"
-    title = requested_title.strip()[:256] or title
-    record = ResumeRecord(
-        title=title,
-        job_id=job.id if job is not None else None,
-        job_title=job_title,
-        company=company,
-        content=content,
-        warnings=warnings,
-        source=source,
-        model=model,
-        enhancement_enabled=enhancement_enabled,
-        enhancement_level=enhancement_level,
-        # 与 PATCH 路径同一套解析：自制样式模板要按**名字**存下来，不能拿 template_spec()
-        # 去归一——那个函数会把不认识的模板名悄悄换成 classic，于是用户用自制模板生成的
-        # 简历一重开就变回内置样式。内置模板仍然只存规范化后的名字。
-        template=_resolved_style_name(db, template),
-        # 格式模板按名字存一份：生成时选的版式要跟着记录走，否则重新打开预览/导出会
-        # 悄悄退回模板自带版式（用户会以为"我选的版式没生效"）。
-        format_name=_resolved_format_name(db, format_name),
-        page_limit=normalize_page_limit(page_limit),
-        font_scale=font_scale_spec(font_scale)["name"],
-        custom_instruction=custom_instruction.strip()[:2000],
-    )
-    db.add(record)
-    if commit:
-        db.commit()
-        db.refresh(record)
-        logger.info(
-            "简历生成完成 record_id=%s model=%s job=%s",
-            record.id,
-            model,
-            job.title if job is not None else "通用简历",
-        )
-    else:
-        # 后台任务复用本函数：不提交，只 flush 拿到主键，让调用方把简历记录与任务终态
-        # 放进同一个事务一起提交（见 resume_generate_runner 的原子完成路径）。
-        db.flush()
-    return record
 
 
 # ===== 生成后台任务（轮询模型，替代弹窗里的同步 SSE 等待）=====
@@ -419,19 +319,6 @@ def cancel_resume_generate_task(task_id: int, db: Session = Depends(get_db)):
     return GenerateTaskOut.model_validate(refreshed)
 
 
-def _build_manual_title(content: ResumeContent, job: Job | None, requested_title: str) -> str:
-    """生成手写简历默认标题；允许用户传入标题以便在简历中心区分版本。"""
-    title = requested_title.strip()
-    if title:
-        return title[:256]
-    name = content.name.strip()[:48] or "未命名"
-    company = (job.company.strip() if job else "").strip()[:80]
-    job_title = (job.title.strip() if job else "").strip()[:80]
-    target = "-".join(part for part in (company, job_title) if part) or "自定义简历"
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    return f"{name}-{target}-{timestamp}"[:256]
-
-
 @router.post("/manual", response_model=ResumeOut, status_code=201)
 def create_manual_resume(payload: ManualResumeRequest, db: Session = Depends(get_db)):
     """保存用户自行编写的简历，并可选关联岗位。"""
@@ -441,7 +328,7 @@ def create_manual_resume(payload: ManualResumeRequest, db: Session = Depends(get
 
     content = payload.content.model_dump()
     record = ResumeRecord(
-        title=_build_manual_title(payload.content, job, payload.title),
+        title=build_manual_title(payload.content, job, payload.title),
         job_id=job.id if job else None,
         job_title=job.title if job else payload.content.job_intent,
         company=job.company if job else "",
@@ -661,8 +548,8 @@ def update_resume_layout(
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
     # 样式模板名按"内置优先，其次用户自制"解析；格式模板单独存一份名字，渲染时再解析成
     # 具体的覆盖配置——这样用户改了格式模板，引用它的简历跟着变。
-    record.template = _resolved_style_name(db, payload.template)
-    record.format_name = _resolved_format_name(db, payload.format_name)
+    record.template = resolved_style_name(db, payload.template)
+    record.format_name = resolved_format_name(db, payload.format_name)
     # None = 这次不涉及这一项，保持原样；空字典 = 明确清掉覆盖。
     if payload.format_config is not None:
         record.format_config = validated_format_config(payload.format_config)
@@ -687,7 +574,7 @@ def analyze_resume_layout(
         raise HTTPException(status_code=404, detail="简历记录不存在或已被删除")
 
     measure = payload.measure
-    current_config = _record_format_config(db, record)
+    current_config = record_format_config(db, record)
     room = fit_room_report(record.template, record.font_scale, current_config)
     diagnosis = diagnose(
         used_height=measure.used_height,
@@ -778,7 +665,7 @@ def _export_record(
         template_html=export_html,
         page_limit=record.page_limit,
         font_scale=record.font_scale,
-        format_config=_record_format_config(db, record),
+        format_config=record_format_config(db, record),
     )
     try:
         artifact = build_export(request, resume, context)

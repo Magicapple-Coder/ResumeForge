@@ -2,8 +2,8 @@
 
 import json
 
-from app.services.profile_relevance import build_targeted_profile_context
-from app.services.resume_generator import coerce_resume, ground_resume_facts
+from app.services.profile.profile_relevance import build_targeted_profile_context
+from app.services.resume.resume_generator import coerce_resume, ground_resume_facts
 from tests.profile_relevance_fixtures import (
     make_profile_with_empty_project_reference,
     make_profile_with_project_reference,

@@ -21,7 +21,7 @@ from ..schemas.interview_history import (
     QuestionBankRecordOut,
     QuestionBankRecordUpdate,
 )
-from ..services import interview_history
+from ..services.interview import interview_history
 
 logger = logging.getLogger(__name__)
 

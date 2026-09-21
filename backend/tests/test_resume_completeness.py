@@ -12,7 +12,7 @@ from app.schemas.resume import (
     ResumeProject,
     ResumeSkill,
 )
-from app.services.resume_completeness import MAX_REPORTED, find_incomplete, incomplete_detail
+from app.services.resume.resume_completeness import MAX_REPORTED, find_incomplete, incomplete_detail
 
 
 def test_a_finished_resume_reports_nothing():

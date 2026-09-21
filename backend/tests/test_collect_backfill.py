@@ -477,7 +477,7 @@ def test_create_and_update_recompute_keywords_through_the_same_path(db_session):
     """新建、更新、补齐三处都走同一个 ``refresh_job_keywords``，行为必须一致：
     标签始终是"按当前 JD 重算"，而不是"追加"或"只算一次"。"""
     from app.schemas.job import JobCreate, JobUpdate
-    from app.services.job_service import create_job_record, update_job_record
+    from app.services.job.job_service import create_job_record, update_job_record
 
     job = create_job_record(
         db_session, JobCreate(title="后端", company="A", description="使用 Python 开发服务。")

@@ -1,6 +1,6 @@
 """个性化题库的保存历史（D5）。
 
-题库本体是「即时生成、不落库」的（``services/interview_questions.generate_question_bank``），
+题库本体是「即时生成、不落库」的（``services/interview/interview_questions.generate_question_bank``），
 但用户可能想**回看某一次生成的题目**——这里把生成结果落成一条历史记录，供「历史题库」回看
 与删除。与题库生成本身解耦：生成不自动存，用户点「保存题库」才存。
 

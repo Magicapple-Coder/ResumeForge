@@ -20,7 +20,7 @@ from app.schemas.apply import ApplyConfigIn, ApplyQueueAddRequest, GREETING_RECO
 from app.services.apply import apply_service
 from app.services.apply.apply_service import _clip_greeting
 from app.services.browser.cdp_client import CdpClient
-from app.services.job_match import parse_greeting
+from app.services.job.job_match import parse_greeting
 from app.services.llm.base import LLMError
 from app.services.sites.boss import BossAdapter
 from app.services.sites.base import SiteFailure

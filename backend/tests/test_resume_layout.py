@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from app.services.resume_layout import (
+from app.services.resume.resume_layout import (
     FILL_DENSE,
     FILL_SPARSE,
     MIN_FONT_PX,
@@ -29,7 +29,7 @@ from app.services.resume_layout import (
     fit_room_report,
     font_adjust_floor,
 )
-from app.services.resume_templates import (
+from app.services.resume.resume_templates import (
     RESUME_TEMPLATES,
     TEMPLATE_LAYOUT_DEFAULTS,
     TEMPLATES_DIR,
@@ -283,7 +283,7 @@ def test_ladder_css_starts_from_the_shared_builder_then_adds_the_font_probe():
     前半段必须复用 `format_css`（否则量出来的版式和真正渲染的不是一回事）；
     后半段只补字号——因为字号系数在渲染时是预乘进 `base_px` 的，没有 CSS 变量可覆盖。
     """
-    from app.services.resume_templates import format_css
+    from app.services.resume.resume_templates import format_css
 
     ladder = build_fit_ladder("classic", "standard", {})
     last = ladder[-1]

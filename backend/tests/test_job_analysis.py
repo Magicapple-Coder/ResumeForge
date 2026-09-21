@@ -5,7 +5,7 @@ import pytest
 
 from app.schemas.job import JobOut
 from app.schemas.setting import LLMConfig
-from app.services.job_analysis import (
+from app.services.job.job_analysis import (
     MAX_JOB_ANALYSIS_PROMPT_CHARS,
     build_job_analysis_messages,
     generate_job_analysis,

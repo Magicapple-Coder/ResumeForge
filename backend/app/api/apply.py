@@ -44,7 +44,7 @@ from ..schemas.apply import (
 )
 from ..schemas.common import Page
 from ..services.apply import apply_service, task_runner
-from ..services.job_match import generate_greeting, job_payload
+from ..services.job.job_match import generate_greeting, job_payload
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.settings_service import get_llm_config

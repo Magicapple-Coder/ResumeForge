@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas.photo import ProfilePhotoCreate, ProfilePhotoOut, ProfilePhotoUpdate
 from ..schemas.profile import ProfileOut, ProfileTextParseRequest, ProfileTextParseResult, ProfileUpdate
-from ..services.profile_photos import (
+from ..services.profile.profile_photos import (
     add_photo,
     delete_photo,
     list_photos,
@@ -15,7 +15,7 @@ from ..services.profile_photos import (
     set_primary_photo,
 )
 from ..services.profile_text_parser import parse_profile_text
-from ..services.profile_service import get_profile_detail, to_profile_out, update_profile
+from ..services.profile.profile_service import get_profile_detail, to_profile_out, update_profile
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.settings_service import get_llm_config

@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from pydantic import ValidationError
 
 from app.schemas.resume import GenerateOptions
-from app.services.resume_generator import (
+from app.services.resume.resume_generator import (
     PROMPTS_DIR,
     ResumeGenerator,
     build_profile_prompt_data,

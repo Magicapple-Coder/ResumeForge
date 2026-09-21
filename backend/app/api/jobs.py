@@ -24,9 +24,9 @@ from ..schemas.job import (
     JobUpdate,
 )
 from ..schemas.job_analysis import JobAnalysisResult
-from ..services.job_analysis import generate_job_analysis
-from ..services.job_service import create_job_record, update_job_record
-from ..services.job_multi_parser import extract_multiple_jobs, local_multi_drafts
+from ..services.job.job_analysis import generate_job_analysis
+from ..services.job.job_service import create_job_record, update_job_record
+from ..services.job.job_multi_parser import extract_multiple_jobs, local_multi_drafts
 from ..services.job_text_parser import parse_job_text
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError

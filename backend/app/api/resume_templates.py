@@ -14,8 +14,8 @@ from ..schemas.resume_template import (
     TemplatePreviewRequest,
 )
 from ..services.exporter import render_html
-from ..services.resume_sample import sample_resume_content
-from ..services.resume_template_store import (
+from ..services.resume.resume_sample import sample_resume_content
+from ..services.resume.resume_template_store import (
     TemplateError,
     create_user_template,
     delete_user_template,
@@ -25,7 +25,7 @@ from ..services.resume_template_store import (
     resolve_style_template,
     update_user_template,
 )
-from ..services.resume_templates import (
+from ..services.resume.resume_templates import (
     RESUME_TEMPLATES,
     TEMPLATES_DIR,
     font_scale_spec,

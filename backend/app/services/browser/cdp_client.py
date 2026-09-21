@@ -44,10 +44,12 @@ class CdpClient(ABC):
 
     @abstractmethod
     def list_targets(self) -> list[dict[str, Any]]:
+        """列出浏览器当前所有标签页（/json/list）。"""
         """列出浏览器里当前的调试目标（标签页 / 页面）。"""
 
     @abstractmethod
     def new_tab(self, url: str = "about:blank") -> str:
+        """打开新标签页并返回 target id；Chrome 111+ 用 PUT，405 退 GET。"""
         """新建一个标签页并把它设为后续命令的目标，返回目标 id。"""
 
     @abstractmethod
@@ -58,6 +60,7 @@ class CdpClient(ABC):
 
     @abstractmethod
     def evaluate(self, expression: str, *, timeout: float | None = None) -> Any:
+        """在页面里执行一段 JS 表达式并拿回值（awaitPromise，返回按值拷贝）。"""
         """在页面里执行一段脚本并返回按值传递的结果。"""
 
     # 事件订阅是**可选能力**，所以默认实现是"不支持"而不是 abstractmethod：
@@ -268,6 +271,7 @@ class WebsocketCdpClient(WindowAwareMixin, CdpClient):
             raise CdpError("投递专用浏览器返回了无法解析的响应") from exc
 
     def list_targets(self) -> list[dict[str, Any]]:
+        """列出浏览器当前所有标签页（/json/list）。"""
         response = self._request("GET", "/json/list")
         if response.status_code != 200:
             raise CdpError(f"读取浏览器标签页失败（HTTP {response.status_code}）")
@@ -277,6 +281,7 @@ class WebsocketCdpClient(WindowAwareMixin, CdpClient):
         return [item for item in payload if isinstance(item, dict)]
 
     def new_tab(self, url: str = "about:blank") -> str:
+        """打开新标签页并返回 target id；Chrome 111+ 用 PUT，405 再退 GET。"""
         # Chrome 111+ 要求用 PUT 打开新标签页，旧版本只认 GET；先 PUT，405 再退 GET。
         path = f"/json/new?{quote(url, safe='')}"
         response = self._request("PUT", path)
@@ -339,6 +344,7 @@ class WebsocketCdpClient(WindowAwareMixin, CdpClient):
     def send(
         self, method: str, params: dict[str, Any] | None = None, *, timeout: float | None = None
     ) -> dict[str, Any]:
+        """发送一条 CDP 命令并按 id 匹配响应；错误、超时、连接断开均抛 CdpError。"""
         connection = self._connection_handle()
         self._command_id += 1
         command_id = self._command_id
@@ -386,6 +392,7 @@ class WebsocketCdpClient(WindowAwareMixin, CdpClient):
         raise CdpError(f"CDP 命令 {method} 收到过多无关消息，已中止")
 
     def evaluate(self, expression: str, *, timeout: float | None = None) -> Any:
+        """在页面里执行一段 JS 表达式并拿回值（awaitPromise，返回按值拷贝）。"""
         result = self.send(
             "Runtime.evaluate",
             {
@@ -489,3 +496,6 @@ __all__ = [
     "WebsocketCdpClient",
     "WindowAwareMixin",
 ]
+
+
+

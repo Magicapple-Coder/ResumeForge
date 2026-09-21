@@ -1,7 +1,7 @@
 """面试复盘的保存历史（D5）。
 
 面试复盘本体是「录入真实被问问题 → 分析答题思路 → 反向优化简历」的即时流程
-（``services/interview_questions.analyze_question`` / ``optimize_resume``），不落库。用户想
+（``services/interview/interview_questions.analyze_question`` / ``optimize_resume``），不落库。用户想
 **回看某一次复盘**时，把「问题清单 + 分析结果 + 反向优化建议」落成一条历史记录。
 
 设计要点：

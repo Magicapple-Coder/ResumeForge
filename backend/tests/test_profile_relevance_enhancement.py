@@ -3,7 +3,7 @@
 import json
 
 from app.schemas.resume import GenerateOptions
-from app.services.resume_generator import ResumeGenerator
+from app.services.resume.resume_generator import ResumeGenerator
 from tests.profile_relevance_fixtures import (
     make_profile_with_empty_project_reference,
     make_profile_with_project_reference,

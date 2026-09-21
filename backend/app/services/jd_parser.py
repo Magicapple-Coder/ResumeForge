@@ -5,7 +5,7 @@
 """
 
 from ..schemas.job import SkillTag
-from .jd_parser_constants import (
+from .jd.jd_parser_constants import (
     _CHINESE_YEARS_PATTERN,
     _DEGREE_PATTERNS,
     _ENGLISH_WORD_YEARS_PATTERN,
@@ -18,15 +18,15 @@ from .jd_parser_constants import (
     _TECHNICAL_LIST_SEQUENCE_PATTERN,
     _YEARS_PATTERN,
 )
-from .jd_parser_filters import _is_contextual_false_positive, _is_delimited_technical_skill_list
-from .jd_parser_matching import (
+from .jd.jd_parser_filters import _is_contextual_false_positive, _is_delimited_technical_skill_list
+from .jd.jd_parser_matching import (
     SKILLS_PATH,
     _SKILL_MATCHERS,
     _alias_pattern,
     _build_skill_matchers,
     _normalize_text,
 )
-from .jd_parser_requirements import (
+from .jd.jd_parser_requirements import (
     _chinese_number,
     _contains_degree_alias,
     _english_number,

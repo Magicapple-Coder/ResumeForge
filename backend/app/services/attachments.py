@@ -93,6 +93,7 @@ def declared_mime(value: str) -> str:
 
 
 def decode_data_url(data: str) -> tuple[str, bytes]:
+    """解析 data URL 为 (MIME 类型, 原始字节)；非 base64 或格式非法抛 ValueError。"""
     match = _DATA_URL_RE.fullmatch(data)
     if match is None:
         raise ValueError("附件 data URL 必须使用 base64 编码")

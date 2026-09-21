@@ -58,7 +58,7 @@ from . import trash
 from .ratios import rate
 from .reminder_service import reminder_urgency_counts
 from .referral_service import referral_stats, referral_status_counts
-from .resume_health import resume_health
+from .resume.resume_health import resume_health
 from ..models.profile import utcnow
 from ..models.tracker import (
     SOURCE_LABELS,

@@ -12,13 +12,13 @@ from ..database import SessionLocal
 from ..models.assistant import ChatConversation, ChatMessage
 from ..models.profile import utcnow
 from ..schemas.assistant import AssistantMessageCreate, ChatMessageOut
-from ..services.assistant_service import (
+from ..services.assistant.assistant_service import (
     current_user_message_for_model,
     history_messages_for_model,
 )
-from ..services.assistant_sources import SourceNumberer
+from ..services.assistant.assistant_sources import SourceNumberer
 from ..services.assistant_tools import execute_tool_async, tool_definitions
-from ..services.assistant_web_search import AssistantSearchError
+from ..services.assistant.assistant_web_search import AssistantSearchError
 from ..services.llm.base import BaseLLMProvider, LLMError
 from .assistant_context import web_context
 

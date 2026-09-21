@@ -5,7 +5,7 @@ import pytest
 
 from app.schemas.profile import EducationIn, ProfileOut, ProfileUpdate
 from app.services.assistant_tools import execute_tool, tool_definitions, tool_names
-from app.services.profile_service import get_profile_detail, update_profile
+from app.services.profile.profile_service import get_profile_detail, update_profile
 
 PHOTO = (
     "data:image/png;base64,"
@@ -262,7 +262,7 @@ def test_update_format_template_tool_merges_instead_of_clearing(db_session):
 
 
 def test_update_format_template_tool_refuses_style_templates(db_session):
-    from app.services.resume_template_store import create_user_template
+    from app.services.resume.resume_template_store import create_user_template
 
     create_user_template(
         db_session,
@@ -285,7 +285,7 @@ def test_update_format_template_cannot_clear_a_parameter(db_session):
     这不是 bug，但用户会以为"我让它去掉强调色"是能做到的，所以行为要有测试钉住、
     文档也要写清楚。
     """
-    from app.services.resume_template_store import find_by_name
+    from app.services.resume.resume_template_store import find_by_name
 
     execute_tool(db_session, "create_format_template", {"name": "清除版式", "accent": "#112233"})
 

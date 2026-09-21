@@ -215,6 +215,7 @@ class AnthropicProvider(BaseLLMProvider):
     # ===== 公共入口 =====
 
     async def chat(self, messages: list[dict]) -> str:
+        """同步发一次 Anthropic 消息请求，返回完整文本；超时/连接/解析错误统一转成 LLMError。"""
         payload = self._build_payload(messages, stream=False)
         try:
             async with self._client() as client:
@@ -246,6 +247,7 @@ class AnthropicProvider(BaseLLMProvider):
     async def stream_chat_events(
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> AsyncIterator[LLMDelta]:
+        """流式发消息请求，逐块产出 LLMDelta（支持工具调用）。"""
         payload = self._build_payload(messages, stream=True, tools=tools)
         try:
             async with self._client() as client:

@@ -40,6 +40,7 @@ class _ResultParser(HTMLParser):
         self._current: dict[str, str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """HTMLParser 回调：遇到结果标题链接/摘要容器时切换当前抓取字段。"""
         if tag != "a":
             return
         attributes = {name: (value or "") for name, value in attrs}

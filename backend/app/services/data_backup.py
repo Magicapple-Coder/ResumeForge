@@ -87,6 +87,7 @@ class ExtraDatabase:
         return f"{ARCHIVE_DATASETS_DIRNAME}/{self.dataset_id}.json"
 
     def manifest_entry(self, size_bytes: int) -> dict[str, Any]:
+        """备份清单里的一条数据集条目。"""
         return {
             "id": self.dataset_id,
             "name": self.name,

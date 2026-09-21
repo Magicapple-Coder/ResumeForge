@@ -11,8 +11,8 @@ from ..models.resume import ResumeRecord
 from ..schemas.assistant import AssistantMessageCreate
 from ..schemas.job import JobOut
 from ..schemas.profile import ProfileOut
-from ..services.assistant_sources import SourceNumberer
-from ..services.profile_relevance import (
+from ..services.assistant.assistant_sources import SourceNumberer
+from ..services.profile.profile_relevance import (
     build_job_prompt_text,
     build_llm_profile_prompt_data,
     build_profile_prompt_data,

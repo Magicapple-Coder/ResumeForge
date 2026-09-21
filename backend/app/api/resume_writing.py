@@ -28,8 +28,8 @@ from ..schemas.resume_writing import (
 from ..services import trash
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
-from ..services.resume_diff import build_resume_diff
-from ..services.resume_writing import generate_phrases, polish, rewrite_star, translate
+from ..services.resume.resume_diff import build_resume_diff
+from ..services.resume.resume_writing import generate_phrases, polish, rewrite_star, translate
 from ..services.settings_service import get_llm_config
 
 router = APIRouter(prefix="/api/resumes", tags=["resume-writing"])

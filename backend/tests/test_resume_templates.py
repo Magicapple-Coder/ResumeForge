@@ -3,13 +3,13 @@ import pytest
 
 from app.database import SessionLocal
 from app.services.exporter import render_html
-from app.services.resume_sample import sample_resume_content
-from app.services.resume_template_store import (
+from app.services.resume.resume_sample import sample_resume_content
+from app.services.resume.resume_template_store import (
     TemplateError,
     sanitize_template_html,
     validate_template_name,
 )
-from app.services.resume_templates import (
+from app.services.resume.resume_templates import (
     FORMAT_PRESETS,
     RESUME_TEMPLATES,
     format_css,
@@ -284,7 +284,7 @@ def test_generating_with_a_custom_style_keeps_its_name(client, monkeypatch):
     默认内置模板——于是用户用自制模板生成后一重开预览就变回内置样式，看起来像"我选的
     模板没生效"。PATCH 路径一直是对的，两条路径现在共用同一个解析。
     """
-    from app.api import resumes as resumes_api
+    from app.services.resume.resume_record import resolved_style_name, save_record
 
     created = client.post(
         "/api/resume-templates",
@@ -294,7 +294,7 @@ def test_generating_with_a_custom_style_keeps_its_name(client, monkeypatch):
 
     # 直接走落库那一步（生成接口要流式调模型，这里不引入假 provider 也测得到同一行代码）。
     with SessionLocal() as db:
-        record = resumes_api._save_record(
+        record = save_record(
             db,
             content=sample_resume_content().model_dump(mode="json"),
             warnings=[],
@@ -308,5 +308,5 @@ def test_generating_with_a_custom_style_keeps_its_name(client, monkeypatch):
         )
         assert record.template == "我的深色模板"
         # 内置模板名仍然规范化，未知名字才退回默认内置模板。
-        assert resumes_api._resolved_style_name(db, "modern") == "modern"
-        assert resumes_api._resolved_style_name(db, "不存在的模板") == "classic"
+        assert resolved_style_name(db, "modern") == "modern"
+        assert resolved_style_name(db, "不存在的模板") == "classic"

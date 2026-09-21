@@ -300,7 +300,7 @@ def test_dedupe_still_recognises_a_trashed_job(db_session):
     否则"删掉 → 再采集一次"会造出第二条同一岗位，而用户以为自己只是删了一条；
     调用方据此给「在回收站里」的提示。
     """
-    from app.services.job_service import find_job_by_identity
+    from app.services.job.job_service import find_job_by_identity
 
     job = Job(title="已删岗位", company="某公司", source_url="https://example.com/x")
     db_session.add(job)

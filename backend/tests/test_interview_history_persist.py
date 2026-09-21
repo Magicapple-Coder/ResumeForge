@@ -9,7 +9,7 @@ from app.schemas.interview_history import (
     QuestionBankRecordCreate,
     QuestionBankRecordUpdate,
 )
-from app.services.interview_history import (
+from app.services.interview.interview_history import (
     create_question_bank,
     create_review,
     update_question_bank,

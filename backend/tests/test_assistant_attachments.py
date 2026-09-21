@@ -5,7 +5,7 @@ import base64
 import pytest
 
 from app.schemas.assistant import AssistantAttachmentInput
-from app.services.assistant_service import normalize_attachments
+from app.services.assistant.assistant_service import normalize_attachments
 from tests.test_assistant import _configure_llm, _create_conversation, _successful_provider
 from tests.test_document_text import DOCX_MIME, PDF_MIME, build_docx, build_pdf, data_url
 

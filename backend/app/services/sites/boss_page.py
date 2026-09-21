@@ -241,6 +241,7 @@ def _readiness_script(selector: str) -> str:
 
 
 def selector_diagnostic(state: dict[str, Any], expected: str) -> str:
+    """选择器匹配失败时的诊断文案（带当前地址/标题/匹配数，供维护者更新选择器）。"""
     url = state.get("url") or "未知"
     title = state.get("title") or "未知"
     matched = state.get("matched", 0)
@@ -261,6 +262,7 @@ def detect_blocker(state: dict[str, Any]) -> str | None:
 
 
 def blocker_failure(kind: str, state: dict[str, Any]) -> SiteFailure:
+    """把登录失效/验证码两类阻断转成结构化失败（带可操作的下一步）。"""
     url = state.get("url") or ""
     title = state.get("title") or ""
     if kind == "login":
@@ -288,6 +290,7 @@ def diagnostic_tail(state: dict[str, Any], expected: str) -> str:
 def readiness_timeout_failure(
     state: dict[str, Any], expected: str, *, fresh: bool
 ) -> SiteFailure:
+    """页面就绪超时的结构化失败：按「未切换地址 / 已加载但结构变 / 加载超时」给出不同文案。"""
     tail = diagnostic_tail(state, expected)
     ready_state = str(state.get("ready_state", ""))
     if not fresh:

@@ -23,7 +23,7 @@ from app.models.apply import (
 from app.models.job import Job
 from app.schemas.apply import ApplyQueueAddRequest
 from app.schemas.job_match import JobMatchResult, MatchCondition
-from app.services.job_match import (
+from app.services.job.job_match import (
     finalize_match_result,
     local_match_result,
     parse_match_result,

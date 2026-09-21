@@ -18,7 +18,7 @@ from ..models.material import (
 )
 from ..schemas.job import JobCreate
 from ..schemas.material import CandidateJobCreate, CandidateJobUpdate
-from .job_service import create_job_record, find_by_job_identity, find_job_by_identity
+from .job.job_service import create_job_record, find_by_job_identity, find_job_by_identity
 from .trash import is_deleted
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ def list_candidate_jobs(
     collect_task_id: int | None = None,
     limit: int = MAX_CANDIDATE_LIST,
 ) -> list[CandidateJob]:
+    """按状态/采集批次/关键词分页列出备选岗位。"""
     query = db.query(CandidateJob)
     if status in CANDIDATE_JOB_STATUSES:
         query = query.filter(CandidateJob.status == status)
@@ -71,6 +72,7 @@ def candidate_or_none(db: Session, candidate_id: int) -> CandidateJob | None:
 
 
 def create_candidate_job(db: Session, payload: CandidateJobCreate) -> CandidateJob:
+    """暂存一条备选岗位（待导入）。"""
     candidate = CandidateJob(**payload.model_dump(), status=CANDIDATE_JOB_PENDING)
     db.add(candidate)
     db.commit()
@@ -90,6 +92,7 @@ def update_candidate_job(
 
 
 def mark_candidate_imported(db: Session, candidate: CandidateJob, job_id: int) -> CandidateJob:
+    """把备选岗位标记为已导入并记下正式岗位 id。"""
     candidate.status = CANDIDATE_JOB_IMPORTED
     candidate.imported_job_id = job_id
     db.commit()
@@ -99,6 +102,7 @@ def mark_candidate_imported(db: Session, candidate: CandidateJob, job_id: int) -
 
 
 def delete_candidate_job(db: Session, candidate_id: int) -> bool:
+    """软删一条备选岗位。"""
     candidate = db.get(CandidateJob, candidate_id)
     if candidate is None:
         return False
@@ -292,6 +296,7 @@ def import_candidates(db: Session, candidate_ids: list[int]) -> dict:
 
 
 def candidate_brief(candidate: CandidateJob) -> dict:
+    """备选岗位的列表摘要视图。"""
     return {
         "id": candidate.id,
         "岗位": candidate.title,
@@ -309,6 +314,7 @@ def candidate_brief(candidate: CandidateJob) -> dict:
 
 
 def candidate_detail_text(candidate: CandidateJob, max_chars: int = MAX_CANDIDATE_TOOL_CHARS) -> str:
+    """备选岗位的详情文本（供助手读取）：采集来的 JD 两段与粘贴来的原文都要带上。"""
     parts = [
         f"岗位：{candidate.title or '（未填写）'}",
         f"公司：{candidate.company or '（未填写）'}",
@@ -353,3 +359,7 @@ __all__ = [
     "stage_candidate_job",
     "update_candidate_job",
 ]
+
+
+
+

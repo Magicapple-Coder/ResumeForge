@@ -4,7 +4,7 @@ import pytest
 
 from app.schemas.resume import GenerateOptions
 from app.services.llm.base import LLMError
-from app.services.resume_generator import ResumeGenerator
+from app.services.resume.resume_generator import ResumeGenerator
 from tests.test_resume_generator import (
     QualityRetryProvider,
     collect_events,

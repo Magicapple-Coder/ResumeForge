@@ -35,9 +35,9 @@ from ..schemas.interview import (
 )
 from ..schemas.material import MaterialCreate, MaterialOut
 from ..schemas.resume import ResumeContent
-from ..services import interview_questions as interview_questions_service
+from ..services.interview import interview_questions as interview_questions_service
 from ..services import trash
-from ..services.interview import (
+from ..services.interview.interview import (
     add_message,
     answered_rounds,
     generate_question,
@@ -48,9 +48,9 @@ from ..services.interview import (
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.materials import create_material as create_material_record
-from ..services.profile_relevance import build_job_prompt_text
-from ..services.profile_service import get_profile_detail, to_profile_out
-from ..services.resume_suggestions import serialize_resume_prompt_data
+from ..services.profile.profile_relevance import build_job_prompt_text
+from ..services.profile.profile_service import get_profile_detail, to_profile_out
+from ..services.resume.resume_suggestions import serialize_resume_prompt_data
 from ..services.settings_service import get_llm_config
 
 logger = logging.getLogger(__name__)

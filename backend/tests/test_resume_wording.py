@@ -6,8 +6,8 @@
 """
 
 from app.schemas.resume import GenerateOptions
-from app.services.resume_generator import ResumeGenerator, coerce_resume
-from app.services.resume_wording import cliche_shortfalls, find_cliches
+from app.services.resume.resume_generator import ResumeGenerator, coerce_resume
+from app.services.resume.resume_wording import cliche_shortfalls, find_cliches
 from tests.test_resume_generator import (
     GOOD_RESUME,
     QualityRetryProvider,

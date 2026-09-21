@@ -12,7 +12,7 @@ from app.schemas.resume import (
     ResumeSkill,
 )
 from app.services.exporter import build_filename, export_json, export_markdown, render_html, sanitize_filename
-from app.services.resume_sample import sample_resume_content
+from app.services.resume.resume_sample import sample_resume_content
 
 RESUME = ResumeContent(
     name="张三",

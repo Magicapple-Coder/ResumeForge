@@ -11,8 +11,8 @@ import pytest
 from app.schemas.resume import GenerateOptions
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
-from app.services.profile_relevance import build_general_profile_context
-from app.services.resume_generator import ResumeGenerator
+from app.services.profile.profile_relevance import build_general_profile_context
+from app.services.resume.resume_generator import ResumeGenerator
 from tests.test_profile_relevance import (
     CapturingProvider,
     make_diverse_profile,

@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas.job_match import JobMatchResult, MatchCondition
 from app.schemas.setting import LLMConfig
-from app.services.job_match import (
+from app.services.job.job_match import (
     analyze_match,
     build_match_messages,
     finalize_match_result,

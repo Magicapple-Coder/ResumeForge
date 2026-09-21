@@ -14,7 +14,7 @@ import pytest
 
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
-from app.services.resume_generate_runner import reset_resume_generate_runner
+from app.services.resume.resume_generate_runner import reset_resume_generate_runner
 
 TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
 
@@ -121,7 +121,7 @@ def test_background_generation_completes_and_persists_resume(client, monkeypatch
     _configure(client)
     job = _job(client)
     monkeypatch.setattr(
-        "app.services.resume_generate_runner.create_provider",
+        "app.services.resume.resume_generate_runner.create_provider",
         lambda resolved: SuccessfulProvider(resolved),
     )
 
@@ -148,7 +148,7 @@ def test_cancel_marks_cancelled_and_writes_no_half_resume(client, monkeypatch):
     _configure(client)
     job = _job(client)
     monkeypatch.setattr(
-        "app.services.resume_generate_runner.create_provider",
+        "app.services.resume.resume_generate_runner.create_provider",
         lambda resolved: EndlessProvider(resolved),
     )
 
@@ -179,13 +179,13 @@ def test_cancel_after_done_before_completed_writes_no_resume(client, monkeypatch
     ``reached_claim`` 永不触发（超时断言红）；若连 ``_claim_completed`` 方法一并删掉，
     monkeypatch 直接 AttributeError（也红）。
     """
-    from app.services.resume_generate_runner import ResumeGenerateRunner
+    from app.services.resume.resume_generate_runner import ResumeGenerateRunner
 
     _seed_profile(client)
     _configure(client)
     job = _job(client)
     monkeypatch.setattr(
-        "app.services.resume_generate_runner.create_provider",
+        "app.services.resume.resume_generate_runner.create_provider",
         lambda resolved: SuccessfulProvider(resolved),
     )
 
@@ -220,7 +220,7 @@ def test_duplicate_generation_is_rejected(client, monkeypatch):
     _configure(client)
     job = _job(client)
     monkeypatch.setattr(
-        "app.services.resume_generate_runner.create_provider",
+        "app.services.resume.resume_generate_runner.create_provider",
         lambda resolved: EndlessProvider(resolved),
     )
 
@@ -263,7 +263,7 @@ def test_completed_status_and_resume_id_commit_atomically(client, monkeypatch):
     from sqlalchemy.orm import Session, sessionmaker
 
     from app import database
-    from app.services.resume_generate_runner import get_resume_generate_runner
+    from app.services.resume.resume_generate_runner import get_resume_generate_runner
 
     observations: list[bool] = []
 
@@ -288,7 +288,7 @@ def test_completed_status_and_resume_id_commit_atomically(client, monkeypatch):
     _configure(client)
     job = _job(client)
     monkeypatch.setattr(
-        "app.services.resume_generate_runner.create_provider",
+        "app.services.resume.resume_generate_runner.create_provider",
         lambda resolved: SuccessfulProvider(resolved),
     )
 

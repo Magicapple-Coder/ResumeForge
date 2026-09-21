@@ -113,7 +113,7 @@ def no_real_search_network(monkeypatch):
     monkeypatch.setattr("app.services.search.aggregate.search_duckduckgo", empty_results)
     monkeypatch.setattr("app.services.search.aggregate.search_searxng", empty_results)
     monkeypatch.setattr("app.services.search.aggregate.fetch_page_text", empty_page)
-    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", empty_rss)
+    monkeypatch.setattr("app.services.assistant.assistant_web_search.fetch_bing_rss", empty_rss)
 
     def no_filter_network(url: str, timeout: float):
         # 站点筛选项清单的默认取数口子。**默认封掉**：忘了注入 fetcher 的用例会立刻失败，

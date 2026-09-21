@@ -22,6 +22,7 @@ MAX_MATERIAL_TOOL_CHARS = 6_000
 
 
 def list_materials(db: Session, *, keyword: str = "", category: str = "") -> list[Material]:
+    """按分类/关键词列出资料箱条目（只含未删除，按更新时间倒序）。"""
     query = db.query(Material).filter(trash.live_only(Material))
     if category.strip():
         query = query.filter(Material.category == category.strip())
@@ -48,6 +49,7 @@ def material_or_none(db: Session, material_id: int) -> Material | None:
 
 
 def create_material(db: Session, payload: MaterialCreate) -> Material:
+    """新增一条资料箱条目。"""
     material = Material(**payload.model_dump())
     db.add(material)
     db.commit()
@@ -140,3 +142,4 @@ __all__ = [
     "material_or_none",
     "update_material",
 ]
+

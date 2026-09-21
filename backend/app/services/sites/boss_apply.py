@@ -409,6 +409,7 @@ def _submit_state_script(greeting: str = "") -> str:
 
 
 def classify_submit_state(state: dict[str, Any], greeting: str = "") -> ApplyOutcome:
+    """把发送后的页面状态判成成功/失败：登录失效或验证码立刻失败，成功标记才返回 success。"""
     blocker = detect_blocker(state)
     if blocker is not None:
         raise blocker_failure(blocker, state)
@@ -550,6 +551,7 @@ class BossApplyMixin:
             return set()
 
     def open_apply(self, client: CdpClient, job: Any) -> None:
+        """打开岗位页并等待「立即沟通 / 继续沟通」入口就绪。"""
         url = getattr(job, "source_url", "") or ""
         if not url:
             raise SiteFailure(FAILURE_SELECTOR_INVALID, "该岗位没有投递链接，无法自动投递")
@@ -670,6 +672,7 @@ class BossApplyMixin:
     def fill_and_submit(
         self, client: CdpClient, data: dict[str, Any], greeting: str
     ) -> ApplyOutcome:
+        """执行一次投递：可信点击沟通入口 → 进聊天页 → 填招呼语 → 可信点击发送，再确认结果。"""
         greeting = (greeting or "").strip()
 
         # 1) 岗位详情页：定位沟通入口坐标（open_apply 已确认过入口，这里取坐标并再验一次）。
@@ -733,3 +736,4 @@ __all__ = [
     "_submit_state_script",
     "classify_submit_state",
 ]
+

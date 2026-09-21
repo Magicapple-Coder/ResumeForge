@@ -180,6 +180,7 @@ class OpenAICompatProvider(BaseLLMProvider):
         self._transport = transport
 
     async def chat(self, messages: list[dict]) -> str:
+        """同步发一次 OpenAI 兼容 Chat Completions 请求，返回完整文本；错误统一转成 LLMError。"""
         payload = self._build_payload(messages, stream=False)
         try:
             async with self._client() as client:

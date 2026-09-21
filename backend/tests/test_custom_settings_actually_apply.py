@@ -19,8 +19,8 @@ from app.api.assistant import _system_prompt, _web_search_addendum
 from app.models.interview import InterviewSession
 from app.services.assistant_tools import tool_definitions
 from app.services.exporter import render_html
-from app.services.interview import build_interview_messages
-from app.services.resume_sample import sample_resume_content
+from app.services.interview.interview import build_interview_messages
+from app.services.resume.resume_sample import sample_resume_content
 
 SENTINEL = "ZZQR_SENTINEL_9F3A"
 

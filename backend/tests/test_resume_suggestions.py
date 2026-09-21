@@ -1,7 +1,7 @@
 import json
 import re
 
-from app.api.resumes import _save_record
+from app.services.resume.resume_record import save_record
 from app.models.job import Job
 from app.models.resume import ResumeRecord
 from app.schemas.job import JobOut
@@ -10,7 +10,7 @@ from app.schemas.resume import ResumeContent
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
 from app.services.llm.base import LLMError
-from app.services.resume_suggestions import (
+from app.services.resume.resume_suggestions import (
     MAX_PROFILE_CHARS,
     MAX_RESUME_CHARS,
     _protect_existing_project_facts,
@@ -125,7 +125,7 @@ def test_resume_list_exposes_job_id_and_filters_by_job(client, db_session):
 def test_generated_resume_title_contains_company(db_session):
     job, _ = _create_job_and_resume(db_session)
 
-    record = _save_record(
+    record = save_record(
         db_session,
         {"name": "张三"},
         [],

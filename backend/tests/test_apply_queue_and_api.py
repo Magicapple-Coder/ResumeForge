@@ -15,8 +15,8 @@ from app.models.apply import (
 from app.models.job import JOB_STATUS_OPEN, Job
 from app.models.profile import UserProfile, utcnow
 from app.schemas.job_match import JobMatchResult, MatchCondition
-from app.services.apply import apply_service, task_runner
-from app.services.job_match import finalize_match_result
+from app.services.apply import _site_browser, apply_service, task_runner
+from app.services.job.job_match import finalize_match_result
 
 
 class FakeRunner:
@@ -68,13 +68,13 @@ def browser_port(monkeypatch) -> FakeBrowserPort:
     有一个浏览器占着 9333 是很常见的事——没有这个桩，用例会连上它、甚至导航它。
     """
     port = FakeBrowserPort()
-    real_manager = apply_service.BrowserManager
+    real_manager = _site_browser.BrowserManager
 
     def build(**kwargs):
         kwargs.setdefault("http_transport", port.transport())
         return real_manager(**kwargs)
 
-    monkeypatch.setattr(apply_service, "BrowserManager", build)
+    monkeypatch.setattr(_site_browser, "BrowserManager", build)
     return port
 
 

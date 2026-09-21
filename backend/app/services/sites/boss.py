@@ -116,6 +116,7 @@ class BossAdapter(BossSearchMixin, BossApplyMixin, BossPageMixin, SiteAdapter):
         self._filter_timeout = filter_timeout
 
     def risk_profile(self) -> RiskProfile:
+        """BOSS 风控画像：投递限速与「需登录」声明，供任务运行器限速。"""
         return RiskProfile(
             key=self.key,
             min_interval_seconds=25,

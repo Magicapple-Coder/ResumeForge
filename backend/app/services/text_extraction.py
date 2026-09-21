@@ -129,6 +129,7 @@ async def extract_job_text(
     local_draft: JobTextParseResult,
     image_data_urls: Sequence[str] = (),
 ) -> JobTextParseResult:
+    """用模型抽取岗位字段：调模型 → 解析 JSON → 规范化（来源锚定），本地草稿兜底。"""
     raw = await provider.chat(
         build_job_extraction_messages(source_text, local_draft, image_data_urls)
     )
@@ -146,6 +147,7 @@ async def extract_profile_text(
     local_draft: ProfileTextParseResult,
     image_data_urls: Sequence[str] = (),
 ) -> ProfileTextParseResult:
+    """用模型抽取资料字段：调模型 → 解析 JSON → 规范化（来源锚定），本地草稿兜底。"""
     raw = await provider.chat(
         build_profile_extraction_messages(source_text, local_draft, image_data_urls)
     )
@@ -198,6 +200,7 @@ _AI_FAILED_DOCUMENT_NOTE = "文档文字已在本机提取；"
 
 
 def no_model_warning(has_images: bool, has_documents: bool = False) -> str:
+    """未配置模型时的降级提示：按是否含图片/文档分别说明本地规则能做什么。"""
     notes = ""
     if has_images:
         notes += _NO_MODEL_IMAGE_NOTE
@@ -209,6 +212,7 @@ def no_model_warning(has_images: bool, has_documents: bool = False) -> str:
 
 
 def ai_failed_warning(has_images: bool, detail: str = "", has_documents: bool = False) -> str:
+    """模型失败时的降级提示：按是否含图片/文档说明原因，可附原始错误。"""
     notes = ""
     if has_images:
         notes += _AI_FAILED_IMAGE_NOTE

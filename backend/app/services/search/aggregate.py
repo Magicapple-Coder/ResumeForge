@@ -13,7 +13,7 @@ import asyncio
 import logging
 
 from ...schemas.setting import SearchConfig
-from ..assistant_web_search import (
+from ..assistant.assistant_web_search import (
     AssistantSearchError,
     _deduplicate,
     build_search_query,

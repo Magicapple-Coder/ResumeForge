@@ -1,6 +1,6 @@
 """求职助手联网搜索引用和降级行为测试。"""
 
-from app.services.assistant_web_search import AssistantSearchError
+from app.services.assistant.assistant_web_search import AssistantSearchError
 from app.services.llm.base import LLMDelta
 from tests.test_assistant import (
     _configure_llm,

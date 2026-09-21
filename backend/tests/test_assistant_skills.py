@@ -2,7 +2,7 @@
 import pytest
 
 from app.models.assistant import AssistantSkill, AssistantSkillFile
-from app.services.assistant_skills import (
+from app.services.assistant.assistant_skills import (
     build_skill_prompt,
     delete_skill,
     list_skills,

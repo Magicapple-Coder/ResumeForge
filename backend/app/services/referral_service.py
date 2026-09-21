@@ -182,6 +182,7 @@ def _apply_payload(db: Session, values: dict) -> dict:
 
 
 def create_referral(db: Session, payload: ReferralCreate) -> Referral:
+    """新增一条内推。"""
     values = _apply_payload(db, payload.model_dump())
     values.pop("converted", None)
     referral = Referral(**values)
@@ -254,3 +255,4 @@ __all__ = [
     "save_referral_image",
     "update_referral",
 ]
+

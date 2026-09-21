@@ -289,7 +289,7 @@ def build_resume_docx(
     版式全部来自 ``ResumeLayout``（复用 PDF 的同一来源），页数用连续流模型估算，与
     PDF 的真实页数差在 ±1 内。没有中文字体时仍能生成文档，只是 ``pages=None``。
     """
-    from .resume_templates import FONT_SCALES, template_spec, validated_format_config
+    from .resume.resume_templates import FONT_SCALES, template_spec, validated_format_config
 
     spec = template_spec(template)
     scale = FONT_SCALES.get(font_scale) or FONT_SCALES["standard"]

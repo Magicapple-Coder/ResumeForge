@@ -167,6 +167,7 @@ def _resolve_bindings(db: Session, values: dict) -> dict:
 
 
 def create_reminder(db: Session, payload: ReminderCreate) -> Reminder:
+    """新增一条提醒。"""
     reminder = Reminder(**_resolve_bindings(db, payload.model_dump()))
     db.add(reminder)
     db.commit()
@@ -213,3 +214,4 @@ __all__ = [
     "upcoming_reminders_out",
     "update_reminder",
 ]
+

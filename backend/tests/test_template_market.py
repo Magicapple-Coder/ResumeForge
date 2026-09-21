@@ -1,5 +1,5 @@
 """模板市场（R-19）：``/api/resumes/templates`` 返回 ≥4 套预设，映射既有模板、无新增样式文件。"""
-from app.services.resume_templates import (
+from app.services.resume.resume_templates import (
     FONT_SCALES,
     FORMAT_PRESETS,
     RESUME_TEMPLATES,

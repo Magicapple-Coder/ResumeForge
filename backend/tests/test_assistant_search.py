@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database_migrations import build_alembic_config
 from app.models.assistant import ChatConversation, ChatMessage
-from app.services.assistant_web_search import (
+from app.services.assistant.assistant_web_search import (
     BING_SEARCH_URL,
     AssistantSearchError,
     build_search_query,
@@ -106,7 +106,7 @@ async def test_search_web_uses_fetch_function_without_network(monkeypatch):
         captured["query"] = query
         return xml
 
-    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+    monkeypatch.setattr("app.services.assistant.assistant_web_search.fetch_bing_rss", fake_fetch)
     results = await search_web("  Python   jobs  ")
     assert captured["query"] == "Python jobs"
     assert results[0]["title"] == "Result"
@@ -124,7 +124,7 @@ async def test_search_web_rejects_unrelated_results_for_a_career_question(monkey
         captured["query"] = query
         return xml
 
-    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+    monkeypatch.setattr("app.services.assistant.assistant_web_search.fetch_bing_rss", fake_fetch)
     with pytest.raises(AssistantSearchError, match="直接相关"):
         await search_web("如果我秋招投递互联网大厂没通过，会有投递冷却期吗？")
     assert captured["query"] == "秋招 投递 互联网大厂 冷却期 招聘"
@@ -150,7 +150,7 @@ async def test_search_web_filters_ten_candidates_before_limiting_results(monkeyp
     async def fake_fetch(_query: str):
         return xml
 
-    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+    monkeypatch.setattr("app.services.assistant.assistant_web_search.fetch_bing_rss", fake_fetch)
 
     results = await search_web("给我一些最近刚发布招聘信息的互联网企业")
 
@@ -268,7 +268,7 @@ async def test_search_web_raises_on_zero_results_for_a_non_career_question(monke
     async def fake_fetch(_query: str):
         return xml
 
-    monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", fake_fetch)
+    monkeypatch.setattr("app.services.assistant.assistant_web_search.fetch_bing_rss", fake_fetch)
     with pytest.raises(AssistantSearchError, match="直接相关"):
         await search_web("帮我把外卖平台项目整理成台账条目")
 

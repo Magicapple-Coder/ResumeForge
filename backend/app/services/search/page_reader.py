@@ -50,6 +50,7 @@ class _ArticleParser(HTMLParser):
             self._buffer = []
 
     def handle_endtag(self, tag: str) -> None:
+        """HTMLParser 回调：正文容器结束时把缓冲文本拼成一段（太短当作导航丢弃）。"""
         if tag in _SKIPPED_TAGS and self._depth > 0:
             self._depth -= 1
         elif tag in _TEXT_TAGS and self._capture:
@@ -100,6 +101,7 @@ def is_public_http_url(url: str) -> bool:
 
 
 def extract_text(html_text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
+    """从 HTML 里抽取正文（容错解析，页面再乱也不抛），按字符上限截断。"""
     parser = _ArticleParser()
     try:
         parser.feed(html_text)

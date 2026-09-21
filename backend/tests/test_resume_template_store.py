@@ -6,7 +6,7 @@
 """
 import pytest
 
-from app.services.resume_template_store import (
+from app.services.resume.resume_template_store import (
     TemplateError,
     custom_format_options,
     custom_template_options,
@@ -109,7 +109,7 @@ def test_builtin_source_is_readable(client):
 
 
 def test_name_validation_rejects_markup():
-    from app.services.resume_template_store import validate_template_name
+    from app.services.resume.resume_template_store import validate_template_name
 
     with pytest.raises(TemplateError):
         validate_template_name("<script>")

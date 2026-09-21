@@ -13,7 +13,7 @@ from app.models.job import Job
 from app.models.resume import ResumeRecord
 from app.schemas.resume import ResumeContent
 from app.services.llm.base import LLMError
-from app.services.interview_questions import (
+from app.services.interview.interview_questions import (
     analyze_question,
     generate_question_answer,
     generate_question_bank,

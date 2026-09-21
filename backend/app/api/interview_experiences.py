@@ -15,7 +15,7 @@ from ..schemas.interview_experience import (
     InterviewExperienceOut,
     InterviewExperienceUpdate,
 )
-from ..services.interview_experience_service import (
+from ..services.interview.interview_experience_service import (
     create_experience,
     delete_experience,
     experience_or_none,

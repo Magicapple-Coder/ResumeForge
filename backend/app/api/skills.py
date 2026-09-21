@@ -23,7 +23,7 @@ from ..schemas.skill import (
     AssistantSkillOut,
     AssistantSkillUpdate,
 )
-from ..services.assistant_skills import (
+from ..services.assistant.assistant_skills import (
     create_skill as create_skill_record,
     delete_skill,
     list_skills,

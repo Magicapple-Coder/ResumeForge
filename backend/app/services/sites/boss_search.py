@@ -197,6 +197,7 @@ def _detail_script() -> str:
 def parse_search_payload(
     payload: dict[str, Any], page: int, unmapped_conditions: list[str] | None = None
 ) -> SearchPage:
+    """把 BOSS 搜索结果响应规整成 SearchPage；薪资缺失或不像薪资时退回标题里拆出的薪资。"""
     if not isinstance(payload, dict):
         raise SiteFailure(FAILURE_SELECTOR_INVALID, "搜索结果返回了无法解析的内容")
     results: list[SearchResult] = []
@@ -230,6 +231,7 @@ def parse_search_payload(
 
 
 def parse_job_detail(payload: dict[str, Any]) -> dict[str, Any]:
+    """把 BOSS 岗位详情响应规整成标准字段；需求缺失时退回描述里拆出的需求。"""
     if not isinstance(payload, dict):
         raise SiteFailure(FAILURE_SELECTOR_INVALID, "岗位详情返回了无法解析的内容")
     dom_requirements = normalize_text(payload.get("requirements", ""))
@@ -305,6 +307,7 @@ class BossSearchMixin:
     """BOSS 搜索与详情采集实现。"""
 
     def build_search_url(self, query: CollectQuery, page: int) -> str:
+        """拼搜索页 URL：城市名解析成站点编码，站点筛选条件与页码逐一转义拼入。"""
         keyword = quote((query.keywords[0] if query.keywords else "").strip(), safe="")
         try:
             city = self._city_resolver.resolve(query.city or "")
@@ -466,6 +469,7 @@ class BossSearchMixin:
             return [], result
 
     def collect_search(self, client: CdpClient, query: CollectQuery, page: int) -> SearchPage:
+        """采集一页搜索结果：网络响应优先、DOM 兜底；明确空结果返回空列表，其余失败抛 SiteFailure。"""
         target = self.build_search_url(query, page)
         previous = _current_url(client)
         outcome: dict[str, Any] = {"state": {}, "failure": None}
@@ -542,6 +546,7 @@ class BossSearchMixin:
         )
 
     def fetch_job_detail(self, client: CdpClient, url: str) -> dict[str, Any]:
+        """采集单个岗位详情：打开岗位页，网络响应优先解析 JD，失败退回 DOM，仍无正文则抛 SiteFailure。"""
         previous = _current_url(client)
         outcome: dict[str, Any] = {"state": {}, "failure": None}
 
@@ -594,3 +599,4 @@ __all__ = [
     "parse_job_detail",
     "parse_search_payload",
 ]
+

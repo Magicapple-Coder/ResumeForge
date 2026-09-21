@@ -47,6 +47,7 @@ class SiteRegistry:
         return "、".join(adapter.display_name for adapter in self._adapters) or "暂无"
 
     def for_target(self, url_or_source: str) -> SiteAdapter:
+        """按站点标识或域名分发站点适配器。"""
         for adapter in self._adapters:
             if adapter.matches(url_or_source):
                 return adapter
@@ -100,3 +101,4 @@ def get_registry() -> SiteRegistry:
 
 
 __all__ = ["SiteRegistry", "default_registry", "get_registry"]
+

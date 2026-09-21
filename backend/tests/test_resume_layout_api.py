@@ -4,7 +4,7 @@
 用户会在下载 PDF 之后才发现字号没变——而那时他已经按预览的样子投出去了。
 所以这里显式钉住"导出走的是同一条解析路径"。
 """
-from app.api.resumes import _record_format_config
+from app.services.resume.resume_record import record_format_config
 from app.models.resume import ResumeRecord
 
 PAGE = 2600.0
@@ -221,7 +221,7 @@ def test_record_format_config_is_the_single_resolution_point(db_session):
     db_session.add(record)
     db_session.commit()
 
-    config = _record_format_config(db_session, record)
+    config = record_format_config(db_session, record)
     assert config["line_height"] == 1.9  # 按简历的覆盖赢了
     assert config["accent"] == "#123456"
     assert config["page_padding"] == 11  # 预设里其余项保留

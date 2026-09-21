@@ -43,8 +43,9 @@ from . import trash
 from .export_pipeline import ExportRequest, RenderContext, build_export
 from .pdf_exporter import ResumePDFError
 from .privacy import RedactionOptions, redact
-from .resume_template_store import resolve_format_config, resolve_style_template
-from .resume_templates import DEFAULT_FONT_SCALE, DEFAULT_PAGE_LIMIT, validated_format_config
+from .resume.resume_record import record_format_config
+from .resume.resume_template_store import resolve_style_template
+from .resume.resume_templates import DEFAULT_FONT_SCALE, DEFAULT_PAGE_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ def ensure_package_files(db: Session, package: SharePackage) -> list[str]:
         template_html=template_html,
         page_limit=(record.page_limit or DEFAULT_PAGE_LIMIT) if record else DEFAULT_PAGE_LIMIT,
         font_scale=(record.font_scale or DEFAULT_FONT_SCALE) if record else DEFAULT_FONT_SCALE,
-        format_config=_record_format_config(db, record) if record else {},
+        format_config=record_format_config(db, record) if record else {},
     )
 
     restored: list[str] = []
@@ -201,13 +202,6 @@ def create_share_token() -> str:
 def verify_share_token(package: SharePackage, token: str) -> bool:
     """校验 token 是否属于这份分享包（常数时间比较，防时序侧信道）。"""
     return bool(token) and secrets.compare_digest(package.share_token or "", token)
-
-
-def _record_format_config(db: Session, record: ResumeRecord) -> dict:
-    """与 ``api/resumes.py`` 同口径：具名格式模板 + 只属于这份简历的覆盖。"""
-    config = dict(resolve_format_config(db, record.format_name))
-    config.update(validated_format_config(record.format_config))
-    return config
 
 
 def _build_title(resume: ResumeContent) -> str:
@@ -270,7 +264,7 @@ def create_share_package(
         template_html=template_html,
         page_limit=record.page_limit or DEFAULT_PAGE_LIMIT,
         font_scale=record.font_scale or DEFAULT_FONT_SCALE,
-        format_config=_record_format_config(db, record),
+        format_config=record_format_config(db, record),
     )
 
     # 导出唯一复用 export_pipeline：HTML 与 PDF 都从这里出，不另写渲染逻辑。
@@ -357,6 +351,7 @@ def _download_url(package: SharePackage, name: str) -> str:
 
 
 def share_package_brief(package: SharePackage) -> SharePackageBrief:
+    """分享包的列表摘要视图。"""
     return SharePackageBrief(
         id=package.id,
         title=package.title,
@@ -370,6 +365,7 @@ def share_package_brief(package: SharePackage) -> SharePackageBrief:
 
 
 def share_package_out(package: SharePackage) -> SharePackageOut:
+    """分享包详情视图：文件清单（含下载地址）与脱敏快照、权限、token。"""
     files = [
         ShareFileOut(
             name=str(item.get("name", "")),
@@ -452,3 +448,4 @@ __all__ = [
     "share_root",
     "verify_share_token",
 ]
+

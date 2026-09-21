@@ -160,6 +160,7 @@ def record_failure_category(task: ApplyTask, category: str) -> None:
 
 
 def record_sample_result(task: ApplyTask, recorder: SampleRecordingCdpClient | None) -> None:
+    """记录一次采集样例结果，供站点样例回看。"""
     if recorder is None:
         return
     saved = int(recorder.saved_count)
@@ -257,3 +258,4 @@ __all__ = [
     "record_sample_result",
     "run_collect",
 ]
+

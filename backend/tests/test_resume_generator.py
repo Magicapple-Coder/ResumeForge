@@ -7,7 +7,7 @@ from app.schemas.resume import GenerateOptions
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
 from app.services.llm.openai_compat import OpenAICompatProvider
-from app.services.resume_generator import (
+from app.services.resume.resume_generator import (
     ResumeGenerator,
 )
 

@@ -235,6 +235,7 @@ def activate_dataset(dataset_id: str, bind: Engine) -> dict[str, Any]:
 
 
 def rename_dataset(dataset_id: str, name: str) -> dict[str, Any]:
+    """重命名数据集（写元信息；主数据不支持重命名，缺失/空名/过长均报错）。"""
     if dataset_id == MAIN_DATASET_ID:
         raise DatasetError("主数据不支持重命名")
     path = dataset_database_file(dataset_id)

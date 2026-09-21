@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.schemas.apply import ApplyConfigIn
-from app.services.apply import apply_service
+from app.services.apply import _site_browser, apply_service
 from app.services.browser.browser_manager import (
     BROWSER_CHOICE_AUTO,
     BROWSER_CHOICE_CHROME,
@@ -164,7 +164,7 @@ def _clean_browser_singleton():
 
 
 def test_changing_browser_choice_rebuilds_and_stops_the_old_manager(db_session, monkeypatch):
-    monkeypatch.setattr(apply_service, "BrowserManager", _FakeBrowserManager)
+    monkeypatch.setattr(_site_browser, "BrowserManager", _FakeBrowserManager)
 
     apply_service.save_apply_config(db_session, ApplyConfigIn(browser_choice="auto"))
     first = apply_service.get_browser_manager(db_session)
@@ -193,7 +193,7 @@ def test_changing_browser_choice_rebuilds_and_stops_the_old_manager(db_session, 
 
 
 def test_changing_browser_port_rebuilds(db_session, monkeypatch):
-    monkeypatch.setattr(apply_service, "BrowserManager", _FakeBrowserManager)
+    monkeypatch.setattr(_site_browser, "BrowserManager", _FakeBrowserManager)
 
     apply_service.save_apply_config(db_session, ApplyConfigIn(browser_port=9333))
     first = apply_service.get_browser_manager(db_session)
@@ -240,7 +240,7 @@ def _registry_with_demo() -> SiteRegistry:
 
 def test_new_site_appears_in_the_sites_endpoint_without_any_frontend_change(client, monkeypatch):
     """后端注册表里加一行，/api/apply/sites 自动多出一个站点——前端一行都不用改。"""
-    monkeypatch.setattr(apply_service, "get_registry", _registry_with_demo)
+    monkeypatch.setattr(_site_browser, "get_registry", _registry_with_demo)
 
     response = client.get("/api/apply/sites")
 
@@ -256,7 +256,7 @@ def test_new_site_appears_in_the_sites_endpoint_without_any_frontend_change(clie
 
 
 def test_switching_site_key_moves_default_entry_url_and_current(client, db_session, monkeypatch):
-    monkeypatch.setattr(apply_service, "get_registry", _registry_with_demo)
+    monkeypatch.setattr(_site_browser, "get_registry", _registry_with_demo)
 
     apply_service.save_apply_config(db_session, ApplyConfigIn(site_key="demo"))
 
@@ -267,7 +267,7 @@ def test_switching_site_key_moves_default_entry_url_and_current(client, db_sessi
 
 def test_browser_status_reports_the_current_site_entry_url(db_session, monkeypatch):
     """浏览器状态里的"站点入口"要跟着当前站点走（供启动/「打开招聘网站」使用）。"""
-    monkeypatch.setattr(apply_service, "get_registry", _registry_with_demo)
+    monkeypatch.setattr(_site_browser, "get_registry", _registry_with_demo)
 
     assert apply_service.browser_status(db_session).entry_url == "https://www.zhipin.com/"
     apply_service.save_apply_config(db_session, ApplyConfigIn(site_key="demo"))
@@ -276,7 +276,7 @@ def test_browser_status_reports_the_current_site_entry_url(db_session, monkeypat
 
 def test_unknown_site_key_is_accepted_then_falls_back_to_the_first_site(db_session, monkeypatch):
     """不存在的 site_key 的行为要钉死：schema 接受，运行期回退到第一个可用站点（不崩）。"""
-    monkeypatch.setattr(apply_service, "get_registry", _registry_with_demo)
+    monkeypatch.setattr(_site_browser, "get_registry", _registry_with_demo)
 
     # schema 层不把它当非法（界面只从接口拿有效 key；后端口径是"回退"而不是"报错"）。
     assert ApplyConfigIn(site_key="does-not-exist").site_key == "does-not-exist"

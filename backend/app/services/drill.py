@@ -1,6 +1,6 @@
 """按事实台账深挖的面试服务层：契约生成、逐轮判定、复盘与复练队列。
 
-与「模拟面试」（``services/interview.py``）的区别：那边按轮数推进、结束时给一份四维度
+与「模拟面试」（``services/interview/interview.py``）的区别：那边按轮数推进、结束时给一份四维度
 评分报告；这边**一条主张一个契约**，全程用证据状态说话，产出的是一份"该去补什么"的清单。
 
 **评分契约是本模块的核心**：它必须在提问**之前**生成并存库，判定时再读出来照着判。
@@ -367,6 +367,7 @@ def apply_verdict(
 
 
 def build_review_messages(session: DrillSession) -> list[dict[str, Any]]:
+    """把一场深挖的主张判定与问答记录拼成给模型生成复盘的上下文。"""
     payload = {
         "目标岗位": session.job_title or "（未关联岗位）",
         "本轮深挖的主张与判定": [
@@ -397,6 +398,7 @@ def build_review_messages(session: DrillSession) -> list[dict[str, Any]]:
 
 
 def parse_review(raw: str) -> dict[str, Any]:
+    """解析复盘模型的 JSON 输出，规整成复盘小结 + 行动清单 + 复练队列。"""
     data = parse_json_object(raw, label="面试深挖", max_chars=MAX_REVIEW_RESPONSE_CHARS)
     review = data.get("review")
     if not isinstance(review, dict):

@@ -2,7 +2,7 @@
 
 四个 LLM 变换（STAR 改写 / 话术生成器 / 多风格润色 / 中英互译）都是「一段文本进、
 一段文本出」，结果直接回填到简历对应字段、零适配。版本对比则是两份简历的三态差异
-（added / removed / unchanged），唯一实现见 ``services/resume_diff.py``。
+（added / removed / unchanged），唯一实现见 ``services/resume/resume_diff.py``。
 """
 from typing import Annotated, Literal
 

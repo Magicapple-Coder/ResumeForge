@@ -1,7 +1,7 @@
 """运行时配置存取：用户在「设置」页填写的配置保存在本地 SQLite。
 
-安全说明：API Key 以明文存放在本地数据库文件中。本项目定位为
-单用户本地部署的工具，不做多用户暴露；如需对外部署请自行加锁。
+安全说明：API Key 在 Windows 上用系统 DPAPI 加密后落库（见 api_key_crypto），
+其他平台保持明文。本项目定位为单用户本地部署的工具，不做多用户暴露；如需对外部署请自行加锁。
 """
 import json
 import logging
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..models.setting import AppSetting, LLMConfigRecord
 from ..schemas.setting import LLMConfig, LLMConfigRecordCreate, LLMConfigRecordOut, SearchConfig
+from .api_key_crypto import decrypt_key, encrypt_key
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def resolve_llm_config_api_key(db: Session, config: LLMConfig) -> LLMConfig:
             raise ValueError("API Key 配置记录已不存在，请重新加载设置后再试")
         if _normalized_base_url(config.base_url) != _normalized_base_url(record.base_url):
             raise ValueError("Base URL 与配置记录不一致，请重新加载记录后再试")
-        resolved_key = record.api_key
+        resolved_key = decrypt_key(record.api_key)
     else:
         resolved_key = api_key
     return config.model_copy(update={"api_key": resolved_key})
@@ -102,7 +103,11 @@ def mask_llm_config(db: Session, config: LLMConfig) -> LLMConfig:
             (
                 row
                 for row in records
-                if all(getattr(row, field) == getattr(config, field) for field in fields)
+                if all(
+                    (decrypt_key(row.api_key) if field == "api_key" else getattr(row, field))
+                    == getattr(config, field)
+                    for field in fields
+                )
             ),
             None,
         )
@@ -116,11 +121,13 @@ def _mask_llm_config_record(record: LLMConfigRecord) -> LLMConfigRecordOut:
 
 
 def get_llm_config(db: Session) -> LLMConfig:
+    """读取 LLM 配置（解密 API Key）；缺失或脏数据退回默认。"""
     row = db.get(AppSetting, _LLM_CONFIG_KEY)
     if row is None:
         return LLMConfig()
     try:
-        return LLMConfig.model_validate(json.loads(row.value))
+        config = LLMConfig.model_validate(json.loads(row.value))
+        return config.model_copy(update={"api_key": decrypt_key(config.api_key)})
     except (json.JSONDecodeError, ValidationError):
         # 脏数据降级为默认配置，不阻塞用户重新填写
         logger.warning("LLM 配置数据损坏，已重置为默认值")
@@ -128,9 +135,11 @@ def get_llm_config(db: Session) -> LLMConfig:
 
 
 def save_llm_config(db: Session, config: LLMConfig) -> LLMConfig:
+    """保存 LLM 配置：先还原脱敏占位符，再加密 API Key 后落库。"""
     config = resolve_llm_config_api_key(db, config)
     row = db.get(AppSetting, _LLM_CONFIG_KEY)
-    serialized = json.dumps(config.model_dump(), ensure_ascii=False)
+    stored = config.model_copy(update={"api_key": encrypt_key(config.api_key)})
+    serialized = json.dumps(stored.model_dump(), ensure_ascii=False)
     if row is None:
         db.add(AppSetting(key=_LLM_CONFIG_KEY, value=serialized))
     else:
@@ -145,9 +154,11 @@ def list_llm_config_records(db: Session) -> list[LLMConfigRecordOut]:
 
 
 def save_llm_config_record(db: Session, payload: LLMConfigRecordCreate) -> LLMConfigRecordOut:
+    """保存一条命名配置记录（API Key 加密落库）。"""
     payload = resolve_llm_config_api_key(db, payload)
     row = db.query(LLMConfigRecord).filter(LLMConfigRecord.name == payload.name).one_or_none()
     values = payload.model_dump(exclude={"name"})
+    values["api_key"] = encrypt_key(values["api_key"])
     if row is None:
         row = LLMConfigRecord(name=payload.name, **values)
         db.add(row)
@@ -182,6 +193,7 @@ def get_search_config(db: Session) -> SearchConfig:
 
 
 def save_search_config(db: Session, config: SearchConfig) -> SearchConfig:
+    """保存联网搜索配置。"""
     row = db.get(AppSetting, _SEARCH_CONFIG_KEY)
     serialized = json.dumps(config.model_dump(), ensure_ascii=False)
     if row is None:
@@ -218,3 +230,5 @@ def save_reminder_popup_on_start(db: Session, enabled: bool) -> bool:
         row.value = serialized
     db.commit()
     return bool(enabled)
+
+

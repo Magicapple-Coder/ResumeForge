@@ -32,7 +32,7 @@ from ...schemas.apply import CollectConfigIn
 from ...schemas.job import RECOGNITION_SOURCE_COLLECT
 from .. import trash
 from ..candidate_jobs import find_staged_candidate, stage_candidate_job
-from ..job_service import find_job_by_identity, refresh_job_keywords
+from ..job.job_service import find_job_by_identity, refresh_job_keywords
 from ..sites.base import CollectQuery, FilterResolution, SearchResult, SiteAdapter, SiteFailure
 from .collect_filters import FilterTally, evaluate_filters
 

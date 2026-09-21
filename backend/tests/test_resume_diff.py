@@ -1,6 +1,6 @@
-"""简历版本三态差异：行级 + 词级，唯一实现于 services/resume_diff.py。"""
+"""简历版本三态差异：行级 + 词级，唯一实现于 services/resume/resume_diff.py。"""
 from app.models.resume import ResumeRecord
-from app.services.resume_diff import (
+from app.services.resume.resume_diff import (
     _to_lines,
     _word_pair_diff,
     build_resume_diff,

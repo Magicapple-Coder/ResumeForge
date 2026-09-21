@@ -7,7 +7,7 @@ from app.schemas.job import JobOut
 from app.schemas.profile import ProfileOut
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider
-from app.services.profile_relevance import (
+from app.services.profile.profile_relevance import (
     build_job_focus,
     build_job_prompt_text,
     build_profile_prompt_data,

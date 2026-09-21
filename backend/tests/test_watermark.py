@@ -15,7 +15,7 @@ from pypdf import PdfReader
 
 from app.services.docx_exporter import build_resume_docx
 from app.services.pdf_exporter import build_resume_pdf, font_available
-from app.services.resume_sample import sample_resume_content
+from app.services.resume.resume_sample import sample_resume_content
 from app.services.watermark import WatermarkError, apply_watermark
 
 needs_font = pytest.mark.skipif(not font_available(), reason="本机没有可用的中文字体")

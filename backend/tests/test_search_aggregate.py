@@ -6,9 +6,9 @@
 """
 import pytest
 
-import app.services.assistant_web_search as web_search_module
+import app.services.assistant.assistant_web_search as web_search_module
 from app.schemas.setting import SearchConfig
-from app.services.assistant_web_search import AssistantSearchError, build_search_query
+from app.services.assistant.assistant_web_search import AssistantSearchError, build_search_query
 from app.services.search import aggregate as aggregate_module
 from app.services.search.aggregate import aggregate_search
 from app.services.search.duckduckgo import _unwrap_redirect

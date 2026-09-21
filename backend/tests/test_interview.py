@@ -9,7 +9,7 @@ import pytest
 
 from app.models.interview import InterviewSession
 from app.schemas.interview import InterviewCreate
-from app.services.interview import (
+from app.services.interview.interview import (
     answered_rounds,
     build_interview_messages,
     build_report_messages,

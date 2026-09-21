@@ -158,6 +158,7 @@ def _apply_payload(record: ApplicationTrack, payload: TrackCreate | TrackUpdate)
 
 
 def create_track(db: Session, payload: TrackCreate, *, source: str = SOURCE_MANUAL) -> ApplicationTrack:
+    """新增一条求职进度记录。"""
     record = ApplicationTrack(source=source)
     _apply_payload(record, payload)
     db.add(record)
@@ -361,6 +362,7 @@ def apply_merges(
 
 
 def preview_merges(db: Session, records: list[TrackRecordIn]) -> list[TrackMergePreview]:
+    """预览粘贴的进度记录与现有记录的合并计划（只算不写，/parse 直接返回）。"""
     return [
         TrackMergePreview(
             record=plan.record,
@@ -424,6 +426,7 @@ _CSV_HEADER = (
 
 
 def export_rows(records: list[ApplicationTrack]) -> list[list[str]]:
+    """把进度记录转成 CSV 导出的行（备注换行压成空格）。"""
     return [
         [
             item.company,
@@ -454,6 +457,7 @@ def to_csv(records: list[ApplicationTrack]) -> str:
 
 
 def to_json(records: list[ApplicationTrack]) -> str:
+    """把求职进度记录序列化成 JSON 导出文本。"""
     payload = {
         "说明": "求职进度导出；状态取值与合并规则见 models/tracker.py",
         "总数": len(records),
@@ -497,3 +501,4 @@ __all__ = [
     "track_out",
     "update_track",
 ]
+

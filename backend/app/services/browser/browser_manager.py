@@ -269,6 +269,7 @@ class BrowserManager:
         return self.is_running() or self._handle_alive()
 
     def status(self) -> BrowserStatus:
+        """探测浏览器运行状态：在不在跑看调试端口，句柄只决定 owned（是否本进程拉起）。"""
         browser_path = str(self._browser_path) if self._browser_path else ""
         browser_name = browser_display_name(self._browser_path)
         owned = self._handle_alive()
@@ -395,6 +396,7 @@ class BrowserManager:
         self.client().navigate(url)
 
     def client(self) -> WebsocketCdpClient:
+        """取当前 CDP 客户端。"""
         self._require_running()
         return self._client_factory(
             self._host,
@@ -417,3 +419,4 @@ __all__ = [
     "browser_display_name",
     "default_profile_dir",
 ]
+

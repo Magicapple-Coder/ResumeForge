@@ -7,7 +7,7 @@ from docx import Document
 from app.schemas.resume import ResumeContent
 from app.services.docx_exporter import build_resume_docx
 from app.services.pdf_exporter import build_resume_pdf, font_available
-from app.services.resume_sample import sample_resume_content
+from app.services.resume.resume_sample import sample_resume_content
 
 needs_font = pytest.mark.skipif(not font_available(), reason="本机没有可用的中文字体")
 
@@ -47,7 +47,7 @@ def test_docx_reuses_layout_margins_and_respects_margin_override():
 
 
 def test_docx_uses_template_default_margin_when_not_overridden():
-    from app.services.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
+    from app.services.resume.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
 
     expected = float(TEMPLATE_LAYOUT_DEFAULTS["classic"]["padding_mm"])
     result = build_resume_docx(_resume(), template="classic", page_limit=1)
@@ -83,7 +83,7 @@ def test_docx_gender_is_a_separate_muted_run_not_the_name_run():
     变强调色。拆分后姓名 run 是粗体 + 强调色 + name_ratio 字号，性别 run 是常规 + muted +
     name_extra_ratio 字号。
     """
-    from app.services.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
+    from app.services.resume.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
 
     resume = ResumeContent(name="张三", gender="男", summary="一句话总结。")
     result = build_resume_docx(resume, template="classic", page_limit=1)
@@ -124,7 +124,7 @@ def test_docx_photo_is_cover_cropped_before_embedding():
 
     from PIL import Image
 
-    from app.services.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
+    from app.services.resume.resume_templates import TEMPLATE_LAYOUT_DEFAULTS
 
     # 用 Pillow 现造一张 4x1 的横图 PNG（与 classic 照片框 0.7875 比例明显不同）。
     buf = BytesIO()

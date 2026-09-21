@@ -1,6 +1,6 @@
 """简历风险扫描接口（prefix ``/api/resumes``）。
 
-薄路由：加载简历与事实台账，调 ``services/resume_risk``，返回 schema。风险扫描
+薄路由：加载简历与事实台账，调 ``services/resume/resume_risk``，返回 schema。风险扫描
 **只提示不改写**；本地规则不依赖模型，未配置 LLM 时照常返回，配置了 LLM 时做可选增强
 （增强失败由 service 自动降级，不阻断）。
 """
@@ -16,7 +16,7 @@ from ..schemas.resume import ResumeContent
 from ..schemas.resume_risk import RiskScanOut
 from ..services import trash
 from ..services.llm import create_provider
-from ..services.resume_risk import scan_resume_risks
+from ..services.resume.resume_risk import scan_resume_risks
 from ..services.settings_service import get_llm_config
 
 router = APIRouter(prefix="/api/resumes", tags=["resume-risk"])

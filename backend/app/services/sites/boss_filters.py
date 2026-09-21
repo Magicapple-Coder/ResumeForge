@@ -251,6 +251,7 @@ def _decode(value: Any) -> dict[str, Any]:
 
 
 def default_fetcher(url: str, timeout: float) -> Any:
+    """免登录公开接口获取筛选清单。"""
     request = Request(url, headers={"User-Agent": "Mozilla/5.0 ResumeForge"})
     with urlopen(request, timeout=timeout) as response:  # noqa: S310 - 固定 https 站点
         raw = response.read(MAX_RESPONSE_BYTES + 1)
@@ -545,3 +546,4 @@ __all__ = [
     "resolve_codes",
     "snapshot_catalogue",
 ]
+

@@ -91,7 +91,7 @@ def _resolve_template_color(
     颜色唯一来源是 `resume_templates.template_layout_defaults`（共享知识第 10 条）；
     PDF 与 Word 都从这里取同一份颜色，禁止任何渲染器再存一份 `_TEMPLATE_COLORS`。
     """
-    from .resume_templates import template_layout_defaults, template_spec, validated_format_config
+    from .resume.resume_templates import template_layout_defaults, template_spec, validated_format_config
 
     spec = template_spec(template)
     overrides = validated_format_config(format_config)
@@ -284,7 +284,7 @@ def resolve_layout(
     ``margin_mm`` 是导出时的**页边距直接覆盖**（R-16 全参数导出）：给定时优先于
     ``format_config.page_padding`` 与模板默认值，让 PDF / Word 共用同一边距口径。
     """
-    from .resume_templates import template_layout_defaults, validated_format_config
+    from .resume.resume_templates import template_layout_defaults, validated_format_config
 
     defaults = template_layout_defaults(template)
     overrides = validated_format_config(format_config)
@@ -560,6 +560,7 @@ class _ResumePDF(FPDF):
         self.set_text_color(*_BODY_TEXT)
 
     def bullets(self, items: list[str], base: float, indent: float = 3.0) -> None:
+        """画一段带圆点的列表项（项间留白对齐模板的 li margin）。"""
         layout = self.layout
         line_height = self.line_advance(base)
         li_gap = layout.gap_mm(layout.li_gap)
@@ -585,6 +586,7 @@ class _ResumePDF(FPDF):
             )
 
     def entry_head(self, left: str, right: str, base: float) -> None:
+        """画条目头（左标题加粗、右时间戳淡化右对齐）。"""
         title_size = base * self.layout.entry_title_ratio
         line_height = self.line_advance(title_size)
         self.ensure_space(line_height * 2)
@@ -1240,7 +1242,7 @@ def build_resume_pdf(
     **字号派生尺寸**来装下，是否"装得下"以**真实渲染的页数**为准（见 `decide_fit_scale`），
     实在装不下就如实标记 ``overflow``。
     """
-    from .resume_templates import FONT_SCALES, template_spec
+    from .resume.resume_templates import FONT_SCALES, template_spec
 
     fonts = _resolve_font_paths()
     if fonts is None:
@@ -1253,7 +1255,7 @@ def build_resume_pdf(
     scale = FONT_SCALES.get(font_scale) or FONT_SCALES["standard"]
     base = float(scale["base_px"])
 
-    from .resume_templates import validated_format_config
+    from .resume.resume_templates import validated_format_config
 
     overrides = validated_format_config(format_config)
     accent_adjust = overrides.get("font_scale_adjust")

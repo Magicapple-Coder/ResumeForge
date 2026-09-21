@@ -14,7 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from jinja2.sandbox import SandboxedEnvironment
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
-from .resume_templates import (
+from .resume.resume_templates import (
     DEFAULT_FONT_SCALE,
     DEFAULT_TEMPLATE,
     font_scale_spec,

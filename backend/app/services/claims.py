@@ -110,6 +110,7 @@ def _apply_payload(record: ClaimRecord, payload: ClaimCreate | ClaimUpdate) -> N
 
 
 def create_claim(db: Session, payload: ClaimCreate) -> ClaimRecord:
+    """新增一条台账主张（新建一律「待确认」）。"""
     record = ClaimRecord()
     _apply_payload(record, payload)
     db.add(record)
@@ -311,3 +312,4 @@ __all__ = [
     "summarize",
     "update_claim",
 ]
+

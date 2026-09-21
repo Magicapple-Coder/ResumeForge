@@ -17,7 +17,7 @@ from ..models.profile import UserProfile, utcnow
 from ..models.resume import ResumeRecord
 from ..schemas.job_match import JobMatchOut, JobMatchResult
 from ..services.apply import apply_service
-from ..services.job_match import (
+from ..services.job.job_match import (
     analyze_match,
     finalize_match_result,
     job_payload,
@@ -26,7 +26,7 @@ from ..services.job_match import (
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.match_scoring import score_match_result
-from ..services.profile_service import get_profile_detail, to_profile_out
+from ..services.profile.profile_service import get_profile_detail, to_profile_out
 from ..services.settings_service import get_llm_config
 
 router = APIRouter(prefix="/api/jobs", tags=["job-match"])

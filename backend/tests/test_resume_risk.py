@@ -14,7 +14,7 @@ from app.models.resume import ResumeRecord
 from app.schemas.resume import ResumeContent, ResumeProject
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider, LLMError
-from app.services.resume_risk import scan_local, scan_resume_risks
+from app.services.resume.resume_risk import scan_local, scan_resume_risks
 
 
 class RiskProvider(BaseLLMProvider):

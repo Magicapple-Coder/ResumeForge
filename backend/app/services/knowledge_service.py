@@ -43,6 +43,7 @@ def knowledge_or_none(db: Session, knowledge_id: int) -> KnowledgeEntry | None:
 
 
 def create_knowledge(db: Session, payload: KnowledgeCreate) -> KnowledgeEntry:
+    """新增一条知识库条目。"""
     entry = KnowledgeEntry(**payload.model_dump())
     db.add(entry)
     db.commit()
@@ -90,3 +91,4 @@ __all__ = [
     "list_knowledge",
     "update_knowledge",
 ]
+

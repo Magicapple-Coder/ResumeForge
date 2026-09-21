@@ -30,11 +30,11 @@ from ..schemas.material import (
     MaterialCreate,
     MaterialOut,
 )
-from ..services.assistant_service import (
+from ..services.assistant.assistant_service import (
     conversation_title,
     normalize_attachments,
 )
-from ..services.assistant_skills import build_skill_prompt
+from ..services.assistant.assistant_skills import build_skill_prompt
 from ..services.feature_catalog import build_capability_map
 from ..services.conversation_export import (
     EXPORT_FORMATS,

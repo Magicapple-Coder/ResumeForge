@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from app.services.interview_questions import generate_question_answer, generate_question_bank
+from app.services.interview.interview_questions import generate_question_answer, generate_question_bank
 from app.services.llm.base import LLMError
 from app.services.llm.structured_output import parse_json_object
 

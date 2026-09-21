@@ -38,7 +38,7 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.models.job import Job  # noqa: E402  (需要先补 sys.path)
-from app.services.job_service import refresh_job_keywords  # noqa: E402  (需要先补 sys.path)
+from app.services.job.job_service import refresh_job_keywords  # noqa: E402  (需要先补 sys.path)
 
 DEFAULT_DB = BACKEND_ROOT / "data" / "resume_forge.db"
 

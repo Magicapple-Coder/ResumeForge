@@ -179,6 +179,7 @@ class TaskRunner:
         return self._current_task_id
 
     def start(self, task_id: int) -> None:
+        """启动一个任务批次：登记运行态并起后台线程；已有任务在跑则抛 TaskRunnerError。"""
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 raise TaskRunnerError("已有任务正在进行中，请先停止或等待其完成")

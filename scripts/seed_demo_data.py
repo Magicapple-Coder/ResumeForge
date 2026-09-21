@@ -57,7 +57,7 @@ from sqlalchemy import create_engine, insert  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import __init__ as _models  # noqa: E402,F401
 from app.services.jd_parser import parse_jd  # noqa: E402
-from app.services.resume_sample import sample_resume_content  # noqa: E402
+from app.services.resume.resume_sample import sample_resume_content  # noqa: E402
 
 
 def keywords_of(job: dict) -> list[dict]:

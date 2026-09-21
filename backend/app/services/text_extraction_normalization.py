@@ -279,6 +279,7 @@ def _merge_entries(
 def normalize_profile_result(
     data: dict[str, Any], local: ProfileTextParseResult, source_text: str
 ) -> ProfileTextParseResult:
+    """把模型抽取的资料 JSON 规范化成可落库结果：字段截断、来源锚定、与本地结果合并。"""
     if isinstance(data.get("profile"), dict):
         data = data["profile"]
     state = {"truncated": False}

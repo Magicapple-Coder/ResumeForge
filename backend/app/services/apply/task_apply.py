@@ -94,6 +94,7 @@ def interruptible_sleep(runner: Any, interval: int, jitter: int) -> bool:
 def mark_failed(
     session: Any, task: ApplyTask, item: ApplyTaskItem, category: str, detail: str
 ) -> None:
+    """把任务项标记为失败并记录失败分类。"""
     item.status = ITEM_STATUS_FAILED
     item.failure_category = category
     item.failure_detail = detail
@@ -313,3 +314,4 @@ __all__ = [
     "pause_with_message",
     "run_apply",
 ]
+

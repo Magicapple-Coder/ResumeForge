@@ -26,7 +26,7 @@ from app.models.tracker import (
     normalize_key,
 )
 from app.models.resume import ResumeRecord
-from app.services import resume_health as resume_health_service
+from app.services.resume import resume_health as resume_health_service
 from app.services import trash
 from app.services.analytics import TOP_COMPANY_LIMIT, build_dashboard, dashboard_brief
 from app.services.referral_service import referral_stats

@@ -10,7 +10,7 @@ from app.models.resume import ResumeRecord
 from app.schemas.resume_writing import StarRewriteRequest
 from app.schemas.setting import LLMConfig
 from app.services.llm.base import BaseLLMProvider, LLMError
-from app.services.resume_writing import (
+from app.services.resume.resume_writing import (
     generate_phrases,
     polish,
     rewrite_star,

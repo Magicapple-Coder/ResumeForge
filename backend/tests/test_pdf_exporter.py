@@ -46,8 +46,8 @@ from app.services.pdf_exporter import (
     soft_accent,
     wrap_skill_tags,
 )
-from app.services.resume_sample import sample_resume_content
-from app.services.resume_templates import (
+from app.services.resume.resume_sample import sample_resume_content
+from app.services.resume.resume_templates import (
     RESUME_TEMPLATES,
     TEMPLATE_LAYOUT_DEFAULTS,
     TEMPLATES_DIR,

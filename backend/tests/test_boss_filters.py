@@ -546,7 +546,7 @@ class _StoppedBrowser:
 
 def _no_browser(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.apply.apply_service.get_browser_manager", lambda _db: _StoppedBrowser()
+        "app.services.apply._site_browser.get_browser_manager", lambda _db: _StoppedBrowser()
     )
 
 
@@ -556,7 +556,7 @@ def test_filter_options_endpoint_returns_groups(client, monkeypatch):
             {CONDITIONS_ENDPOINT: conditions_payload(), INDUSTRY_ENDPOINT: industry_payload()}
         )
     )
-    monkeypatch.setattr("app.services.apply.apply_service.current_site", lambda _db: adapter)
+    monkeypatch.setattr("app.services.apply._site_browser.current_site", lambda _db: adapter)
     _no_browser(monkeypatch)
 
     response = client.get("/api/collect/filters")
@@ -585,7 +585,7 @@ def test_filter_options_endpoint_degrades_instead_of_failing(client, monkeypatch
             raise RuntimeError("站点接口挂了")
 
     monkeypatch.setattr(
-        "app.services.apply.apply_service.current_site", lambda _db: BrokenAdapter()
+        "app.services.apply._site_browser.current_site", lambda _db: BrokenAdapter()
     )
     _no_browser(monkeypatch)
     response = client.get("/api/collect/filters")
@@ -599,9 +599,9 @@ def test_filter_options_endpoint_degrades_when_the_browser_probe_raises(client, 
     def boom(_db):
         raise BrowserError("调试端口没应答")
 
-    monkeypatch.setattr("app.services.apply.apply_service.get_browser_manager", boom)
+    monkeypatch.setattr("app.services.apply._site_browser.get_browser_manager", boom)
     monkeypatch.setattr(
-        "app.services.apply.apply_service.current_site",
+        "app.services.apply._site_browser.current_site",
         lambda _db: BossAdapter(
             filter_fetcher=fake_fetcher({CONDITIONS_ENDPOINT: conditions_payload()})
         ),
