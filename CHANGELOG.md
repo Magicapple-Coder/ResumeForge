@@ -10,6 +10,14 @@
 
 ### Changed
 
+## 0.11.0 - 2026-09-22
+
+### Added
+
+### Fixed
+
+### Changed
+
 - **API Key 在 Windows 上改用系统 DPAPI 加密存储**。密钥不再以明文落库：`services/api_key_crypto.py`
   用 `CryptProtectData` 把密钥加密成绑定当前用户与机器的密文（`dpapi:v1:` + base64），保存与配置记录
   两条写入路径都加密；读取时解密。旧库透明兼容——不带前缀的历史明文仍按明文读，下次保存自动加密；
