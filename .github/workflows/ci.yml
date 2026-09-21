@@ -16,8 +16,8 @@ jobs:
   backend:
     name: Backend (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    # 串行跑全套 + coverage 在 Windows runner 上要 ~16 分钟（Linux ~12 分钟），
-    # 15 分钟会把 Windows job 在收尾前砍掉。放宽到 30 分钟留足余量。
+    # 测试走 pytest-xdist 并行（-n auto），正常 ~5 分钟；30 分钟是给慢速
+    # 共享 runner 与 coverage 收尾留的宽裕上限，而不是常规耗时。
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -71,7 +71,7 @@ jobs:
 
       - name: Run tests with coverage
         run: >-
-          python -m pytest
+          python -m pytest -n auto
           --cov=app
           --cov-config=../pyproject.toml
           --cov-report=term-missing
