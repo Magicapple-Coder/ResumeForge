@@ -832,7 +832,9 @@ describe("SettingsPage skills", () => {
     skillMocks.setSkillEnabled.mockResolvedValue(disabledSkill);
     await renderPage([interviewSkill, disabledSkill]);
 
-    fireEvent.click(screen.getByRole("switch", { name: "停用技能 面试模拟官" }));
+    // 技能列表是异步渲染的，用 findByRole 等它出现，而不是同步 getByRole——
+    // 慢速 CI 上后者的时机不稳定，会报「找不到 switch」。
+    fireEvent.click(await screen.findByRole("switch", { name: "停用技能 面试模拟官" }));
 
     await waitFor(() => expect(skillMocks.setSkillEnabled).toHaveBeenCalledWith(1, false));
     expect(await screen.findByText("已停用")).toBeInTheDocument();

@@ -164,7 +164,10 @@ class BrowserManager:
             base = self._env.get(env_name)
             if not base:
                 continue
-            candidate = Path(base) / relative
+            # `relative` 用 Windows 反斜杠写（如 r"Google\Chrome\Application\chrome.exe"），
+            # 而 Linux/macOS 上反斜杠只是普通字符、不是路径分隔符——直接 `Path(base) / relative`
+            # 会得到一个带反斜杠的单段文件名，永远找不到。所以按 `\\` 拆开再逐段拼接。
+            candidate = Path(base).joinpath(*relative.split("\\"))
             if candidate.is_file():
                 found.append(candidate)
         return found
