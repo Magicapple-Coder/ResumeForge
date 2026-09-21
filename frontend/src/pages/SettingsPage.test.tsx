@@ -792,7 +792,9 @@ describe("SettingsPage skills", () => {
 
   /** 打开技能行的「更多」菜单（删除收在里面）。 */
   async function openRowActionsMenu() {
-    fireEvent.click(screen.getAllByRole("button", { name: "更多操作" })[0]);
+    // 技能列表异步渲染，「更多操作」按钮要用 findAllByRole 等它出现，而不是同步
+    // getAllByRole——慢速 CI 上后者会因时机不稳报「找不到按钮」。
+    fireEvent.click((await screen.findAllByRole("button", { name: "更多操作" }))[0]);
     await screen.findByText("删除技能");
   }
 
