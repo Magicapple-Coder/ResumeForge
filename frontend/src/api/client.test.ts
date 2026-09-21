@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildQuery, request } from "./client";
+import { ApiError, buildQuery, request } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,5 +39,26 @@ describe("request", () => {
 
     const headers = new Headers((fetchMock.mock.calls[0][1] as RequestInit).headers);
     expect(headers.get("Content-Type")).toBe("text/plain");
+  });
+
+  it("结构化 detail 取其中的 message，而不是只说「请求失败（HTTP 409）」", async () => {
+    // 投递台的 409 都是这个形状（message + 若干标记位）。不取 message 的话，调用方
+    // 只能看到一句没信息量的话，而真正原因就躺在响应体里。
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: { message: "「某岗位」的来源不是投递台支持的招聘网站", site_unsupported: true },
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(request("/example", { method: "POST" })).rejects.toThrow(
+      "「某岗位」的来源不是投递台支持的招聘网站",
+    );
+    await expect(request("/example", { method: "POST" })).rejects.toBeInstanceOf(ApiError);
   });
 });

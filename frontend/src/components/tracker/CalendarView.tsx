@@ -7,14 +7,14 @@
  * 组件默认自拉 ``listReminders``；传入 ``reminders`` 时用它覆盖（测试 / 父组件已取数时）。
  */
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
-import { Button, Empty, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import { Button, Empty, List, Modal, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { useMemo, useState } from "react";
 import { listReminders } from "../../api/reminders";
 import { useApi } from "../../hooks/useApi";
-import { REMINDER_KIND_LABELS } from "../../types";
-import type { Reminder, ReminderKind } from "../../types";
+import { REMINDER_KIND_LABELS, REMINDER_STATUS_LABELS } from "../../types";
+import type { Reminder, ReminderKind, ReminderStatus } from "../../types";
 import { formatDateTime } from "../../utils/format";
 
 interface Props {
@@ -23,6 +23,12 @@ interface Props {
   loading?: boolean;
   /** 紧凑模式：用于首页「近期提醒」卡，只画色点不铺标题。 */
   compact?: boolean;
+  /**
+   * 接管「点了某一天」这个动作；**不传时组件自己弹当天明细**。
+   *
+   * 首页、求职进度、提醒面板三处都用这个组件，明细内建在这里才能保证三处行为一致
+   * ——否则「首页点日期没反应、进度页能点」这种不一致迟早会出现。
+   */
   onSelectDate?: (date: Dayjs) => void;
 }
 
@@ -52,6 +58,8 @@ export default function CalendarView({
   onSelectDate,
 }: Props) {
   const [month, setMonth] = useState<Dayjs>(() => dayjs().startOf("month"));
+  // 被点开的那一天（内建明细用）。`null` 表示没打开。
+  const [detailDate, setDetailDate] = useState<Dayjs | null>(null);
   const { data: fetched, loading: loadingFetched } = useApi(
     () => listReminders({ limit: 500 }),
     [],
@@ -88,6 +96,18 @@ export default function CalendarView({
   const isToday = (date: Dayjs): boolean => date.isSame(now, "day");
   const isCurrentMonth = (date: Dayjs): boolean => date.isSame(month, "month");
 
+  const openDay = (date: Dayjs) => {
+    if (onSelectDate) {
+      onSelectDate(date);
+      return;
+    }
+    setDetailDate(date);
+  };
+
+  const detailItems = detailDate
+    ? sortForDay(byDay.get(detailDate.format("YYYY-MM-DD")) ?? [])
+    : [];
+
   return (
     <div className="calendar-view">
       <div className="calendar-view-head">
@@ -109,6 +129,11 @@ export default function CalendarView({
             回到本月
           </Button>
         </Space>
+        {!compact && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            点日期格看当天的安排
+          </Typography.Text>
+        )}
       </div>
 
       {loading ? (
@@ -131,8 +156,8 @@ export default function CalendarView({
                 className={`calendar-view-cell${isToday(date) ? " is-today" : ""}${
                   dimmed ? " is-dimmed" : ""
                 }`}
-                onClick={() => onSelectDate?.(date)}
-                aria-label={`${key}${dayItems.length ? `，${dayItems.length} 条提醒` : ""}`}
+                onClick={() => openDay(date)}
+                aria-label={`${key}${dayItems.length ? `，${dayItems.length} 条提醒` : ""}，查看当天安排`}
               >
                 <span className="calendar-view-day">{date.date()}</span>
                 {compact
@@ -184,6 +209,52 @@ export default function CalendarView({
           description="这个月还没有提醒，把面试、测评截止这些时点记下来吧"
         />
       )}
+
+      <Modal
+        open={detailDate !== null}
+        title={
+          detailDate
+            ? `${detailDate.format("YYYY 年 M 月 D 日")}${
+                detailItems.length > 0 ? ` · ${detailItems.length} 条提醒` : ""
+              }`
+            : ""
+        }
+        onCancel={() => setDetailDate(null)}
+        footer={null}
+        width={520}
+      >
+        {detailItems.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这一天没有安排" />
+        ) : (
+          <List
+            size="small"
+            dataSource={detailItems}
+            renderItem={(item) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={
+                    <Space size={6} wrap>
+                      <span>{item.title}</span>
+                      <Tag>{REMINDER_KIND_LABELS[item.kind as ReminderKind] ?? item.kind}</Tag>
+                      <Tag color={reminderColor(item, now)}>
+                        {REMINDER_STATUS_LABELS[item.status as ReminderStatus] ?? item.status}
+                      </Tag>
+                    </Space>
+                  }
+                  description={
+                    <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                      <Typography.Text type="secondary">
+                        {formatDateTime(item.remind_at)}
+                      </Typography.Text>
+                      {item.note && <Typography.Text type="secondary">{item.note}</Typography.Text>}
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

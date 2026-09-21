@@ -87,4 +87,15 @@ describe("ReminderPanel", () => {
 
     expect(await screen.findByText("读取提醒失败")).toBeInTheDocument();
   });
+
+  it("点「详情」打开详情抽屉，看得到绑定对象与备注", async () => {
+    renderPanel();
+    await screen.findByText("参加某司二面");
+
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
+
+    expect(await screen.findByText("绑定漏斗")).toBeInTheDocument();
+    expect(screen.getByText("绑定岗位")).toBeInTheDocument();
+    expect(screen.getByText("备注")).toBeInTheDocument();
+  });
 });

@@ -50,6 +50,11 @@ GREETING_INPUT_MAX_CHARS = 1000
 MAX_QUEUE_BATCH = 200
 MAX_TASK_TARGETS = 500
 MAX_COLLECT_KEYWORDS = 10
+# 站点侧筛选项的规模上限。选项是站点提供的、数量有限（BOSS 一共 7 组），给一个宽松但
+# 明确的上界挡住畸形请求体即可；真正"这个编码能不能用"由适配器在采集前逐个校验。
+MAX_COLLECT_FILTERS = 16
+COLLECT_FILTER_KEY_MAX_CHARS = 32
+COLLECT_FILTER_CODE_MAX_CHARS = 32
 
 # 「补齐详情」的单批上限。补详情要逐个打开岗位页面（详情页是整个采集里最慢的一步），几百条一批
 # 会让一次任务跑很久、也更容易被风控盯上，所以超过就让用户分批。这个上限由**业务层**给出可操作的
@@ -141,9 +146,35 @@ class CollectConfigIn(BaseModel):
     # 采集结果的岗位类型标注（校招/实习/社招）；空串 = 不限。**仅入库标注**：
     # 不入去重判据、不参与站点筛选（与薪资/经验/学历"采集后本地筛选"口径一致）。
     job_type: str = Field(default="", max_length=32)
+    # **站点侧筛选项**：``{分组 key: 选项编码}``（如 ``{"degree": "203"}``）。选项清单由适配器
+    # 从站点自己那里读（见 ``services/sites/boss_filters``），界面渲染成下拉框，用户选什么就存
+    # 什么；编码在**采集开始前**由适配器对着当次读到的清单校验，不通过的如实上报、绝不发出去。
+    #
+    # 与上面三个字段的分工：``salary_min`` / ``experience`` / ``education`` 筛的是
+    # **"你的条件 vs 岗位要求"**（"我是本科"），``filters`` 是**站点筛选栏本身**
+    # （"岗位要求本科"）。两者语义不同，可以同时用。
+    filters: dict[str, str] = Field(default_factory=dict)
     per_task_limit: int = Field(default=DEFAULT_COLLECT_PER_TASK_LIMIT, ge=1, le=200)
     interval_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_SECONDS, ge=1, le=600)
     interval_jitter_seconds: int = Field(default=DEFAULT_COLLECT_INTERVAL_JITTER_SECONDS, ge=0, le=300)
+
+    @field_validator("filters")
+    @classmethod
+    def filters_must_be_bounded(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > MAX_COLLECT_FILTERS:
+            raise ValueError(f"站点筛选项最多 {MAX_COLLECT_FILTERS} 个")
+        cleaned: dict[str, str] = {}
+        for key, code in value.items():
+            clean_key = (key or "").strip()
+            clean_code = (code or "").strip()
+            if not clean_key or not clean_code:
+                continue
+            if len(clean_key) > COLLECT_FILTER_KEY_MAX_CHARS:
+                raise ValueError("筛选项名称过长")
+            if len(clean_code) > COLLECT_FILTER_CODE_MAX_CHARS:
+                raise ValueError("筛选项编码过长")
+            cleaned[clean_key] = clean_code
+        return cleaned
 
     @field_validator("keywords")
     @classmethod
@@ -164,6 +195,38 @@ class CollectConfigOut(CollectConfigIn):
     """当前生效的采集配置 + 出厂默认值回显。"""
 
     defaults: CollectConfigIn = Field(default_factory=CollectConfigIn)
+
+
+class CollectFilterOptionOut(BaseModel):
+    """一个可选项。``group`` 只用于界面分组（行业有 15 个一级分组），其余为空。"""
+
+    code: str
+    label: str
+    group: str = ""
+
+
+class CollectFilterGroupOut(BaseModel):
+    """站点筛选栏里的一格，对应界面上的一个下拉框。"""
+
+    key: str
+    param: str
+    label: str
+    options: list[CollectFilterOptionOut] = Field(default_factory=list)
+    # 这份清单是从哪儿读来的：session（你的登录会话）/ public（全网通用）/ snapshot（内置快照）
+    # / unavailable（这次读不到）。**必须展示给用户**——不同来源可信度不同，用户有权知道
+    # 自己选的那一项是"这个账号真实可见的"还是"退回的公共清单"。
+    source: str = "unavailable"
+    note: str = ""
+
+
+class CollectFilterOptionsOut(BaseModel):
+    """当前站点的站点侧筛选项清单。"""
+
+    site_key: str = ""
+    display_name: str = ""
+    groups: list[CollectFilterGroupOut] = Field(default_factory=list)
+    # 是否读到了登录态清单（false = 浏览器没启动或读失败，用的是公共清单）。
+    session_read: bool = False
 
 
 class CollectTaskCreateIn(BaseModel):
@@ -207,6 +270,10 @@ class BrowserStatusOut(BaseModel):
     entry_url: str = ""
     # 给用户看的登录提示（例如"请在弹出的窗口里扫码登录一次"），不读取也不解析登录态。
     logged_in_hint: str = ""
+    # 这个浏览器是不是**本次运行**启动的。为 False 表示它是上一次运行时打开的窗口：
+    # state 照样是 running（调试端口在答，采集投递都能用），但「关闭浏览器」关不掉它——
+    # 进程句柄随后端重启丢了，而应用只关自己拉起的进程，绝不按 PID 去猜。
+    owned: bool = False
 
 
 # ===== 招聘网站（站点适配器）=====
@@ -325,6 +392,10 @@ class ApplyQueueItemOut(BaseModel):
     admission: AdmissionResult | None = None
     hard_gate: HardGateResult | None = None
     requires_confirm: bool = False
+    # 这个岗位能不能自动投递：取决于**来源**是否落在已注册招聘网站上，与匹配结论无关。
+    # 默认 True 是刻意的兜底方向——万一某处没算，结果是"界面允许、后端拒绝并说明原因"，
+    # 而不是把能投的岗位误标成不能投。
+    apply_supported: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -424,6 +495,29 @@ class ApplyRecordOut(BaseModel):
         return _check_failure_category(value)
 
 
+class ApplyRecordBatchOut(BaseModel):
+    """一个投递批次及其全部记录（投递记录按批次分组展示的载体）。
+
+    一次「开始投递」建一个批次（``ApplyTask``，kind=apply），批次里的每个岗位是一条
+    记录（``ApplyTaskItem``）。用户一次性投了好几个岗位时，这几条记录同属一个批次，
+    界面把它们折叠成一组、点击展开看明细——分组键就是批次 id。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: TaskStatus
+    total: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    skipped: int = 0
+    message: str = ""
+    created_at: datetime
+    finished_at: datetime | None = None
+    items: list[ApplyRecordOut] = Field(default_factory=list)
+
+
 # ===== 招呼语预览 =====
 
 
@@ -449,6 +543,7 @@ __all__ = [
     "ApplyQueueItemOut",
     "ApplyQueueItemUpdate",
     "ApplyQueueReorderRequest",
+    "ApplyRecordBatchOut",
     "ApplyRecordOut",
     "ApplyTaskCreate",
     "ApplyTaskDetailOut",
@@ -460,6 +555,9 @@ __all__ = [
     "CollectBackfillIn",
     "CollectConfigIn",
     "CollectConfigOut",
+    "CollectFilterGroupOut",
+    "CollectFilterOptionOut",
+    "CollectFilterOptionsOut",
     "CollectRunSummaryOut",
     "CollectTaskCreateIn",
     "DEFAULT_BROWSER_CHOICE",

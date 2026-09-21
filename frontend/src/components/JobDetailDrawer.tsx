@@ -15,7 +15,17 @@ import {
   StarFilled,
   StarOutlined,
 } from "@ant-design/icons";
-import { Button, Descriptions, Divider, Drawer, Image, Space, Tooltip, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Descriptions,
+  Divider,
+  Drawer,
+  Image,
+  Space,
+  Tooltip,
+  Typography,
+} from "antd";
 import type { ReactNode } from "react";
 import type { Job } from "../types";
 import SkillTags from "./SkillTags";
@@ -104,11 +114,17 @@ export default function JobDetailDrawer({
                 匹配度分析
               </Button>
             </Tooltip>
-            <Tooltip title="加入投递台队列；命中真实缺口或未分析时会先请你确认">
+            <Tooltip
+              title={
+                job.apply_supported === false
+                  ? "这个岗位的来源不在投递台支持的招聘网站内，无法自动投递"
+                  : "加入投递台队列；命中真实缺口或未分析时会先请你确认"
+              }
+            >
               <Button
                 icon={<SendOutlined />}
                 loading={queueLoading}
-                disabled={queueLoading}
+                disabled={queueLoading || job.apply_supported === false}
                 onClick={() => onAddToQueue(job)}
               >
                 加入投递台
@@ -149,7 +165,26 @@ export default function JobDetailDrawer({
               />
             </Tooltip>
           </div>
-          <Descriptions column={2} size="small" style={{ marginBottom: 16 }}>
+
+          {/* 把原因写在页面上而不是只禁用按钮：用户是"手动录了一个岗位"，看到灰按钮会以为是 bug。 */}
+          {job.apply_supported === false && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 12 }}
+              message="这个岗位不能用投递台自动投递"
+              description={
+                <Typography.Text type="secondary">
+                  投递台只能自动投递<Typography.Text strong>招聘网站上的岗位</Typography.Text>
+                  ——它的来源或「投递链接」必须指向某个已支持的站点。这个岗位两者都指不到，所以
+                  「加入投递台」是灰的。要么把它的「投递链接」改成该岗位在招聘网站上的地址（改完即可
+                  自动投递），要么直接在上面「前往投递」或到原渠道自行投递。
+                </Typography.Text>
+              }
+            />
+          )}
+
+          <Descriptions column={2} size="small" style={{ marginTop: 16, marginBottom: 16 }}>
             <Descriptions.Item label="公司">{job.company || "-"}</Descriptions.Item>
             <Descriptions.Item label="工作地点">{job.location || "-"}</Descriptions.Item>
             <Descriptions.Item label="薪资范围">{job.salary || "-"}</Descriptions.Item>

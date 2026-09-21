@@ -131,4 +131,19 @@ describe("ReferralPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "移除备注图 1" }));
     expect(screen.queryByAltText("备注图 1")).not.toBeInTheDocument();
   });
+
+  it("点卡片打开详情，看得到联系方式与内推码", async () => {
+    apiMocks.listReferrals.mockResolvedValue([
+      { ...ITEMS[0], referral_code: "REF-888", note_images: [] },
+    ]);
+    renderPanel();
+    await screen.findByText(/张三 · 后端开发/);
+
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
+
+    // 列表里只有内推人/公司/渠道，联系方式与内推码只在详情里出现。
+    expect(await screen.findByText("联系方式")).toBeInTheDocument();
+    expect(screen.getByText("微信 zs")).toBeInTheDocument();
+    expect(screen.getByText("REF-888")).toBeInTheDocument();
+  });
 });

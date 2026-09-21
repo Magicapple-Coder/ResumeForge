@@ -1,5 +1,5 @@
 /** 面经知识库面板：列表渲染、真实问题清单展示、错误透出。 */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { App as AntApp } from "antd";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InterviewExperiencePanel from "./InterviewExperiencePanel";
@@ -66,5 +66,21 @@ describe("InterviewExperiencePanel", () => {
     );
 
     expect(await screen.findByText("读取面经失败")).toBeInTheDocument();
+  });
+
+  it("点「详情」打开详情抽屉，看得到正文与完整问题清单", async () => {
+    apiMocks.listInterviewExperiences.mockResolvedValue(ITEMS);
+    render(
+      <AntApp>
+        <InterviewExperiencePanel jobOptions={[]} />
+      </AntApp>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "详情" }));
+
+    // 列表里只显示前 3 条问题摘要，抽屉里要给完整清单与正文。
+    expect(await screen.findByText("正文")).toBeInTheDocument();
+    expect(screen.getByText("真实问题（2）")).toBeInTheDocument();
+    expect(screen.getByText("先问八股再深挖项目")).toBeInTheDocument();
   });
 });

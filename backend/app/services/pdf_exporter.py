@@ -1100,7 +1100,7 @@ def _draw_resume(pdf: _ResumePDF, resume: ResumeContent, *, include_photo: bool 
                 base,
             )
             if project.tech_stack:
-                pdf.meta_line(f"技术栈：{'、'.join(project.tech_stack)}", base)
+                pdf.meta_line(f"技术栈/工具：{'、'.join(project.tech_stack)}", base)
             pdf.bullets(project.description, base)
             pdf.bullets(project.highlights, base)
 

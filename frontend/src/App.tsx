@@ -21,6 +21,7 @@ import { Button, Layout, Menu, Skeleton, Tooltip, Typography } from "antd";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import ExitAppButton from "./components/common/ExitAppButton";
+import TaskCompletionNotifier from "./components/TaskCompletionNotifier";
 import { APP_NAME, APP_NAME_EN, GITHUB_REPO } from "./config";
 import { consumeFirstVisitGuide } from "./utils/userGuide";
 
@@ -96,6 +97,8 @@ function MainLayout() {
 
   return (
     <>
+      {/* 批次完成全局通知：挂在布局层，投递/采集跑完时无论用户在哪个页面都能收到。 */}
+      <TaskCompletionNotifier />
       <Layout className="app-shell">
         <Sider className="app-sider" theme="light" width={200} breakpoint="lg" collapsedWidth={64}>
           <div className="app-brand">

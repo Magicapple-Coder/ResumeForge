@@ -81,7 +81,7 @@
       <span class="title" data-resume-path="projects.{{ project_index }}.name">{{ project.name }}</span>
       <span class="meta">{% if project.role %}<span data-resume-path="projects.{{ project_index }}.role">{{ project.role }}</span> · {% endif %}<span data-resume-path="projects.{{ project_index }}.start_date">{{ project.start_date }}</span> - <span data-resume-path="projects.{{ project_index }}.end_date">{{ project.end_date }}</span></span>
     </div>
-    {% if project.tech_stack %}<div class="sub">技术栈：{% for item in project.tech_stack %}<span data-resume-path="projects.{{ project_index }}.tech_stack.{{ loop.index0 }}">{{ item }}</span>{% if not loop.last %}、{% endif %}{% endfor %}</div>{% endif %}
+    {% if project.tech_stack %}<div class="sub">技术栈/工具：{% for item in project.tech_stack %}<span data-resume-path="projects.{{ project_index }}.tech_stack.{{ loop.index0 }}">{{ item }}</span>{% if not loop.last %}、{% endif %}{% endfor %}</div>{% endif %}
     {% if project.description %}<ul>{% for item in project.description %}<li data-resume-path="projects.{{ project_index }}.description.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
     {% if project.highlights %}<ul>{% for item in project.highlights %}<li data-resume-path="projects.{{ project_index }}.highlights.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
   </div>

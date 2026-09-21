@@ -5,11 +5,13 @@ import type {
   ApplyQueueAddItem,
   ApplyQueueItem,
   ApplyRecord,
+  ApplyRecordBatch,
   ApplyTask,
   ApplyTaskDetail,
   BrowserStatus,
   CollectConfig,
   CollectConfigOut,
+  CollectFilterOptions,
   GreetingPreview,
   Page,
   QueueConflictDetail,
@@ -34,6 +36,17 @@ export function getCollectConfig(): Promise<CollectConfigOut> {
 
 export function updateCollectConfig(payload: CollectConfig): Promise<CollectConfigOut> {
   return request("/collect/config", { method: "PUT", body: JSON.stringify(payload) });
+}
+
+/**
+ * 当前站点的**站点侧筛选项**清单（求职类型 / 薪资待遇 / 工作经验 / 学历要求 / 公司行业 /
+ * 公司规模 / 融资阶段）。
+ *
+ * 清单由后端从站点自己那里读，**不是前端写死的**：写死的一份在站点改编码之后会静默筛错。
+ * 每项带 `source` 说明来源——浏览器在跑就是"你这个账号可见"的完整清单，没跑就是全网通用清单。
+ */
+export function getCollectFilterOptions(): Promise<CollectFilterOptions> {
+  return request("/collect/filters");
 }
 
 // ===== 招聘网站（当前站点）=====
@@ -160,6 +173,14 @@ export interface ApplyRecordParams {
 
 export function listRecords(params: ApplyRecordParams = {}): Promise<Page<ApplyRecord>> {
   return request(`/apply/records${buildQuery(params)}`);
+}
+
+/**
+ * 投递记录按批次分组：一页返回若干批次（默认 5 组），每组带自己的记录。
+ * 筛选作用在记录上；分页按批次计。
+ */
+export function listRecordBatches(params: ApplyRecordParams = {}): Promise<Page<ApplyRecordBatch>> {
+  return request(`/apply/records/grouped${buildQuery(params)}`);
 }
 
 export function retryRecord(itemId: number): Promise<ApplyTask> {

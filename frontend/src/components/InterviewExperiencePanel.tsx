@@ -28,6 +28,9 @@ import {
 } from "../api/interviewExperiences";
 import { EXPERIENCE_ROUND_TYPES, EXPERIENCE_SOURCES, EXPERIENCE_SOURCE_LABELS } from "../types";
 import type { ExperienceSource, InterviewExperience, InterviewExperiencePayload } from "../types";
+import { formatDateTime } from "../utils/format";
+import { RecordDetailDrawer } from "./common/RecordDetail";
+import { isFromInnerControl } from "./common/recordDetailCore";
 import { useRowActionMenu } from "./common/rowActionMenu";
 
 interface Props {
@@ -42,6 +45,7 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
   const [source, setSource] = useState<string | undefined>();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<InterviewExperience | null>(null);
+  const [detail, setDetail] = useState<InterviewExperience | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<InterviewExperiencePayload>();
   const buildMenu = useRowActionMenu();
@@ -155,7 +159,16 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
           dataSource={items}
           renderItem={(item) => (
             <List.Item
+              className="detail-trigger"
+              // 整条点开详情；行内的「详情 / 更多」按钮不会被这一层抢走。
+              onClick={(event) => {
+                if (isFromInnerControl(event)) return;
+                setDetail(item);
+              }}
               actions={[
+                <Button key="detail" type="link" size="small" onClick={() => setDetail(item)}>
+                  详情
+                </Button>,
                 <Dropdown
                   key="more"
                   trigger={["click"]}
@@ -265,7 +278,12 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
             <Select mode="tags" placeholder="输入后回车" open={false} suffixIcon={null} />
           </Form.Item>
           <Form.Item label="标签" name="tags">
-            <Select mode="tags" placeholder="例如：后端、算法题" open={false} suffixIcon={null} />
+            <Select
+              mode="tags"
+              placeholder="例如：客户沟通、数据透视表"
+              open={false}
+              suffixIcon={null}
+            />
           </Form.Item>
           <Space style={{ display: "flex" }} align="start">
             <Form.Item label="来源" name="source" style={{ flex: 1 }}>
@@ -300,6 +318,77 @@ export default function InterviewExperiencePanel({ jobOptions }: Props) {
           </Space>
         </Form>
       </Modal>
+
+      <RecordDetailDrawer
+        open={detail !== null}
+        title={detail?.title || "未命名面经"}
+        subtitle={
+          detail
+            ? [detail.company, detail.position, detail.difficulty].filter(Boolean).join(" · ")
+            : undefined
+        }
+        tags={
+          detail && (
+            <Space size={6} wrap>
+              <Tag color="geekblue">
+                {EXPERIENCE_SOURCE_LABELS[detail.source as ExperienceSource] ?? detail.source}
+              </Tag>
+              {detail.round_type && <Tag>{detail.round_type}</Tag>}
+              {detail.interview_date && <Tag>{detail.interview_date}</Tag>}
+              {detail.tags.map((tag) => (
+                <Tag key={tag}>{tag}</Tag>
+              ))}
+            </Space>
+          )
+        }
+        fields={
+          detail
+            ? [
+                {
+                  label: "关联岗位",
+                  value: jobOptions.find((option) => option.value === detail.job_id)?.label ?? "-",
+                },
+                { label: "创建时间", value: formatDateTime(detail.created_at) },
+                { label: "更新时间", value: formatDateTime(detail.updated_at) },
+              ]
+            : []
+        }
+        sections={
+          detail
+            ? [
+                { title: "正文", content: detail.content || "（无）" },
+                {
+                  title: `真实问题（${detail.questions.length}）`,
+                  content:
+                    detail.questions.length === 0 ? (
+                      "（还没有记录问题）"
+                    ) : (
+                      <ol style={{ margin: 0, paddingLeft: 20 }}>
+                        {detail.questions.map((question, index) => (
+                          <li key={`${question}-${index}`}>{question}</li>
+                        ))}
+                      </ol>
+                    ),
+                },
+              ]
+            : []
+        }
+        actions={
+          detail && (
+            <Button
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={() => {
+                openEdit(detail);
+                setDetail(null);
+              }}
+            >
+              编辑
+            </Button>
+          )
+        }
+        onClose={() => setDetail(null)}
+      />
     </Space>
   );
 }

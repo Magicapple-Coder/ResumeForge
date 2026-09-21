@@ -13,6 +13,8 @@ Chrome 自 136 起**禁止在默认用户数据目录上开启远程调试**，`
   ``custom``（自定义路径）。**明确选了 Chrome 却启动 Edge 是比报错更坏的行为**，所以
   ``chrome`` / ``edge`` 只找对应的那个，找不到就给可展示的中文提示；``custom`` 要求路径真实存在。
 - ``stop()`` 只终止**本管理器持有的进程句柄**，不会去按 PID 找进程，避免误杀用户自己的浏览器。
+- **"在不在跑"看调试端口，不看进程句柄**（见 :meth:`BrowserManager.is_running`）；"是不是本
+  进程拉起的"是另一个独立事实（``BrowserStatus.owned``），只用来决定"关闭浏览器"能不能按。
 """
 from __future__ import annotations
 
@@ -86,6 +88,12 @@ class BrowserError(Exception):
     """对外暴露的浏览器错误，message 为可直接展示给用户的中文提示。"""
 
 
+# ``BrowserStatus.state`` 的取值之一：调试端口在答，采集/投递都能用。
+# 定义成常量是因为调用方要拿它做判断（例如"浏览器在跑才去读登录态清单"），
+# 而字符串字面量散在各处时，改一处就会漏一处。
+BROWSER_STATE_RUNNING = "running"
+
+
 @dataclass(frozen=True)
 class BrowserStatus:
     """浏览器状态快照。"""
@@ -96,6 +104,10 @@ class BrowserStatus:
     browser_path: str
     browser_name: str = ""
     logged_in_hint: str = _LOGIN_HINT
+    # 这个浏览器是不是**本进程**拉起的。为 False 表示它是上一次运行时打开的窗口：
+    # 状态照样是"运行中"（调试端口在答），但 ``stop()`` 关不掉它——本管理器只终止自己
+    # 持有的进程句柄，绝不按 PID 去猜进程（那会误杀用户自己的浏览器）。
+    owned: bool = False
 
 
 def default_profile_dir() -> Path:
@@ -226,25 +238,54 @@ class BrowserManager:
         except httpx.HTTPError:
             return False
 
-    def is_running(self) -> bool:
+    def _handle_alive(self) -> bool:
+        """本管理器拉起的那次启动是否还没退出。
+
+        **只说明"启动过且没退出"**，既不表示能通话，也不表示浏览器还在——句柄只属于
+        拉起它的那个后端进程，而浏览器是有意活得比后端久的。
+        """
         return self._process is not None and self._process.poll() is None
+
+    def is_running(self) -> bool:
+        """现在能不能给浏览器下命令——唯一判据是**调试端口**。
+
+        判据**不能**是 ``self._process``。浏览器是独立的 OS 进程，应用退出时也**不会**去关它
+        （登录态持久化在专用 user-data-dir 里，下次启动直接沿用），所以后端一重启句柄就没了；
+        按句柄判断会把正在运行的浏览器报成"未启动"。更麻烦的是这时点"启动浏览器"也救不回来：
+        同一个 user-data-dir 的第二次启动会被 Chromium **转交给已在运行的实例后立刻退出**，
+        句柄依然是死的。端口是唯一外部可观测的真实状态。
+        """
+        return self._probe_ready()
+
+    def is_active(self) -> bool:
+        """是否已经有一个专用浏览器（可用的，或本进程刚拉起、还在启动中的）。
+
+        只在启动那几秒与 :meth:`is_running` 有区别：进程已拉起但调试端口尚未就绪时，
+        ``is_running()`` 已经是 False 了。``start()`` 用它防重复拉起。
+        """
+        return self.is_running() or self._handle_alive()
 
     def status(self) -> BrowserStatus:
         browser_path = str(self._browser_path) if self._browser_path else ""
         browser_name = browser_display_name(self._browser_path)
-        if self._process is None:
-            return BrowserStatus(
-                "stopped", self._port, str(self._profile_dir), browser_path, browser_name
-            )
-        if self._process.poll() is not None:
-            # 进程自己退出了（用户手动关掉窗口等）。
+        owned = self._handle_alive()
+        if not owned:
+            # 句柄不可用**不代表浏览器没了**（见 is_running 的说明），这里只清掉死句柄；
+            # 到底是"运行中"还是"未启动"由端口决定。
             self._reset_process()
-            return BrowserStatus(
-                "stopped", self._port, str(self._profile_dir), browser_path, browser_name
-            )
-        state = "running" if self._probe_ready() else "starting"
+        if self._probe_ready():
+            state = BROWSER_STATE_RUNNING
+        elif owned:
+            state = "starting"
+        else:
+            state = "stopped"
         return BrowserStatus(
-            state, self._port, str(self._profile_dir), browser_path, browser_name
+            state,
+            self._port,
+            str(self._profile_dir),
+            browser_path,
+            browser_name,
+            owned=owned,
         )
 
     # ===== 启动 / 停止 =====
@@ -256,7 +297,8 @@ class BrowserManager:
         用户面对一个空白窗口既不知道该去哪里，也没有可以扫码登录的页面——启动浏览器的
         全部意义就是"打开那个要登录的网站"。
         """
-        if self.is_running():
+        # 已经是"有浏览器"（端口在答，或本进程刚拉起还在启动）就不再拉第二个。
+        if self.is_active():
             return self.status()
         browser = self._locate_browser()
         self._profile_dir.mkdir(parents=True, exist_ok=True)
@@ -304,7 +346,13 @@ class BrowserManager:
         self._started_at = None
 
     def stop(self) -> None:
-        """终止本管理器拉起的浏览器进程；没有拉起过就什么都不做。"""
+        """终止**本管理器拉起的**浏览器进程；没有拉起过就什么都不做。
+
+        没有句柄时静默返回是**故意的**：后端重启后会丢掉句柄，而浏览器仍在运行，
+        此时这里是关不掉它的。绝不按 PID 去猜进程——那会误杀用户自己的浏览器。
+        调用方要靠 :attr:`BrowserStatus.owned` 如实告诉用户"请自己关掉那个窗口"，
+        而不是假装关成功了。
+        """
         process = self._process
         if process is None:
             return
@@ -322,19 +370,29 @@ class BrowserManager:
 
     # ===== CDP 客户端 =====
 
+    def _require_running(self) -> None:
+        """准入检查：端口不通就别往下走，并把"还没起来"和"没启动"分开说。
+
+        两者对用户是**不同的动作**：前者只需等几秒，后者要去点"启动浏览器"（或
+        关掉那个抢占了调试端口的程序）。合成一句会把用户指向错的下一步。
+        """
+        if self.is_running():
+            return
+        if self._handle_alive():
+            raise BrowserError("投递专用浏览器还在启动中，请稍候几秒再试")
+        raise BrowserError("请先启动投递专用浏览器，再进行采集或投递")
+
     def open_url(self, url: str) -> None:
         """在已打开的专用浏览器里导航到 ``url``。
 
         复用当前标签页（``Page.navigate``）而不是新开一个：用户反复点"打开招聘网站"
         时不该越堆越多标签页，启动时开的那个页就是落脚点。
         """
-        if not self.is_running():
-            raise BrowserError("请先启动投递专用浏览器")
+        self._require_running()
         self.client().navigate(url)
 
     def client(self) -> WebsocketCdpClient:
-        if not self.is_running():
-            raise BrowserError("请先启动投递专用浏览器，再进行采集或投递")
+        self._require_running()
         return self._client_factory(
             self._host,
             self._port,
@@ -348,6 +406,7 @@ __all__ = [
     "BROWSER_CHOICE_CUSTOM",
     "BROWSER_CHOICE_EDGE",
     "BROWSER_CHOICES",
+    "BROWSER_STATE_RUNNING",
     "BrowserError",
     "BrowserManager",
     "BrowserStatus",

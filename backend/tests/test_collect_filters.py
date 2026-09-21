@@ -175,3 +175,55 @@ def test_all_three_conditions_are_evaluated_together():
     # 三条都不满足，但每条都会被记下来（用户能看出是"哪几条"把他筛掉的）。
     assert decision.keep is False
     assert set(decision.rejected_by) == {"学历", "经验", "薪资"}
+
+
+# ===== 岗位类型（2026-09-20 真实实测的接口编码：0=全职/社招、4=实习、5=校招、6=兼职）=====
+
+
+@pytest.mark.parametrize(
+    ("job_type", "code", "kept"),
+    [
+        ("实习", 4, True),
+        ("实习", 0, False),  # 全职岗混进结果时被本地筛选拦住
+        ("社招", 0, True),
+        ("社招", 4, False),
+        ("校招", 5, True),
+        ("校招", 0, False),
+    ],
+)
+def test_job_type_filters_by_verified_code(job_type, code, kept):
+    decision = evaluate_filters(job_type=job_type, extra={"job_type_code": code})
+
+    assert decision.keep is kept
+    if not kept:
+        assert decision.rejected_by == ("岗位类型",)
+    else:
+        assert decision.undecided == ()
+
+
+def test_job_type_missing_code_is_kept_and_counted():
+    """DOM 兜底路径没有编码字段：判断不了就保留，但要如实计数——绝不凭标题猜类型。"""
+    decision = evaluate_filters(job_type="实习", extra={})
+
+    assert decision.keep is True
+    assert decision.undecided == ("岗位类型",)
+
+
+def test_unknown_job_type_word_is_reported_as_unapplied():
+    decision = evaluate_filters(job_type="外包", extra={"job_type_code": 0})
+
+    assert decision.keep is True
+    assert decision.unapplied == ("岗位类型",)
+
+
+def test_job_type_with_other_conditions_together():
+    decision = evaluate_filters(
+        salary_min=20,
+        education="本科",
+        job_type="实习",
+        extra={"job_type_code": 4, "salary_low": 200, "salary_high": 400, "degree": "本科"},
+    )
+
+    # 薪资：日薪（≤3000）判断不了 → 保留并计数；岗位类型匹配 → 留。
+    assert decision.keep is True
+    assert decision.undecided == ("薪资",)

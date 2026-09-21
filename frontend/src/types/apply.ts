@@ -130,6 +130,7 @@ export const FAILURE_CATEGORIES = [
   "greeting_missing",
   "network_timeout",
   "file_upload_failed",
+  "site_unsupported",
   "unknown",
 ] as const;
 
@@ -142,6 +143,7 @@ export const FAILURE_CATEGORY_LABELS: Record<FailureCategory, string> = {
   greeting_missing: "招呼语缺失",
   network_timeout: "网络超时",
   file_upload_failed: "简历上传失败",
+  site_unsupported: "岗位来源不支持自动投递",
   unknown: "未知失败",
 };
 
@@ -219,10 +221,46 @@ export interface CollectConfig {
   interval_jitter_seconds: number;
   /** 采集结果标注类型（校招/实习/社招）；可空=不限。只入库标注，不参与站点筛选与去重。 */
   job_type: string;
+  /**
+   * **站点侧筛选项**：`{分组 key: 选项编码}`（如 `{ degree: "203" }`）。
+   *
+   * 与上面 `salary_min` / `experience` / `education` 的分工：那三个筛的是"你的条件 vs
+   * 岗位要求"（"我是本科"），这一份是**招聘网站筛选栏本身**（"岗位要求本科"）。
+   * 选项清单由后端从站点读来（见 `CollectFilterOptions`），这里只存用户选中的编码。
+   */
+  filters: Record<string, string>;
 }
 
 export interface CollectConfigOut extends CollectConfig {
   defaults: CollectConfig;
+}
+
+/** 筛选项清单的来源：登录会话 / 全网通用 / 内置快照 / 读不到。 */
+export type CollectFilterSource = "session" | "public" | "snapshot" | "unavailable";
+
+export interface CollectFilterOption {
+  code: string;
+  label: string;
+  /** 只用于界面分组（行业有 15 个一级分组），其余为空。 */
+  group: string;
+}
+
+export interface CollectFilterGroup {
+  key: string;
+  /** 拼进搜索地址的参数名（由后端实测站点得到，前端不该自己拼）。 */
+  param: string;
+  label: string;
+  options: CollectFilterOption[];
+  source: CollectFilterSource;
+  note: string;
+}
+
+export interface CollectFilterOptions {
+  site_key: string;
+  display_name: string;
+  groups: CollectFilterGroup[];
+  /** 是否读到了"你这个登录账号可见"的清单；false 表示用的是全网通用清单。 */
+  session_read: boolean;
 }
 
 // ===== ⑥ 浏览器状态 =====
@@ -236,6 +274,14 @@ export interface BrowserStatus {
   /** 启动浏览器时会打开的站点入口地址，也用于「打开招聘网站」按钮。 */
   entry_url: string;
   logged_in_hint: string;
+  /**
+   * 这个浏览器是不是**本次运行**启动的。
+   *
+   * 为 false 表示它是上一次运行时打开的窗口：`state` 照样是 `running`（调试端口在答，
+   * 采集与投递都能用），但「关闭浏览器」关不掉它——进程句柄随后端重启丢了，而应用
+   * 只关自己拉起的进程，绝不按 PID 去猜。
+   */
+  owned: boolean;
 }
 
 // ===== ⑩ 招聘网站（当前站点）=====
@@ -281,6 +327,15 @@ export interface ApplyQueueItem {
   admission: AdmissionResult | null;
   hard_gate: HardGateResult | null;
   requires_confirm: boolean;
+  /**
+   * 这个岗位能不能自动投递：取决于**来源**是否能归属到某个招聘网站，与匹配结论无关。
+   *
+   * 为 false 时（手动录入、来源与投递链接都指不到站点的岗位）勾选框禁用、也不计入
+   * 「待投递」——投递台只能驱动招聘网站上的岗位，强投只会得到一条失败记录。
+   *
+   * **可选**：缺失按"支持"处理（与后端默认同向），判断写 `=== false`，别写 `!x`。
+   */
+  apply_supported?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -299,6 +354,16 @@ export interface QueueConflictDetail {
   job_id?: number;
   gaps?: string[];
   unanalyzed?: boolean;
+  /**
+   * 岗位来源不是投递台支持的招聘网站。
+   *
+   * 这一类比 `unanalyzed` / `gaps` 更硬：那两类用户可以显式确认后放行，这一类**确认也没用**
+   * ——投递时根本定位不到站点，所以界面只提示、不给"仍然加入"的按钮。
+   */
+  site_unsupported?: boolean;
+  /** 被拦下的岗位（开始投递时可能不止一个）。 */
+  job_ids?: number[];
+  job_titles?: string[];
 }
 
 // ===== ⑧ 批次与记录 =====
@@ -358,6 +423,26 @@ export interface ApplyRecord {
   attempt: number;
   created_at: string;
   finished_at: string | null;
+}
+
+/**
+ * 一个投递批次及其全部记录：投递记录按批次分组展示的载体。
+ *
+ * 一次「开始投递」= 一个批次；用户一次性投 N 个岗位时，这 N 条记录同属一组。
+ * 组头上的统计是该批次自己的账（不随筛选变化），组内是命中的记录。
+ */
+export interface ApplyRecordBatch {
+  id: number;
+  status: TaskStatus;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  message: string;
+  created_at: string;
+  finished_at: string | null;
+  items: ApplyRecord[];
 }
 
 export interface GreetingPreview {

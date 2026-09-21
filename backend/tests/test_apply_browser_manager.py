@@ -61,11 +61,31 @@ class FakePopen:
         return process
 
 
-def _transport(ready: bool = True) -> httpx.MockTransport:
+def _transport(
+    popen: FakePopen | None = None, *, listening: bool | None = None
+) -> httpx.MockTransport:
+    """假的 ``/json/version`` 端点（也就是"调试端口上有没有人在答"）。
+
+    ``listening`` 显式给定时按它答；不给时**按记录的进程存活推断**——真实的浏览器进程
+    一退出，调试端口就跟着没了。这条忠实性很要紧：只有它才能区分"句柄丢了但浏览器还在
+    跑"和"浏览器真的没了"这两种在界面上结果完全不同的状态（前者是"运行中"，后者是
+    "未启动"）。用一个永远返回 200 的假端点去测，两种状态就分不开了。
+
+    一个进程都没记录过、又没显式指定时算"端口上没人"；要模拟"浏览器由上一次运行拉起"
+    （本进程没有句柄）就显式传 ``listening=True``。
+    """
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/json/version":
-            return httpx.Response(200 if ready else 503, json={"Browser": "Chrome"} if ready else {})
-        return httpx.Response(404)
+        if request.url.path != "/json/version":
+            return httpx.Response(404)
+        if listening is not None:
+            answering = listening
+        else:
+            last = popen.processes[-1] if popen is not None and popen.processes else None
+            answering = last is not None and last.returncode is None
+        return httpx.Response(
+            200 if answering else 503, json={"Browser": "Chrome"} if answering else {}
+        )
 
     return httpx.MockTransport(handler)
 
@@ -83,7 +103,8 @@ def _manager(tmp_path: Path, **overrides) -> tuple[BrowserManager, FakePopen]:
         "port": 9333,
         "browser_path": _browser_exe(tmp_path),
         "popen": popen,
-        "http_transport": _transport(),
+        # 端口是否应答跟着假进程的存活走，和真实浏览器一致。
+        "http_transport": _transport(popen),
         "ready_timeout": 0.3,
         "ready_poll_interval": 0.01,
     }
@@ -178,7 +199,7 @@ def test_start_is_a_noop_when_already_running(tmp_path):
 
 def test_start_fails_when_the_debug_port_never_opens(tmp_path):
     manager, popen = _manager(
-        tmp_path, http_transport=_transport(ready=False), ready_timeout=0.1
+        tmp_path, http_transport=_transport(listening=False), ready_timeout=0.1
     )
 
     with pytest.raises(BrowserError, match="调试端口未就绪"):
@@ -195,6 +216,7 @@ def test_stop_terminates_only_the_recorded_process(tmp_path):
     manager.stop()
 
     assert popen.processes[0].terminated is True
+    # 端口随进程一起消失（假传输层耦合了进程存活），所以是"未启动"。
     assert manager.status().state == "stopped"
     # 再停一次不应报错（幂等）。
     manager.stop()
@@ -203,7 +225,7 @@ def test_stop_terminates_only_the_recorded_process(tmp_path):
 def test_status_reports_stopped_after_the_process_exits(tmp_path):
     manager, popen = _manager(tmp_path)
     manager.start()
-    popen.processes[0].returncode = 1  # 用户手动关掉了窗口
+    popen.processes[0].returncode = 1  # 用户手动关掉了窗口（调试端口随之消失）
 
     assert manager.status().state == "stopped"
     assert manager.is_running() is False
@@ -213,9 +235,93 @@ def test_status_reports_starting_when_the_port_is_not_ready_yet(tmp_path):
     manager, _popen = _manager(tmp_path)
     manager.start()
     # 进程还活着，但调试端口暂时探不通：应报告"正在启动"而不是"运行中"。
-    manager._http_transport = _transport(ready=False)
+    manager._http_transport = _transport(listening=False)
 
     assert manager.status().state == "starting"
+
+
+def test_client_distinguishes_still_booting_from_not_started(tmp_path):
+    """两种"不能用"要给不同的下一步：一个只需等几秒，一个要去点"启动浏览器"。"""
+    manager, _popen = _manager(tmp_path)
+    manager.start()
+    manager._http_transport = _transport(listening=False)
+
+    with pytest.raises(BrowserError, match="还在启动中"):
+        manager.client()
+
+
+# ===== 浏览器比后端活得久：状态看端口，不看句柄 =====
+# 真实踩过的坑。浏览器是独立的 OS 进程，且**有意**活得比后端久（登录态持久化在专用
+# user-data-dir 里），所以后端一重启就没有它的进程句柄了。此时若按句柄判断，一个正在
+# 运行的浏览器会被报成"未启动"，采集与投递全被拦住；而且点"启动浏览器"也救不回来——
+# 同一个 user-data-dir 的第二次启动会被 Chromium **转交给已在运行的实例后立刻退出**，
+# 句柄依然是死的，按多少次都没用。下面几条把这个不变量钉住。
+
+
+def _orphan_browser(tmp_path: Path) -> tuple[BrowserManager, FakePopen]:
+    """模拟"端口上跑着一个不是本进程拉起的浏览器"（后端重启后的真实处境）。"""
+    popen = FakePopen()
+    manager, _ = _manager(tmp_path, popen=popen, http_transport=_transport(listening=True))
+    assert manager._process is None  # 前提：本进程确实没有它的句柄
+    return manager, popen
+
+
+def test_is_running_is_port_based_not_handle_based(tmp_path):
+    manager, _popen = _orphan_browser(tmp_path)
+
+    assert manager.is_running() is True
+    status = manager.status()
+    assert status.state == "running"
+    # 能用，但关不掉——"归谁"是独立于"在不在跑"的另一个事实。
+    assert status.owned is False
+
+
+def test_status_marks_a_browser_this_process_launched_as_owned(tmp_path):
+    manager, _popen = _manager(tmp_path)
+    manager.start()
+
+    assert manager.status().owned is True
+
+
+def test_client_works_when_the_browser_was_launched_by_a_previous_run(tmp_path):
+    """这一条直接对应报障：采集不该因为后端重启过就被拦住。"""
+    manager, _popen = _orphan_browser(tmp_path)
+
+    client = manager.client()  # 不该抛 BrowserError
+
+    assert isinstance(client, WebsocketCdpClient)
+    assert client._port == 9333
+
+
+def test_start_reuses_an_already_running_browser_instead_of_launching_a_second(tmp_path):
+    """端口已经在答时点"启动浏览器"，不该再拉一个进程。
+
+    再拉一次的后果不只是多一个进程：Chromium 会把这次启动**转交给已在运行的实例**然后
+    自己退出，于是句柄仍是死的、状态仍是"未启动"，用户按多少次都没用。
+    """
+    manager, popen = _orphan_browser(tmp_path)
+
+    status = manager.start(url="https://www.zhipin.com/")
+
+    assert popen.calls == []
+    assert status.state == "running"
+
+
+def test_start_still_guards_against_a_double_launch_while_booting(tmp_path):
+    """端口还没就绪、进程已经拉起时也不能再拉一个——这是 is_active 存在的理由。"""
+    manager, popen = _manager(tmp_path)
+    manager.start()
+    assert len(popen.calls) == 1
+    # 制造"进程活着、调试端口暂时探不通"的启动中间态。
+    manager._http_transport = _transport(listening=False)
+
+    assert manager.is_running() is False
+    assert manager.is_active() is True
+    assert manager.status().state == "starting"
+
+    manager.start()
+
+    assert len(popen.calls) == 1  # 没有第二次拉起
 
 
 def test_client_requires_a_running_browser(tmp_path):

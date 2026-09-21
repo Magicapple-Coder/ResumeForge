@@ -29,7 +29,7 @@ const OPERATIONS: { value: Operation; label: string }[] = [
 
 const POLISH_STYLES: { value: PolishStyle; label: string }[] = [
   { value: "big_tech", label: "大厂风" },
-  { value: "concise_tech", label: "简洁技术风" },
+  { value: "concise_tech", label: "简洁干练风" },
   { value: "campus", label: "应届生风" },
 ];
 

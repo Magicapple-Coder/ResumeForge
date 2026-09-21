@@ -9,6 +9,7 @@ from app.models.job import JOB_STATUS_APPLIED, Job
 from app.models.resume import ResumeRecord
 from app.models.tracker import SOURCE_APPLY, STATUS_APPLIED, ApplicationTrack
 from app.schemas.apply import ApplyConfigIn
+from app.services.apply.task_apply import company_key
 from app.services.apply.task_runner import TaskRunner
 from app.services.browser.cdp_client import CdpClient
 from app.services.sites.base import (
@@ -135,15 +136,25 @@ def _config(**overrides) -> ApplyConfigIn:
 
 
 def _setup_task(
-    db_session, count: int = 1, *, with_resume: bool = True, **config_overrides
+    db_session,
+    count: int = 1,
+    *,
+    with_resume: bool = True,
+    companies: list[str] | None = None,
+    **config_overrides,
 ) -> ApplyTask:
+    """建一个批次与它的条目。
+
+    ``companies`` 用来指定各条目的公司名（默认每条一家不同公司）。「同公司只投一个岗位」
+    这类用例必须能**精确控制哪两条撞在同一家公司**，否则测不出来。
+    """
     task = ApplyTask(kind="apply", status="pending", total=count, config=_config(**config_overrides).model_dump())
     db_session.add(task)
     db_session.flush()
     for index in range(count):
         job = Job(
             title=f"后端开发{index}",
-            company=f"公司{index}",
+            company=companies[index] if companies else f"公司{index}",
             source="BOSS直聘",
             source_url=f"https://www.zhipin.com/job/{index}",
         )
@@ -518,3 +529,105 @@ def test_pause_resume_cycle_never_strands_a_task_in_running(db_session):
     # pause/resume 的控制回写不得把 worker 已提交的终态改回 running。
     assert _task_status(db_session, task.id) == "completed"
     assert db_session.query(ApplyTaskItem).filter_by(task_id=task.id).one().status == "success"
+
+
+# ===== 「同公司只投一个岗位」=====
+#
+# 这个开关在设置界面里已经存在很久（默认开），但**投递逻辑从来没有读过它**——用户打开它、
+# 保存它、以为最多给一家公司发一条，实际上队列里有几条就发几条。2026-09-21 在真实投递里
+# 发现并补上。作用域按产品决定取「本批次内」。
+
+
+def test_same_company_skips_the_second_job_of_that_company(db_session):
+    task = _setup_task(
+        db_session, 3, companies=["核桃编程", "核桃编程", "意聪科技"], skip_same_company=True
+    )
+    adapter = FakeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+
+    assert adapter.calls == 2, "同一家公司的第二条不该真的发出去"
+    statuses = _item_statuses(db_session, task.id)
+    assert statuses == ["success", "skipped", "success"]
+
+    db_session.expire_all()
+    skipped = (
+        db_session.query(ApplyTaskItem)
+        .filter(ApplyTaskItem.task_id == task.id, ApplyTaskItem.status == "skipped")
+        .one()
+    )
+    # 用户看到「已跳过」却不知道为什么，只会以为程序漏投了——原因必须写下来。
+    assert "核桃编程" in skipped.failure_detail
+    assert "同公司只投一个岗位" in skipped.failure_detail
+    # 跳过**不是失败**：不能计入失败、也不能触发熔断。
+    assert skipped.failure_category == ""
+    assert db_session.get(ApplyTask, task.id).failed == 0
+    assert db_session.get(ApplyTask, task.id).skipped == 1
+    assert db_session.get(ApplyTask, task.id).processed == 3
+
+
+def test_same_company_switch_off_sends_every_job(db_session):
+    """关掉开关时行为与从前完全一致——这是"改一处别把别的弄坏"的那一半。"""
+    task = _setup_task(
+        db_session, 3, companies=["核桃编程", "核桃编程", "意聪科技"], skip_same_company=False
+    )
+    adapter = FakeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+
+    assert adapter.calls == 3
+    assert _item_statuses(db_session, task.id) == ["success", "success", "success"]
+
+
+def test_same_company_matching_ignores_spacing_and_case(db_session):
+    """公司名带空格、大小写不同，仍是同一家——不归一化就等于开关形同虚设。"""
+    task = _setup_task(
+        db_session, 2, companies=[" 核桃编程 ", "核桃编程"], skip_same_company=True
+    )
+    adapter = FakeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+
+    assert adapter.calls == 1
+    assert _item_statuses(db_session, task.id) == ["success", "skipped"]
+
+
+def test_items_without_a_company_are_never_skipped(db_session):
+    """没有公司名的条目不作同公司判断（判断不了就不做判断），否则会把无关岗位一起吞掉。"""
+    task = _setup_task(db_session, 2, companies=["", ""], skip_same_company=True)
+    adapter = FakeAdapter()
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+
+    assert adapter.calls == 2
+
+
+def test_a_failed_first_job_still_claims_the_company(db_session):
+    """**失败也算"投过"。** 失败可能发生在确认环节——招呼语其实已经发出去了。这时再给同一家
+    公司发第二条，恰是这个开关要避免的事。方向始终是"宁可少发一条，不可重发一家"。"""
+    task = _setup_task(
+        db_session, 2, companies=["核桃编程", "核桃编程"], skip_same_company=True
+    )
+    adapter = FakeAdapter(fail_categories=["network_timeout"])
+    runner = _runner(adapter)
+
+    runner.start(task.id)
+    _wait(runner)
+
+    assert adapter.calls == 1, "第一条失败之后，第二条仍不该发"
+    assert _item_statuses(db_session, task.id) == ["failed", "skipped"]
+
+
+def test_company_key_normalizes_whitespace_and_case():
+    assert company_key(" 核桃 编程 ") == company_key("核桃 编程")
+    assert company_key("ABC") == company_key("abc")
+    assert company_key("") == ""
+    assert company_key(None) == ""

@@ -91,4 +91,18 @@ describe("JobTable 悬停导入时间", () => {
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent(/导入于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
   });
+
+  it("悬停职位格里的关键字标签（不在标题上）同样显示导入时间", async () => {
+    renderTable([makeJob({ created_at: "2026-08-19T08:00:00" })]);
+    await screen.findByText("护士");
+
+    // 用户不会只在标题那两个字上悬停；整格都该给提示。
+    // Tooltip 的触发器是格子里的那层 div，所以悬停要落在它身上。
+    const trigger = screen.getByText("手动").closest("td")?.firstElementChild;
+    expect(trigger).toBeTruthy();
+    fireEvent.mouseEnter(trigger as HTMLElement);
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(/导入于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+  });
 });

@@ -89,3 +89,52 @@ describe("CalendarView", () => {
     expect(screen.queryByText("参加某司二面")).not.toBeInTheDocument();
   });
 });
+
+describe("CalendarView 点日期看当天安排", () => {
+  /** 提醒固定落在当月第 3 天，取它的格子做精确点击。 */
+  const dayKey = dayjs().startOf("month").add(2, "day").format("YYYY-MM-DD");
+
+  it("点有提醒的日期格，弹出当天明细（含类型与状态）", async () => {
+    renderView([reminderInCurrentMonth("参加某司二面")]);
+    await screen.findAllByRole("columnheader");
+
+    fireEvent.click(screen.getByLabelText(`${dayKey}，1 条提醒，查看当天安排`));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("1 条提醒");
+    expect(dialog).toHaveTextContent("参加某司二面");
+    // 类型与状态要看得到，否则"具体事务"等于没说。
+    expect(dialog).toHaveTextContent("面试");
+    expect(dialog).toHaveTextContent("待办");
+  });
+
+  it("点没有安排的日期格，明确说明这一天没有安排", async () => {
+    renderView([reminderInCurrentMonth("参加某司二面")]);
+    await screen.findAllByRole("columnheader");
+
+    // 取一个月里没有提醒的格子：当月第 1 天（提醒固定落在第 3 天）。
+    const empty = dayjs().startOf("month");
+    fireEvent.click(screen.getByLabelText(`${empty.format("YYYY-MM-DD")}，查看当天安排`));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("这一天没有安排");
+  });
+
+  it("传入 onSelectDate 时由父组件接管，不弹内建明细", async () => {
+    const onSelectDate = vi.fn();
+    render(
+      <AntdApp>
+        <CalendarView
+          reminders={[reminderInCurrentMonth("参加某司二面")]}
+          onSelectDate={onSelectDate}
+        />
+      </AntdApp>,
+    );
+    await screen.findAllByRole("columnheader");
+
+    fireEvent.click(screen.getByLabelText(`${dayKey}，1 条提醒，查看当天安排`));
+
+    expect(onSelectDate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});

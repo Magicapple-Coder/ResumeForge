@@ -40,7 +40,7 @@ export function ExperienceSection({ editable }: Props) {
           </Col>
           <Col xs={24} md={8}>
             <Form.Item name={[field.name, "role"]} label="职位">
-              <Input placeholder="如：后端开发实习生" />
+              <Input placeholder="如：市场部实习生" />
             </Form.Item>
           </Col>
           <Col xs={12} md={4}>
@@ -57,7 +57,7 @@ export function ExperienceSection({ editable }: Props) {
             <Form.Item name={[field.name, "description"]} label="工作内容">
               <Input.TextArea
                 rows={4}
-                placeholder="每行一条工作内容，尽量包含做了什么、用了什么技术、结果如何（数字量化更好）"
+                placeholder="每行一条工作内容，尽量包含做了什么、用了什么方法或工具、结果如何（数字量化更好）"
               />
             </Form.Item>
           </Col>

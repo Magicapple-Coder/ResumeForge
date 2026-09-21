@@ -13,9 +13,12 @@ from .base import RiskProfile, SiteAdapter
 from .boss_apply import (
     BossApplyMixin,
     _apply_entry_script,
+    _chat_state_script,
     _click_script,
+    _entry_rect_script,
     _fill_greeting_script,
     _greeting_state_script,
+    _send_rect_script,
     _submit_state_script,
     classify_submit_state,
 )
@@ -26,6 +29,7 @@ from .boss_page import (
     BOSS_ENTRY_URL,
     BOSS_HOSTS,
     BOSS_KEY,
+    CHAT_PAGE_PATH,
     BossPageMixin,
     SELECTOR_APPLY_ENTRY,
     SELECTOR_CAPTCHA,
@@ -37,6 +41,7 @@ from .boss_page import (
     SELECTOR_JOB_LINK,
     SELECTOR_JOB_REQUIREMENTS,
     SELECTOR_LOGIN,
+    SELECTOR_MY_MESSAGE,
     SELECTOR_SEARCH_CARD,
     SELECTOR_SEARCH_COMPANY,
     SELECTOR_SEARCH_EMPTY,
@@ -84,7 +89,11 @@ class BossAdapter(BossSearchMixin, BossApplyMixin, BossPageMixin, SiteAdapter):
     supports_collect = True
     supports_apply = True
     requires_resume = False
-    post_filter_conditions = ("薪资", "经验", "学历")
+    # 薪资/经验/学历/岗位类型都走"采集后本地筛选"（岗位类型的原始编码来自列表接口，
+    # DOM 路径没有，按"判断不了就保留"处理）。其中实习/社招**另外**映射到站点官方的
+    # jobType 查询参数做站点侧过滤（见 boss_search.JOB_TYPE_QUERY_CODES），本地筛选作
+    # 第二道闸：站点参数将来若失效（历史上 jobType=4 就不是有效参数），本地仍能兜住。
+    post_filter_conditions = ("薪资", "经验", "学历", "岗位类型")
     sample_markers = (("search", SEARCH_MARKERS), ("detail", DETAIL_MARKERS))
 
     def __init__(
@@ -94,11 +103,17 @@ class BossAdapter(BossSearchMixin, BossApplyMixin, BossPageMixin, SiteAdapter):
         city_resolver: CityResolver | None = None,
         city_fetcher: Callable[[str, float], Any] | None = None,
         city_timeout: float = 5.0,
+        filter_fetcher: Callable[[str, float], Any] | None = None,
+        filter_timeout: float = 6.0,
     ) -> None:
         self._ready_wait = ready_wait or ReadyWait()
         self._city_resolver = city_resolver or CityResolver(
             fetcher=city_fetcher, timeout=city_timeout
         )
+        # 筛选清单的取数口子：与 city_fetcher 同一个思路——离线测试注入假数据，
+        # 生产走默认的网络实现。不注入就等于"没有浏览器时去读公开接口"。
+        self._filter_fetcher = filter_fetcher
+        self._filter_timeout = filter_timeout
 
     def risk_profile(self) -> RiskProfile:
         return RiskProfile(
@@ -115,6 +130,7 @@ __all__ = [
     "BOSS_ENTRY_URL",
     "BOSS_HOSTS",
     "BOSS_KEY",
+    "CHAT_PAGE_PATH",
     "BossAdapter",
     "NETWORK_RESPONSE_EVENT",
     "SELECTOR_APPLY_ENTRY",
@@ -127,6 +143,7 @@ __all__ = [
     "SELECTOR_JOB_LINK",
     "SELECTOR_JOB_REQUIREMENTS",
     "SELECTOR_LOGIN",
+    "SELECTOR_MY_MESSAGE",
     "SELECTOR_SEARCH_CARD",
     "SELECTOR_SEARCH_COMPANY",
     "SELECTOR_SEARCH_EMPTY",
@@ -140,16 +157,19 @@ __all__ = [
     "_SELECTORS",
     "_apply_entry_script",
     "_as_payload",
+    "_chat_state_script",
     "_click_script",
     "_collect_links_script",
     "_collect_script",
     "_current_url",
     "_detail_script",
+    "_entry_rect_script",
     "_fill_greeting_script",
     "_greeting_state_script",
     "_js",
     "_page_probe_script",
     "_readiness_script",
+    "_send_rect_script",
     "_submit_state_script",
     "_url_probe_script",
     "_with_response_bodies",

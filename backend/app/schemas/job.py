@@ -3,7 +3,14 @@ from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from ..models.job import JOB_STATUSES
 from .extraction import (
@@ -286,3 +293,23 @@ class JobOut(JobCreate):
     @classmethod
     def recognition_source_must_be_supported(cls, value: str) -> str:
         return value
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def apply_supported(self) -> bool:
+        """这个岗位能不能用「投递台」自动投递：来源必须能落到某个已注册站点上。
+
+        为什么放在读取模型上：判据只有一处（``services.sites.registry``），界面据此**禁用**
+        「加入投递台」并把原因写在按钮旁，而不是让用户点一下才被拒。让每个调用方各自判断
+        迟早会判得不一样。
+
+        **延迟导入是刻意的**：``schemas`` 目前不依赖 ``services``，而 ``services.sites.base``
+        会拉进浏览器/CDP 那一整块；只有真的序列化岗位时才需要它。
+
+        **默认语义是"能投"**：万一某条读取路径没有走到这个属性（不应发生），结果是"按钮可用、
+        点了被后端拒绝"，而不是把一个本来能投的岗位藏起来——闸门的权威始终在后端业务层，
+        这里只是把结论提前告诉界面。
+        """
+        from ..services.sites.registry import get_registry
+
+        return get_registry().resolve_for_job(self) is not None

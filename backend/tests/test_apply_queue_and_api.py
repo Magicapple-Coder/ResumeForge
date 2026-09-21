@@ -2,6 +2,7 @@
 
 执行批次用**假运行器**替换单例（不真起线程、不连浏览器），只验证路由与准入逻辑。
 """
+import httpx
 import pytest
 
 from app.models.apply import (
@@ -40,8 +41,45 @@ class FakeRunner:
         self.actions.append(("stop", task_id))
 
 
+class FakeBrowserPort:
+    """控制"调试端口上有没有人在答"。
+
+    ``listening=False``（默认）＝端口上没人，与"没启动过浏览器"等价；
+    置为 ``True`` 用来模拟"浏览器还在跑，但不是本进程拉起的"（后端重启后的处境）。
+    """
+
+    def __init__(self) -> None:
+        self.listening = False
+
+    def transport(self) -> httpx.MockTransport:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path != "/json/version":
+                return httpx.Response(404)
+            return httpx.Response(200 if self.listening else 503, json={"Browser": "Chrome"})
+
+        return httpx.MockTransport(handler)
+
+
 @pytest.fixture
-def fake_runner(monkeypatch) -> FakeRunner:
+def browser_port(monkeypatch) -> FakeBrowserPort:
+    """给浏览器管理器注入一个假调试端口，兑现本文件"不连浏览器"的约定。
+
+    这层桩同时是道保险：'浏览器在不在跑'现在是**探端口**决定的，而开发机上真的
+    有一个浏览器占着 9333 是很常见的事——没有这个桩，用例会连上它、甚至导航它。
+    """
+    port = FakeBrowserPort()
+    real_manager = apply_service.BrowserManager
+
+    def build(**kwargs):
+        kwargs.setdefault("http_transport", port.transport())
+        return real_manager(**kwargs)
+
+    monkeypatch.setattr(apply_service, "BrowserManager", build)
+    return port
+
+
+@pytest.fixture
+def fake_runner(monkeypatch, browser_port) -> FakeRunner:
     fake = FakeRunner()
     monkeypatch.setattr(task_runner, "get_task_runner", lambda: fake)
     apply_service.reset_browser_manager()
@@ -257,6 +295,8 @@ def test_browser_status_reports_stopped(client, fake_runner):
     assert response.json()["entry_url"] == "https://www.zhipin.com/"
     # 界面要能显示"实际用的是哪个浏览器"，所以状态里带上人类可读的名字。
     assert "browser_name" in response.json()
+    # 没启动过就谈不上"是本次运行拉起的"，界面据此禁用「关闭浏览器」。
+    assert response.json()["owned"] is False
 
 
 def test_config_exposes_browser_and_site_fields(client, fake_runner):
@@ -323,6 +363,46 @@ def test_browser_open_needs_a_running_browser(client, fake_runner):
 
     assert response.status_code == 409
     assert "请先启动投递专用浏览器" in response.json()["detail"]
+
+
+# ===== 浏览器比后端活得久 =====
+# 浏览器是独立进程、有意活得比后端久，所以后端重启后会丢掉它的进程句柄。
+# 此时"在不在跑"必须由调试端口说了算，否则一个正在运行的浏览器会被报成"未启动"。
+
+
+def test_browser_status_reports_running_when_a_previous_run_left_it_open(
+    client, fake_runner, browser_port
+):
+    """这一条直接对应报障：端口在答就是"运行中"，采集与投递不该被拦住。"""
+    browser_port.listening = True
+
+    body = client.get("/api/apply/browser/status").json()
+
+    assert body["state"] == "running"
+    # 但它是上一次运行留下的窗口，关不掉——界面据此禁用「关闭浏览器」。
+    assert body["owned"] is False
+
+
+def test_browser_stop_refuses_to_pretend_it_closed_someone_elses_window(
+    client, fake_runner, browser_port
+):
+    """关不掉就得说关不掉。
+
+    不能像以前那样静默 no-op 还返回 204：界面会弹"已关闭投递专用浏览器"，
+    而那个窗口还好端端开着——用户下次仍会撞上同一个困惑。
+    """
+    browser_port.listening = True
+
+    response = client.post("/api/apply/browser/stop")
+
+    assert response.status_code == 409
+    assert "请直接关闭那个窗口" in response.json()["detail"]
+
+
+def test_browser_stop_is_idempotent_when_nothing_is_running(client, fake_runner):
+    response = client.post("/api/apply/browser/stop")
+
+    assert response.status_code == 204
 
 
 def test_records_endpoint_returns_a_page(client, db_session, fake_runner):

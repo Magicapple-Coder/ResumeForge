@@ -38,6 +38,17 @@ export interface Job {
   note_images: string[];
   recognition_source: JobRecognitionSource;
   favorite: boolean;
+  /**
+   * 这个岗位能不能用「投递台」自动投递：来源 / 投递链接必须能归属到某个招聘网站。
+   *
+   * 由**后端算好下发**（判据在后端只有一处），前端据此禁用「加入投递台」并把原因写在旁边，
+   * 而不是让用户点一下才被拒。前端不写死站点名或主机名。
+   *
+   * **可选**：后端读取接口始终会带这个字段，但缺失时按"支持"处理（与后端 `default=True`
+   * 同向）——少一个字段就判成不可投，会把本来能投的岗位藏起来。所以判断一律写
+   * `job.apply_supported === false`，不要写 `!job.apply_supported`。
+   */
+  apply_supported?: boolean;
   created_at: string;
   updated_at: string;
 }

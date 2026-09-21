@@ -10,6 +10,7 @@
 """
 import logging
 import re
+from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from ..services.datasets import (
     activate_dataset,
     create_dataset,
     delete_dataset,
+    export_all_datasets,
     export_dataset,
     import_dataset,
     list_datasets,
@@ -169,6 +171,27 @@ def remove(request: Request, dataset_id: str) -> None:
         raise _translate(exc) from exc
 
 
+@router.get("/export-all")
+def export_all(request: Request) -> FileResponse:
+    """把**全部数据集**导出为一个备份包（活动的那份 + 其余每一份）。
+
+    与 ``/{dataset_id}/export`` 的区别是"包里有没有其余数据集"。两个都给，是因为它们
+    对应两种真实意图：**迁移走**（要全部）与**单独拷一份出去**（只要那一份）。
+
+    路由声明在 ``/{dataset_id}/export`` 之前只是习惯；两者段数不同（``/export-all`` 是一段、
+    ``/{id}/export`` 是两段），本来就不会互相截胡。
+    """
+    _require_loopback(request)
+    staging = export_directory(database.engine)
+    try:
+        archive_path = export_all_datasets(database.engine, staging)
+    except Exception as exc:
+        raise _translate(exc) from exc
+
+    logger.info("已导出全部数据集 file=%s", archive_path.name)
+    return _archive_response(archive_path)
+
+
 @router.get("/{dataset_id}/export")
 def export(request: Request, dataset_id: str) -> FileResponse:
     """把指定数据集导出为备份包。"""
@@ -180,6 +203,10 @@ def export(request: Request, dataset_id: str) -> FileResponse:
         raise _translate(exc) from exc
 
     logger.info("已导出数据集 id=%s file=%s", dataset_id, archive_path.name)
+    return _archive_response(archive_path)
+
+
+def _archive_response(archive_path: Path) -> FileResponse:
     return FileResponse(
         archive_path,
         media_type="application/zip",

@@ -375,3 +375,62 @@ body {
   padding: 24px;
   overflow-x: hidden;
 }
+
+/* ===== 通用详情：可点击卡片 + 详情抽屉 =====
+   卡片整块可点（role="button"），所以焦点态必须自己画——默认的浏览器描边在
+   antd 的白底卡片上几乎看不见。 */
+.detail-trigger {
+  cursor: pointer;
+}
+
+.detail-trigger:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.detail-trigger:hover .ant-card,
+.detail-trigger:focus-visible .ant-card {
+  border-color: #91caff;
+  box-shadow: 0 2px 8px rgb(22 119 255 / 12%);
+}
+
+.record-detail-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.record-detail-field {
+  display: flex;
+  gap: 12px;
+}
+
+.record-detail-label {
+  flex: 0 0 96px;
+  color: rgb(0 0 0 / 45%);
+  font-size: 13px;
+}
+
+.record-detail-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.record-detail-section-body {
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.record-detail-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #eef0f3;
+}

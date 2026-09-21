@@ -421,7 +421,7 @@ export default function JobFormModal({
             label="职位名称"
             rules={[{ required: true, message: "请填写职位名称" }]}
           >
-            <Input placeholder="如：后端开发工程师（校招）" />
+            <Input placeholder="如：市场营销专员（校招）" />
           </Form.Item>
           <Form.Item name="company" label="公司名称">
             <Input placeholder="如：字节跳动" />

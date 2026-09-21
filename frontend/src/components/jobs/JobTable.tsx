@@ -89,10 +89,12 @@ export default function JobTable({
       title: "职位",
       dataIndex: "title",
       width: 260,
+      // 悬停整格都能看到导入时间：之前 Tooltip 只挂在岗位名那颗链接上，
+      // 鼠标停在关键字标签或旁边空白处就没有提示，等于只有一半时候管用。
       render: (_, job) => (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <Tooltip title={`导入于 ${formatDateTime(job.created_at)}`}>
+        <Tooltip title={`导入于 ${formatDateTime(job.created_at)}`}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <Button
                 type="link"
                 className="table-text-link"
@@ -101,19 +103,19 @@ export default function JobTable({
               >
                 {job.title}
               </Button>
-            </Tooltip>
-            {jobSourceKind(job) === "collected" ? (
-              <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                采集
-              </Tag>
-            ) : (
-              <Tag style={{ marginInlineEnd: 0 }}>手动</Tag>
-            )}
+              {jobSourceKind(job) === "collected" ? (
+                <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                  采集
+                </Tag>
+              ) : (
+                <Tag style={{ marginInlineEnd: 0 }}>手动</Tag>
+              )}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <SkillTags tags={job.keywords} max={4} />
+            </div>
           </div>
-          <div style={{ marginTop: 4 }}>
-            <SkillTags tags={job.keywords} max={4} />
-          </div>
-        </div>
+        </Tooltip>
       ),
     },
     { title: "公司", dataIndex: "company", width: 130, render: (value) => value || "-" },

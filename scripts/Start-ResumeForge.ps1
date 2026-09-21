@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(1024, 65535)]
     [int]$BackendPort = 8005,
@@ -78,4 +78,21 @@ $NodeToolsDirectory = Join-Path $RuntimeDirectory "tools"
 . (Join-Path $PSScriptRoot "ResumeForge.Node.ps1")
 . (Join-Path $PSScriptRoot "ResumeForge.Process.ps1")
 
-Start-ResumeForge
+# Catch at the top level so a failure reads as one clean paragraph instead of a
+# PowerShell error record (which prints the script path, a character offset and
+# a copy of the offending source line before the actual message). start.cmd
+# pauses on a non-zero exit, so the user can read all of it.
+try {
+    Start-ResumeForge
+}
+catch {
+    Write-Host ""
+    Write-Host "启动失败。" -ForegroundColor Red
+    Write-Host ""
+    Write-Host $_.Exception.Message
+    Write-Host ""
+    Write-Host "已停止，没有启动任何服务。" -ForegroundColor Yellow
+    Write-Host "按上面的步骤处理后，关掉这个窗口重新双击 start.cmd 即可。" -ForegroundColor Yellow
+    Write-Host "如果上面的办法都不行，请把这段内容截图发到项目的 GitHub Issues。" -ForegroundColor Yellow
+    exit 1
+}

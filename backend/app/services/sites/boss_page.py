@@ -50,13 +50,29 @@ SELECTOR_APPLY_ENTRY = (
 )
 SELECTOR_GREETING_INPUT = (
     ".dialog-container textarea, textarea.chat-input, #chat-input, "
-    "[contenteditable='true'][role='textbox'], .chat-input[contenteditable='true'], "
+    ".chat-input[contenteditable='true'], "
+    "[contenteditable='true'][role='textbox'], "
     "[class*='editor'][contenteditable='true']"
 )
+# 现版聊天页（/web/geek/chat）的发送按钮是 ``<button type="send" class="... btn-send">``，
+# 空内容时带 ``disabled`` class（不是 disabled 属性）；旧弹层选择器保留以兼容。
+# 2026-09-20 真实发现的新形态：**新会话不跳聊天页**，而是详情页弹出「打招呼」对话框
+# （``.dialog-wrap.startchat-dialog``），其发送按钮是 ``div.send-message``——不是 button、
+# 类名不含 btn，全靠类选择器兜住（真实 DOM 实测）。
 SELECTOR_GREETING_SEND = (
-    ".dialog-container .btn-send, .chat-container .btn-send, .btn-sure-v2, "
+    "button.btn-send, button[type='send'], .dialog-container .btn-send, "
+    ".chat-container .btn-send, .btn-sure-v2, .dialog-container .send-message, "
+    ".send-message, "
     "button[aria-label*='发送'], [data-testid*='send']"
 )
+# 本人已发送消息的气泡：现版是 ``.message-item.item-myself``，旧版/其他容器一并保留。
+# 系统消息（.item-system，如"你撤回了一条消息"）绝不能算本人消息。
+SELECTOR_MY_MESSAGE = (
+    ".message-item.item-myself, .message-item.myself, .message-item.is-self, "
+    ".chat-message.is-self, [data-from=self]"
+)
+# 点击沟通入口后整页跳转到的聊天页路径。
+CHAT_PAGE_PATH = "/web/geek/chat"
 SELECTOR_SUBMIT_BUTTON = ".btn-submit, .btn-sure"
 SELECTOR_FILE_INPUT = "input[type=file]"
 SELECTOR_CAPTCHA = ".geetest_panel, .geetest_box, #nc_1_wrapper, .verify-wrap"
@@ -83,6 +99,8 @@ _SELECTORS = {
     "apply_entry": SELECTOR_APPLY_ENTRY,
     "greeting_input": SELECTOR_GREETING_INPUT,
     "greeting_send": SELECTOR_GREETING_SEND,
+    "my_message": SELECTOR_MY_MESSAGE,
+    "chat_page_path": CHAT_PAGE_PATH,
     "submit_button": SELECTOR_SUBMIT_BUTTON,
     "file_input": SELECTOR_FILE_INPUT,
     "captcha": SELECTOR_CAPTCHA,
@@ -350,7 +368,10 @@ __all__ = [
     "BOSS_ENTRY_URL",
     "BOSS_HOSTS",
     "BOSS_KEY",
+    "CHAT_PAGE_PATH",
     "BossPageMixin",
+    "SELECTOR_GREETING_SEND",
+    "SELECTOR_MY_MESSAGE",
     "SELECTOR_SEARCH_READY",
     "_SELECTORS",
     "_as_payload",

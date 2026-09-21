@@ -1,4 +1,4 @@
-<#
+﻿<#
 ResumeForge updater.
 
 Updates the program files only. User data lives in data\ (database, datasets,

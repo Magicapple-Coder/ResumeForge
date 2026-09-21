@@ -200,7 +200,16 @@ function ApplySettingsForm({ onClose, onSaved }: Omit<Props, "open">) {
         name="skip_same_company"
         label="同公司只投一个岗位"
         valuePropName="checked"
-        extra={defaults && defaultsHint(defaults.skip_same_company)}
+        // 光写"同公司只投一个岗位"会被读成全历史：用户会以为投过百度就永远不能再投百度的
+        // 其他岗位。**作用域就是本批**，必须写在这里——开关的语义只能由它的说明来界定。
+        extra={
+          <>
+            只在本批内生效：同一批里同一家公司的多个岗位只投最先的那个，其余标为「已跳过」
+            并写明原因；换一批再遇到这家公司仍会投。判断忽略公司名的空格与大小写，
+            失败的那次也算「投过」（招呼语可能已经发出去了）。
+            {defaults && <div>{defaultsHint(defaults.skip_same_company)}</div>}
+          </>
+        }
       >
         <Switch />
       </Form.Item>

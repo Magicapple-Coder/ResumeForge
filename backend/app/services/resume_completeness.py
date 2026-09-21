@@ -58,7 +58,7 @@ def find_incomplete(resume: ResumeContent) -> list[str]:
 
     for item in resume.projects:
         label = f"项目经历「{item.name or '未填项目名'}」"
-        add_lines(f"{label} 技术栈", item.tech_stack)
+        add_lines(f"{label} 技术栈/工具", item.tech_stack)
         add_lines(f"{label} 描述", item.description)
         add_lines(f"{label} 亮点", item.highlights)
 

@@ -1,13 +1,13 @@
-# ResumeForge launcher: backend/frontend startup orchestration.
+﻿# ResumeForge launcher: backend/frontend startup orchestration.
 
 function Start-ResumeForge {
     if ($BackendPort -eq $FrontendPort) {
-        throw "Backend and frontend ports must be different."
+        throw "后端端口与前端端口不能相同：两者都是 $BackendPort。请用 -BackendPort / -FrontendPort 指定不同的端口。"
     }
 
     foreach ($directory in @($BackendDirectory, $FrontendDirectory)) {
         if (-not (Test-Path -LiteralPath $directory)) {
-            throw "Project directory not found: $directory"
+            throw "找不到项目目录：$directory。请确认解压出来的文件夹没有被移动或删除。"
         }
     }
 
@@ -31,15 +31,18 @@ function Start-ResumeForge {
             # check (it crashed, or the process was replaced mid-flight). Stop that
             # one and start clean instead of telling the user to hunt it down.
             if ($null -eq (Get-ProcessRecordMatch -RecordPath $BackendPidPath -CommandPattern $backendRecordPattern)) {
-                throw "Port $BackendPort is in use by a non-ResumeForge backend. Close it or use -BackendPort."
+                throw ("端口 $BackendPort 已被别的程序占用（不是简历通自己的后端，所以不会去动它）。`n" +
+                "怎么办（二选一）：`n" +
+                "  1) 关掉占用该端口的程序；`n" +
+                "  2) 换一个端口启动：start.cmd -BackendPort 8010")
             }
-            Write-Warning "A previous ResumeForge backend still holds port $BackendPort; stopping it and starting a fresh one."
+            Write-Warning "上一次运行留下的简历通后端正占着端口 $BackendPort，先停掉它再启动一个新的。"
             Stop-RecordedProcess -DisplayName "backend" -RecordPath $BackendPidPath -CommandPattern $backendRecordPattern
             Start-Sleep -Milliseconds 800
         }
 
         if ($backendRunning) {
-            Write-Host "Backend is already running: $BackendUrl"
+            Write-Host "后端已经在运行：$BackendUrl"
         }
         else {
             $pythonExecutable = Join-Path $BackendDirectory ".venv\Scripts\python.exe"
@@ -52,13 +55,13 @@ function Start-ResumeForge {
                 # derived artifacts recoverable, and a rename is free on the
                 # same volume. runtime/ is git-ignored.
                 $staleVenvPath = Join-Path $RuntimeDirectory ("venv-unsupported-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
-                Write-Warning "backend\.venv was created by an unsupported Python version. Moving it to $staleVenvPath and recreating it."
+                Write-Warning "backend\.venv 是用不受支持的 Python 版本建的，已移到 $staleVenvPath 并重建（原目录没有被删除，需要时可手动找回）。"
                 Move-Item -LiteralPath (Join-Path $BackendDirectory ".venv") -Destination $staleVenvPath
             }
             if (-not (Test-Path -LiteralPath $pythonExecutable)) {
                 $systemPython = Ensure-SystemPython
 
-                Write-Host "First run: creating Python virtual environment..."
+                Write-Host "首次运行：正在创建 Python 虚拟环境（这一步只做一次）..."
                 $venvArguments = @($systemPython.PrefixArguments) + @(
                     "-m",
                     "venv",
@@ -66,12 +69,17 @@ function Start-ResumeForge {
                 )
                 & $systemPython.Path @venvArguments
                 if ($LASTEXITCODE -ne 0) {
-                    throw "Failed to create the Python virtual environment."
+                    throw ("创建 Python 虚拟环境失败。`n" +
+                    "怎么办：`n" +
+                    "  1) 确认 backend 目录可写（没有被设为只读、也没有被安全软件锁定）；`n" +
+                    "  2) 删掉 backend\.venv 后重新双击 start.cmd；`n" +
+                    "  3) 仍失败：手动执行 backend\.venv\Scripts\python.exe 所在目录的创建命令，或到 GitHub Issues 反馈并附上上面的报错。")
                 }
             }
 
             if (-not (Test-Path -LiteralPath $pythonExecutable)) {
-                throw "Backend Python environment not found: $pythonExecutable"
+                throw ("没有找到后端的 Python 环境：$pythonExecutable`n" +
+                    "怎么办：删掉 backend\.venv 目录后重新双击 start.cmd，让它重建一次。")
             }
 
             # Ask the interpreter to import the packages instead of looking for
@@ -94,13 +102,20 @@ function Start-ResumeForge {
                 $ErrorActionPreference = $probePreference
             }
             if ($dependencyProbeExitCode -ne 0) {
-                Write-Host "First run: installing backend dependencies..."
+                Write-Host "首次运行：正在安装后端依赖（约 40 个包，第一次要几分钟）..."
                 & $pythonExecutable -m pip install `
                     --timeout 300 `
                     --retries 10 `
                     -r (Join-Path $BackendDirectory "requirements.txt")
                 if ($LASTEXITCODE -ne 0) {
-                    throw "Failed to install backend dependencies."
+                    throw ("后端依赖安装失败。`n" +
+                        "最常见的原因是网络：默认走官方 PyPI，国内经常很慢或直接超时。`n" +
+                        "怎么办（按顺序试）：`n" +
+                        "  1) 换国内镜像重装（最有效）：`n" +
+                        "     backend\.venv\Scripts\python.exe -m pip install -i https://mirrors.aliyun.com/pypi/simple -r backend\requirements.txt`n" +
+                        "  2) 需要代理时，先在 PowerShell 里设好 `$env:HTTP_PROXY / `$env:HTTPS_PROXY 再重试；`n" +
+                        "  3) 确认能打开 https://mirrors.aliyun.com/pypi/simple/（打不开就是网络被拦了）；`n" +
+                        "  4) 仍失败：把上面 pip 的报错原文发到 GitHub Issues。")
                 }
             }
 
@@ -126,7 +141,7 @@ function Start-ResumeForge {
                         -Reason "did not start within $BackendStartTimeoutSeconds seconds" `
                         -LogPath $backendLogPath)
             }
-            Write-Host "Backend started: $BackendUrl"
+            Write-Host "后端已启动：$BackendUrl"
         }
 
         $frontendRecordPattern = Get-ResumeForgeProcessPattern -Service "frontend"
@@ -135,15 +150,18 @@ function Start-ResumeForge {
             # Same as the backend above: our own leftover Vite process fails the
             # proxied health check once its backend is gone, and it is ours to stop.
             if ($null -eq (Get-ProcessRecordMatch -RecordPath $FrontendPidPath -CommandPattern $frontendRecordPattern)) {
-                throw "Port $FrontendPort is in use by a frontend that is not connected to this ResumeForge backend. Close it or use -FrontendPort."
+                throw ("端口 $FrontendPort 被另一个前端占用，而且它连的不是本次的后端（所以不会去动它）。`n" +
+                "怎么办（二选一）：`n" +
+                "  1) 关掉占用该端口的程序；`n" +
+                "  2) 换一个端口启动：start.cmd -FrontendPort 5180")
             }
-            Write-Warning "A previous ResumeForge frontend still holds port $FrontendPort; stopping it and starting a fresh one."
+            Write-Warning "上一次运行留下的简历通前端正占着端口 $FrontendPort，先停掉它再启动一个新的。"
             Stop-RecordedProcess -DisplayName "frontend" -RecordPath $FrontendPidPath -CommandPattern $frontendRecordPattern
             Start-Sleep -Milliseconds 800
         }
 
         if ($frontendRunning) {
-            Write-Host "Frontend is already running: $FrontendUrl"
+            Write-Host "前端已经在运行：$FrontendUrl"
         }
         else {
             $nodeRuntime = Ensure-NodeRuntime
@@ -151,7 +169,7 @@ function Start-ResumeForge {
 
             $viteCommandPath = Join-Path $FrontendDirectory "node_modules\.bin\vite.cmd"
             if (-not (Test-Path -LiteralPath $viteCommandPath -PathType Leaf)) {
-                Write-Host "First run: installing frontend dependencies..."
+                Write-Host "首次运行：正在安装前端依赖（几百个包，第一次要几分钟）..."
                 Push-Location -LiteralPath $FrontendDirectory
                 try {
                     $packageLockPath = Join-Path $FrontendDirectory "package-lock.json"
@@ -167,7 +185,7 @@ function Start-ResumeForge {
                     else {
                         # Older source archives may omit the lockfile. Bootstrap
                         # once with npm install instead of failing with EUSAGE.
-                        Write-Warning "frontend/package-lock.json was not found; using npm install to create a local lockfile."
+                        Write-Warning "没有找到 frontend/package-lock.json，改用 npm install 现场生成一份（这样装出来的版本可能与发布时不同）。"
                         & $npmPath install `
                             --no-audit `
                             --no-fund `
@@ -177,7 +195,14 @@ function Start-ResumeForge {
                             --fetch-retry-maxtimeout=120000
                     }
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Failed to install frontend dependencies."
+                        throw ("前端依赖安装失败。`n" +
+                    "可能原因：网络不通、npm 镜像不可达、或磁盘空间不足。`n" +
+                    "怎么办：`n" +
+                    "  1) 手动重试看完整报错：在 frontend 目录执行 `n" +
+                    "     npm install --registry=https://registry.npmmirror.com`n" +
+                    "  2) 空间不足时先清理磁盘（node_modules 需要约 400 MB）；`n" +
+                    "  3) 需要代理时先设好 `$env:HTTP_PROXY / `$env:HTTPS_PROXY；`n" +
+                    "  4) 仍失败：把上面 npm 的报错原文发到 GitHub Issues。")
                     }
                 }
                 finally {
@@ -214,7 +239,7 @@ function Start-ResumeForge {
                         -Reason "did not start within $FrontendStartTimeoutSeconds seconds" `
                         -LogPath $frontendLogPath)
             }
-            Write-Host "Frontend started: $FrontendUrl"
+            Write-Host "前端已启动：$FrontendUrl"
         }
 
         if (-not $NoBrowser) {
@@ -225,11 +250,11 @@ function Start-ResumeForge {
                 Start-Process $FrontendUrl
             }
             catch {
-                Write-Warning "Could not open a browser automatically. Open $FrontendUrl manually."
+                Write-Warning "没能自动打开浏览器，请手动访问 $FrontendUrl"
             }
         }
 
-        Write-Host "`nResumeForge is ready. Double-click stop.cmd to close services."
+        Write-Host "`n简历通已就绪。要关闭服务，双击 stop.cmd。"
     }
     catch {
         Stop-StartedProcess -Process $startedFrontend

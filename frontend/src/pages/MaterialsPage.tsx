@@ -16,8 +16,10 @@ import {
   updateMaterial,
 } from "../api/material";
 import MaterialFormModal from "../components/materials/MaterialFormModal";
+import { DetailTrigger, RecordDetailDrawer } from "../components/common/RecordDetail";
 import { RowActions, RowContextMenu } from "../components/common/RowActions";
 import type { Material, MaterialPayload } from "../types";
+import { canPreviewImage } from "../utils/attachments";
 import { formatDateTime } from "../utils/format";
 
 export default function MaterialsPage() {
@@ -29,6 +31,7 @@ export default function MaterialsPage() {
   const [category, setCategory] = useState<string>("");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Material | null>(null);
+  const [detail, setDetail] = useState<Material | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -151,43 +154,132 @@ export default function MaterialsPage() {
         <div className="materials-grid">
           {materials.map((material) => (
             <RowContextMenu key={material.id} items={actionsFor(material)}>
-              <Card size="small" className="material-card">
-                <div className="material-card-head">
-                  <Tag color="blue">{material.category}</Tag>
-                  <RowActions more={actionsFor(material)} />
-                </div>
-                <Typography.Title level={5} ellipsis={{ tooltip: material.title }}>
-                  {material.title || "（未命名资料）"}
-                </Typography.Title>
-                {material.content && (
-                  <Typography.Paragraph
-                    type="secondary"
-                    ellipsis={{ rows: 3 }}
-                    className="material-card-content"
-                  >
-                    {material.content}
-                  </Typography.Paragraph>
-                )}
-                <div className="material-card-meta">
-                  {material.files.length > 0 && (
+              <DetailTrigger
+                label={`打开资料「${material.title || material.category}」的详情`}
+                onOpen={() => setDetail(material)}
+              >
+                <Card size="small" className="material-card">
+                  <div className="material-card-head">
+                    <Tag color="blue">{material.category}</Tag>
+                    <RowActions more={actionsFor(material)} />
+                  </div>
+                  <Typography.Title level={5} ellipsis={{ tooltip: material.title }}>
+                    {material.title || "（未命名资料）"}
+                  </Typography.Title>
+                  {material.content && (
+                    <Typography.Paragraph
+                      type="secondary"
+                      ellipsis={{ rows: 3 }}
+                      className="material-card-content"
+                    >
+                      {material.content}
+                    </Typography.Paragraph>
+                  )}
+                  <div className="material-card-meta">
+                    {material.files.length > 0 && (
+                      <Typography.Text type="secondary">
+                        <PaperClipOutlined /> {material.files.length} 个附件
+                      </Typography.Text>
+                    )}
+                    {material.url && (
+                      <Typography.Link
+                        href={material.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <LinkOutlined /> 链接
+                      </Typography.Link>
+                    )}
                     <Typography.Text type="secondary">
-                      <PaperClipOutlined /> {material.files.length} 个附件
+                      {formatDateTime(material.updated_at)}
                     </Typography.Text>
-                  )}
-                  {material.url && (
-                    <Typography.Link href={material.url} target="_blank" rel="noopener noreferrer">
-                      <LinkOutlined /> 链接
-                    </Typography.Link>
-                  )}
-                  <Typography.Text type="secondary">
-                    {formatDateTime(material.updated_at)}
-                  </Typography.Text>
-                </div>
-              </Card>
+                  </div>
+                </Card>
+              </DetailTrigger>
             </RowContextMenu>
           ))}
         </div>
       )}
+
+      <RecordDetailDrawer
+        open={detail !== null}
+        title={detail?.title || "（未命名资料）"}
+        tags={detail && <Tag color="blue">{detail.category}</Tag>}
+        fields={
+          detail
+            ? [
+                { label: "链接", value: detail.url || "-" },
+                {
+                  label: "附件",
+                  value: detail.files.length > 0 ? `${detail.files.length} 个` : "-",
+                },
+                { label: "创建时间", value: formatDateTime(detail.created_at) },
+                { label: "更新时间", value: formatDateTime(detail.updated_at) },
+              ]
+            : []
+        }
+        sections={
+          detail
+            ? [
+                { title: "正文", content: detail.content || "（无）" },
+                { title: "备注", content: detail.note || "（无）" },
+                {
+                  title: `附件（${detail.files.length}）`,
+                  content:
+                    detail.files.length === 0 ? (
+                      "（无）"
+                    ) : (
+                      <div className="material-file-list">
+                        {detail.files.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="material-file-item">
+                            {file.data_url && canPreviewImage(file.mime_type) ? (
+                              <img
+                                src={file.data_url}
+                                alt={file.name}
+                                style={{
+                                  width: 64,
+                                  height: 64,
+                                  objectFit: "cover",
+                                  borderRadius: 4,
+                                }}
+                              />
+                            ) : (
+                              <PaperClipOutlined className="material-file-icon" />
+                            )}
+                            <div className="material-file-meta">
+                              <Typography.Text ellipsis={{ tooltip: file.name }}>
+                                {file.name}
+                              </Typography.Text>
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                {file.data_url
+                                  ? `图片 · ${Math.round(file.size_bytes / 1024)} KB`
+                                  : `文字 ${file.text.length} 字`}
+                              </Typography.Text>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ),
+                },
+              ]
+            : []
+        }
+        actions={
+          detail && (
+            <Button
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={() => {
+                openEdit(detail);
+                setDetail(null);
+              }}
+            >
+              编辑
+            </Button>
+          )
+        }
+        onClose={() => setDetail(null)}
+      />
 
       <MaterialFormModal
         open={formOpen}

@@ -42,15 +42,18 @@ class SiteRegistry:
         """注册表里第一个站点的标识（作为"当前站点"的出厂默认）。"""
         return self._adapters[0].key if self._adapters else ""
 
+    def supported_names(self) -> str:
+        """已注册站点的展示名，用「、」连成一句（用于错误信息里"目前支持：…"）。"""
+        return "、".join(adapter.display_name for adapter in self._adapters) or "暂无"
+
     def for_target(self, url_or_source: str) -> SiteAdapter:
         for adapter in self._adapters:
             if adapter.matches(url_or_source):
                 return adapter
-        supported = "、".join(adapter.display_name for adapter in self._adapters) or "暂无"
         raise SiteFailure(
             FAILURE_UNKNOWN,
             f"暂不支持该招聘网站（{FAILURE_CATEGORY_LABELS[FAILURE_UNKNOWN]}）；"
-            f"目前支持：{supported}",
+            f"目前支持：{self.supported_names()}",
         )
 
     def for_url(self, url: str) -> SiteAdapter:
@@ -61,6 +64,19 @@ class SiteRegistry:
         source = getattr(job, "source", "") or ""
         url = getattr(job, "source_url", "") or ""
         return self.for_target(f"{source} {url}".strip())
+
+    def resolve_for_job(self, job: Any) -> SiteAdapter | None:
+        """``for_job`` 的**不抛异常**版本：解析不出来就返回 ``None``。
+
+        两个版本的差别就是使用场景：
+        - ``for_job``：投递执行时用，解析不出来是**真的出错**，要带诊断抛出去；
+        - ``resolve_for_job``：**入队校验、开始投递前的拦截、列表上的"能不能投"标记**用。
+          这三处只想知道"行不行"，不该各自写一遍 try/except（写三遍就迟早判得不一样）。
+        """
+        try:
+            return self.for_job(job)
+        except SiteFailure:
+            return None
 
 
 def default_registry() -> SiteRegistry:

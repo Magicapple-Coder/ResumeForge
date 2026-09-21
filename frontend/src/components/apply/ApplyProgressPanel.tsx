@@ -99,7 +99,11 @@ export default function ApplyProgressPanel({ task, busy, onPause, onResume, onSt
       </Descriptions.Item>
       <Descriptions.Item label="招呼语">{item.greeting || "（使用默认招呼语）"}</Descriptions.Item>
       {item.failure_detail && (
-        <Descriptions.Item label="诊断信息">{item.failure_detail}</Descriptions.Item>
+        // 跳过的条目也会写明细（例如「按『同公司只投一个岗位』跳过」），那是**跳过原因**
+        // 不是失败诊断——同一个字段两种含义时，标签得跟着状态走，否则用户会以为出错了。
+        <Descriptions.Item label={item.status === "skipped" ? "跳过原因" : "诊断信息"}>
+          {item.failure_detail}
+        </Descriptions.Item>
       )}
       <Descriptions.Item label="开始时间">
         {formatDateTime(item.started_at ?? undefined)}

@@ -51,22 +51,31 @@ from ...schemas.apply import (
     ApplyConfigIn,
     ApplyConfigOut,
     ApplyQueueItemOut,
+    ApplyRecordBatchOut,
     ApplyRecordOut,
     ApplyTaskCreate,
     BrowserStatusOut,
     CollectConfigIn,
     CollectConfigOut,
+    CollectFilterGroupOut,
+    CollectFilterOptionOut,
+    CollectFilterOptionsOut,
     GREETING_RECORD_MAX_CHARS,
     MAX_BACKFILL_JOBS,
     SiteListOut,
     SiteOptionOut,
 )
 from ...schemas.job_match import JobMatchResult
-from ..browser.browser_manager import BrowserError, BrowserManager, BrowserStatus
+from ..browser.browser_manager import (
+    BROWSER_STATE_RUNNING,
+    BrowserError,
+    BrowserManager,
+    BrowserStatus,
+)
 from ..browser.cdp_client import CdpError
 from ..job_match import match_requires_confirmation
 from ..profile_service import get_profile_detail
-from ..sites.base import SiteAdapter
+from ..sites.base import SOURCE_SESSION, SiteAdapter
 from ..sites.registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -168,6 +177,61 @@ def collect_config_out(config: CollectConfigIn) -> CollectConfigOut:
     return CollectConfigOut(**config.model_dump(), defaults=CollectConfigIn())
 
 
+def collect_filter_options(db: Session) -> CollectFilterOptionsOut:
+    """当前站点筛选栏的可选项（界面据此渲染下拉框）。
+
+    **浏览器在跑就在用户自己的页面上读**：只有那条路能拿到"这个账号真实可见"的清单——
+    「求职类型」的选项因人而异（实测：登录账号能看到「实习」，未登录看不到），写死一份等于
+    替所有用户决定了他们能选什么。浏览器没启动就退回免登录的公开清单，并把来源如实标出来。
+
+    这里**只读，不导航**：读的是用户当前那个标签页上已有的东西（一次页面内 fetch + 一次 DOM
+    读取），所以不会把用户正在看的页面顶掉。读失败一律降级，绝不让配置界面打不开。
+    """
+    adapter = current_site(db)
+    if adapter is None:
+        return CollectFilterOptionsOut()
+
+    client = None
+    try:
+        manager = get_browser_manager(db)
+        if manager.status().state == BROWSER_STATE_RUNNING:
+            client = manager.client()
+    except (BrowserError, CdpError):
+        # 浏览器状态探测失败与"没启动"等价：退回公开清单即可，不值得打扰用户。
+        logger.debug("读取浏览器状态失败，将使用公开筛选清单", exc_info=True)
+        client = None
+
+    try:
+        groups = adapter.fetch_filter_options(client)
+    except Exception:  # noqa: BLE001 - 清单读不到是降级路径，不能让整个配置界面失败
+        logger.warning("读取站点筛选选项失败，界面将不显示筛选项", exc_info=True)
+        groups = ()
+    finally:
+        if client is not None:
+            client.close()
+
+    return CollectFilterOptionsOut(
+        site_key=adapter.key,
+        display_name=adapter.display_name,
+        groups=[_filter_group_out(group) for group in groups],
+        session_read=any(getattr(group, "source", "") == SOURCE_SESSION for group in groups),
+    )
+
+
+def _filter_group_out(group: Any) -> CollectFilterGroupOut:
+    return CollectFilterGroupOut(
+        key=group.key,
+        param=group.param,
+        label=group.label,
+        options=[
+            CollectFilterOptionOut(code=item.code, label=item.label, group=item.group)
+            for item in group.options
+        ],
+        source=group.source,
+        note=group.note,
+    )
+
+
 # ===== 匹配结论读取与准入 =====
 
 
@@ -238,7 +302,29 @@ def _resume_title(db: Session, resume_id: int | None) -> str:
     return resume.title if resume is not None else ""
 
 
-def _queue_out(db: Session, item: ApplyQueueItem) -> ApplyQueueItemOut:
+def job_apply_site(job: Job | None) -> SiteAdapter | None:
+    """这个岗位能不能自动投递：能则返回对应站点适配器，不能则返回 ``None``。
+
+    **唯一判据**：岗位的来源 / 投递链接必须能落到某个已注册站点上。纯手动录入、来源与链接
+    都指不到站点的岗位，在投递时定位不到任何站点适配器，强行投只会得到一条「未知失败」的
+    记录——所以"入队校验、开始投递前的拦截、列表上的能否投递标记"三处都走这一个函数，
+    不各自判一遍。岗位已被删除（``None``）同样视为不可投递。
+    """
+    if job is None:
+        return None
+    return get_registry().resolve_for_job(job)
+
+
+def unsupported_site_message(job: Job) -> str:
+    """不可投递时的中文说明：入队被拒、开始投递被拦、单条失败诊断三处共用同一句。"""
+    return (
+        f"「{job.title or '该岗位'}」的来源不是投递台支持的招聘网站"
+        f"（当前支持：{get_registry().supported_names()}），无法自动投递。"
+        "请到对应的招聘网站里手动投递。"
+    )
+
+
+def _queue_out(db: Session, item: ApplyQueueItem, job: Job | None) -> ApplyQueueItemOut:
     match = latest_match(db, item.job_id)
     admission = _admission_of_match(match) if match is not None else None
     hard_gate = match.hard_gate if match is not None and match.hard_gate in HARD_GATES else None
@@ -255,6 +341,8 @@ def _queue_out(db: Session, item: ApplyQueueItem) -> ApplyQueueItemOut:
         admission=admission,
         hard_gate=hard_gate,
         requires_confirm=_match_requires_confirm(match) if match is not None else False,
+        # 「能不能自动投」由来源决定，与匹配结论无关；界面上据此禁用勾选并说明原因。
+        apply_supported=job_apply_site(job) is not None,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -266,11 +354,21 @@ def list_queue(db: Session) -> list[ApplyQueueItemOut]:
         .order_by(ApplyQueueItem.sort_order, ApplyQueueItem.id)
         .all()
     )
-    return [_queue_out(db, item) for item in items]
+    # 岗位一次性取回，避免每行一次查询（队列条数不多，但这属于该顺手做对的事）。
+    jobs = _jobs_by_id(db, [item.job_id for item in items])
+    return [_queue_out(db, item, jobs.get(item.job_id)) for item in items]
+
+
+def _jobs_by_id(db: Session, job_ids: Sequence[int | None]) -> dict[int, Job]:
+    """按 id 批量取岗位；缺失（已删除）的不在返回里。"""
+    ids = sorted({job_id for job_id in job_ids if job_id})
+    if not ids:
+        return {}
+    return {job.id: job for job in db.query(Job).filter(Job.id.in_(ids)).all()}
 
 
 def add_to_queue(db: Session, request: Any) -> list[ApplyQueueItemOut]:
-    """加入队列；命中真实缺口 / 未分析 / 重复时抛 409 并回传原因。
+    """加入队列；命中"来源不支持 / 已在队列 / 真实缺口 / 未分析"时抛 409 并回传原因。
 
     整批要么全部成功、要么全部回滚：任一岗位不满足准入就中断，避免"加了一半"。
     """
@@ -279,11 +377,22 @@ def add_to_queue(db: Session, request: Any) -> list[ApplyQueueItemOut]:
         db.query(func.coalesce(func.max(ApplyQueueItem.sort_order), 0)).scalar() or 0
     )
     created: list[ApplyQueueItem] = []
+    created_jobs: list[Job] = []
     try:
         for entry in request.items:
             job = db.get(Job, entry.job_id)
             if job is None:
                 raise ApplyNotFound(f"岗位不存在或已被删除：{entry.job_id}")
+            # 来源闸门**放最前**：这是"这个岗位本来就走不到投递"的硬前提，不是用户确认一下
+            # 就能放行的事（与下面的未分析 / 真实缺口不同，那两类可以由用户显式确认）。
+            if job_apply_site(job) is None:
+                raise ApplyConflict(
+                    {
+                        "message": unsupported_site_message(job),
+                        "job_id": job.id,
+                        "site_unsupported": True,
+                    }
+                )
             existing = (
                 db.query(ApplyQueueItem)
                 .filter(ApplyQueueItem.job_id == job.id)
@@ -331,6 +440,7 @@ def add_to_queue(db: Session, request: Any) -> list[ApplyQueueItemOut]:
             )
             db.add(queue_item)
             created.append(queue_item)
+            created_jobs.append(job)
         db.commit()
     except ApplyServiceError:
         db.rollback()
@@ -338,7 +448,7 @@ def add_to_queue(db: Session, request: Any) -> list[ApplyQueueItemOut]:
     except Exception:
         db.rollback()
         raise
-    return [_queue_out(db, item) for item in created]
+    return [_queue_out(db, item, job) for item, job in zip(created, created_jobs)]
 
 
 def update_queue_item(db: Session, item_id: int, payload: Any) -> ApplyQueueItemOut:
@@ -355,7 +465,7 @@ def update_queue_item(db: Session, item_id: int, payload: Any) -> ApplyQueueItem
     item.updated_at = utcnow()
     db.commit()
     db.refresh(item)
-    return _queue_out(db, item)
+    return _queue_out(db, item, db.get(Job, item.job_id) if item.job_id else None)
 
 
 def remove_queue_item(db: Session, item_id: int) -> None:
@@ -499,6 +609,84 @@ def list_records(
     return [_record_out(row) for row in rows], total
 
 
+def list_record_batches(
+    db: Session,
+    *,
+    keyword: str = "",
+    result: str = "",
+    page: int = 1,
+    page_size: int = 5,
+) -> tuple[list[ApplyRecordBatchOut], int]:
+    """投递记录按**批次**分组：一页返回若干个批次，每个批次带自己的全部（匹配的）记录。
+
+    为什么按批次而不是给扁平记录加 group-by：一次「开始投递」建一个批次（``ApplyTask``），
+    用户一次性投 N 个岗位时这 N 条记录天然同属一个批次——分组键已经存在，界面要做的只是
+    "折叠/展开"。筛选（关键词 / 结果）作用在**记录**上：只有命中的记录出现在组内，没有
+    命中记录的批次整体不出现；分页按**批次**数（一页几个组，而不是一页几条）。
+    """
+    item_query = (
+        db.query(ApplyTaskItem)
+        .join(ApplyTask, ApplyTaskItem.task_id == ApplyTask.id)
+        .filter(ApplyTask.kind == TASK_KIND_APPLY)
+    )
+    if keyword:
+        like = f"%{keyword}%"
+        item_query = item_query.filter(
+            or_(ApplyTaskItem.job_title.like(like), ApplyTaskItem.company.like(like))
+        )
+    if result:
+        item_query = item_query.filter(ApplyTaskItem.status == result)
+
+    matched_items = item_query.subquery()
+    # 只统计"至少有一条命中记录"的批次，分页与总数都以它为准。
+    batch_ids = (
+        db.query(matched_items.c.task_id).distinct().subquery()
+    )
+    total = db.query(func.count()).select_from(batch_ids).scalar() or 0
+    batch_rows = (
+        db.query(ApplyTask)
+        .join(batch_ids, ApplyTask.id == batch_ids.c.task_id)
+        .order_by(ApplyTask.created_at.desc(), ApplyTask.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    if not batch_rows:
+        return [], total
+    batch_id_list = [task.id for task in batch_rows]
+    item_rows = (
+        db.query(ApplyTaskItem)
+        .join(
+            matched_items,
+            (ApplyTaskItem.id == matched_items.c.id)
+            & (ApplyTaskItem.task_id == matched_items.c.task_id),
+        )
+        .filter(ApplyTaskItem.task_id.in_(batch_id_list))
+        .order_by(ApplyTaskItem.sort_order, ApplyTaskItem.id)
+        .all()
+    )
+    items_by_task: dict[int, list[ApplyRecordOut]] = {task_id: [] for task_id in batch_id_list}
+    for item in item_rows:
+        items_by_task.setdefault(item.task_id, []).append(_record_out(item))
+    batches = [
+        ApplyRecordBatchOut(
+            id=task.id,
+            status=task.status,
+            total=task.total,
+            processed=task.processed,
+            succeeded=task.succeeded,
+            failed=task.failed,
+            skipped=task.skipped,
+            message=task.message or "",
+            created_at=task.created_at,
+            finished_at=task.finished_at,
+            items=items_by_task.get(task.id, []),
+        )
+        for task in batch_rows
+    ]
+    return batches, total
+
+
 # ===== 任务查询与批次创建 =====
 
 
@@ -565,6 +753,26 @@ def _resolve_targets(db: Session, payload: ApplyTaskCreate) -> list[tuple[Job, A
             continue
         seen.add(job.id)
         unique.append((job, queue_item))
+
+    # 来源闸门：不是从已注册招聘网站来的岗位，投递时定位不到站点适配器，只会得到一条
+    # 「未知失败」记录。**在这里一次性拦住并说清是谁**，而不是让它逐条失败给用户看。
+    # 队列里出现这类条目只可能是历史遗留（新入队已被 add_to_queue 挡住），所以文案指向"移出队列"。
+    unsupported = [job for job, _ in unique if job_apply_site(job) is None]
+    if unsupported:
+        titles = "、".join(f"「{job.title or '未命名岗位'}」" for job in unsupported[:5])
+        more = f" 等 {len(unsupported)} 个" if len(unsupported) > 5 else ""
+        raise ApplyConflict(
+            {
+                "message": (
+                    f"{titles}{more}不是从投递台支持的招聘网站采集或导入的岗位"
+                    f"（当前支持：{get_registry().supported_names()}），无法自动投递。"
+                    "请先把它们移出投递队列（行末「更多操作 → 移出队列」），或改到对应网站上手动投递。"
+                ),
+                "site_unsupported": True,
+                "job_ids": [job.id for job in unsupported],
+                "job_titles": [job.title for job in unsupported],
+            }
+        )
     return unique
 
 
@@ -810,6 +1018,7 @@ def _browser_status_out(status: BrowserStatus, db: Session) -> BrowserStatusOut:
         browser_name=status.browser_name,
         entry_url=default_entry_url(db),
         logged_in_hint=status.logged_in_hint,
+        owned=status.owned,
     )
 
 
@@ -845,7 +1054,18 @@ def open_browser_url(db: Session) -> BrowserStatusOut:
 
 
 def stop_browser(db: Session) -> None:
+    """关闭投递专用浏览器。
+
+    只关得了**本次运行**启动的那个。后端重启后浏览器仍在跑、句柄已经丢了，这时
+    ``manager.stop()`` 是静默 no-op——接口必须自己把它变成一条明确的中文提示，
+    否则界面会弹"已关闭"，而窗口还开在那里。
+    """
     manager = get_browser_manager(db)
+    if not manager.status().owned and manager.is_running():
+        raise ApplyConflict(
+            "这个浏览器窗口不是本次运行启动的（应用重启时会丢掉它的进程句柄），"
+            "应用不会去猜进程来关它——请直接关闭那个窗口。"
+        )
     manager.stop()
 
 
@@ -922,6 +1142,7 @@ __all__ = [
     "create_collect_task",
     "current_site",
     "current_site_key",
+    "collect_filter_options",
     "current_task",
     "daily_success_count",
     "default_entry_url",
@@ -933,6 +1154,7 @@ __all__ = [
     "get_task_detail",
     "latest_match",
     "list_queue",
+    "list_record_batches",
     "list_records",
     "list_sites",
     "mark_queue_done",

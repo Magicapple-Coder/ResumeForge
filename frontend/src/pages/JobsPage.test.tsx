@@ -165,4 +165,29 @@ describe("JobsPage", () => {
       expect(screen.getByText(/一次最多补齐 200 个岗位的详情/)).toBeInTheDocument(),
     );
   });
+
+  it("后端因来源不支持拒收时只给提示，不给「仍然加入」的按钮", async () => {
+    // 这是**兜底**分支：正常情况下按钮对这类岗位已经禁用了；万一前端数据里没有
+    // apply_supported（旧缓存 / 旧版本），后端仍会拦下，界面必须说清楚而不能弹"确认继续"。
+    const applyApi = await import("../api/apply");
+    const spy = vi.spyOn(applyApi, "addToQueue").mockRejectedValue(
+      new applyApi.QueueConflictError({
+        message: "「护士」的来源不是投递台支持的招聘网站（当前支持：BOSS直聘），无法自动投递。",
+        site_unsupported: true,
+      }),
+    );
+    mocks.jobs = [makeJob({ id: 6, source: "手动添加", source_url: "" })];
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "护士" }));
+    fireEvent.click(await screen.findByRole("button", { name: /加入投递台/ }));
+
+    // antd 的确认弹窗把 title 同时渲染在弹窗头和内容区（本项目其它 modal.confirm 也是这个形状），
+    // 所以这里按"至少出现一次"断言，真正的判据是内容里带上了后端那句话。
+    expect((await screen.findAllByText("这个岗位不能自动投递")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/来源不是投递台支持的招聘网站/)).toBeInTheDocument();
+    // 这一类确认也没用，所以不能出现"仍然加入"。
+    expect(screen.queryByRole("button", { name: /仍然加入/ })).not.toBeInTheDocument();
+    spy.mockRestore();
+  });
 });

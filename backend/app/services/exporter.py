@@ -126,7 +126,7 @@ def export_markdown(resume: ResumeContent) -> str:
                 f"### {project.name} · {project.role}（{project.start_date} - {project.end_date}）\n"
             )
             if project.tech_stack:
-                lines.append(f"**技术栈**：{'、'.join(project.tech_stack)}")
+                lines.append(f"**技术栈/工具**：{'、'.join(project.tech_stack)}")
             lines.append(_join_bullets(project.description))
             lines.append(_join_bullets(project.highlights))
             lines.append("")

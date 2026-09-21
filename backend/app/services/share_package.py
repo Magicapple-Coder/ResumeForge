@@ -24,6 +24,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
+from ..dataset_registry import configured_database_file
 from ..models.profile import utcnow
 from ..models.resume import ResumeRecord
 from ..models.share_package import (
@@ -68,18 +69,128 @@ class SharePackageError(Exception):
         self.status_code = status_code
 
 
+def _is_main_database(path: Path) -> bool:
+    """这个文件是不是 ``DATABASE_URL`` 指向的主数据。
+
+    判不出来时按"是"处理：那只会退回旧的路径规则，不会凭空改掉既有分享包的位置。
+    """
+    try:
+        return path == configured_database_file()
+    except Exception:  # noqa: BLE001 - 拿不到配置时保持既有行为
+        return True
+
+
 def share_root(bind) -> Path:
-    """分享包根目录：文件型 SQLite 落在数据库同目录，其余回退到数据目录。"""
+    """分享包根目录：文件型 SQLite 落在数据库同目录，其余回退到数据目录。
+
+    **非主数据额外带一层库文件名。** 多个数据集共用 ``data/datasets/`` 这一个目录，而分享包
+    的 id 是每个库各自自增的——一律用 ``<库目录>/share_packages/<id>`` 的话，数据集 A 的第 1 份
+    与数据集 B 的第 1 份会落到同一个目录里，后建的那份把先建的**覆盖掉**（同一个坑在导出
+    备份那边也踩过一次：多份数据集共用一个文件系统命名空间）。
+
+    主数据保持原路径不变：它下面可能已经有用户的分享包，平白迁走等于让那些文件消失。
+    路径改变对非主数据是安全的——文件缺了会按库里的快照重新生成（见 ``ensure_package_files``）。
+    """
     url = getattr(bind, "url", None)
     database = getattr(url, "database", None)
     if database and database != ":memory:" and Path(database).is_absolute():
-        return Path(database).resolve().parent / "share_packages"
+        resolved = Path(database).resolve()
+        root = resolved.parent / "share_packages"
+        return root if _is_main_database(resolved) else root / resolved.stem
     return SHARE_PACKAGES_DIR
 
 
 def package_directory(bind, share_id: int) -> Path:
-    """某个分享包的本地目录：``<数据库目录>/share_packages/<id>``。"""
+    """某个分享包的本地目录：``<share_root>/<id>``（见 ``share_root`` 的数据集隔离规则）。"""
     return share_root(bind) / str(share_id)
+
+
+def _write_atomically(path: Path, content: bytes) -> None:
+    """先写临时文件再原子改名。
+
+    这几个文件是**按需补齐的缓存**：补的过程中如果有另一个下载请求来读，非原子写会让它
+    读到半截文件（HTML/PDF 尤其明显）。同盘改名是原子的，读到的要么是旧内容、要么是完整
+    的新内容。
+    """
+    temporary = path.with_suffix(path.suffix + ".partial")
+    temporary.write_bytes(content)
+    temporary.replace(path)
+
+
+def ensure_package_files(db: Session, package: SharePackage) -> list[str]:
+    """确保分享包目录里的**产物文件**都在；缺哪个就按库里的快照补哪个。返回补出来的文件名。
+
+    为什么要补：那些文件落在磁盘上、**不随备份包走**（随数据走的只有数据库里那份快照）。
+    换数据集、或从备份恢复到另一台机器之后目录是空的——列表、详情、备注都还正常（走数据库），
+    唯独点「下载」会 404。把文件当成**缓存**而不是数据源，缺了就从快照重新渲染，这条路才完整。
+
+    补的只有**由数据库推导得出来**的那几个（HTML / PDF / 快照 JSON / 清单）：渲染脱敏后的
+    内容，与创建时同一套管线。``comments.md`` **不补**——那是收件人写进来的内容，数据库里
+    没有第二份；补一个空白模板会在界面上假装成"评论还在"，而它其实随着文件一起没了。
+    """
+    directory = package_directory(db.get_bind(), package.id)
+    if not package.snapshot:
+        # 没有快照就无从渲染（理论上不该发生）。如实返回空，由下载接口给出"文件不存在"。
+        return []
+    wanted = [_HTML_FILE, _PDF_FILE, _SNAPSHOT_FILE, _MANIFEST_FILE]
+    if all((directory / name).is_file() for name in wanted):
+        return []
+
+    directory.mkdir(parents=True, exist_ok=True)
+    resume = ResumeContent.model_validate(package.snapshot)
+    # 风格上下文优先取原简历；简历被删了就退回默认版式——内容仍然逐字一致，只是版式不再是
+    # 当初那一套。**不去猜**当初用的是什么模板，那只会造出一个看起来对、其实对不上的东西。
+    record = trash.get_live(db, ResumeRecord, package.resume_id) if package.resume_id else None
+    template_name, template_html = resolve_style_template(
+        db, record.template if record is not None else None
+    )
+    context = RenderContext(
+        template=template_name,
+        template_html=template_html,
+        page_limit=(record.page_limit or DEFAULT_PAGE_LIMIT) if record else DEFAULT_PAGE_LIMIT,
+        font_scale=(record.font_scale or DEFAULT_FONT_SCALE) if record else DEFAULT_FONT_SCALE,
+        format_config=_record_format_config(db, record) if record else {},
+    )
+
+    restored: list[str] = []
+    if not (directory / _HTML_FILE).is_file():
+        artifact = build_export(ExportRequest(format="html"), resume, context)
+        _write_atomically(directory / _HTML_FILE, artifact.content)
+        restored.append(_HTML_FILE)
+    if not (directory / _PDF_FILE).is_file():
+        try:
+            artifact = build_export(ExportRequest(format="pdf"), resume, context)
+        except ResumePDFError as exc:
+            # 没有中文字体时 PDF 出不来；其余几个文件仍该补上，所以只跳过这一个。
+            logger.warning("重新生成分享包 PDF 失败（其余文件照常）id=%s：%s", package.id, exc)
+        else:
+            _write_atomically(directory / _PDF_FILE, artifact.content)
+            restored.append(_PDF_FILE)
+    if not (directory / _SNAPSHOT_FILE).is_file():
+        _write_atomically(
+            directory / _SNAPSHOT_FILE,
+            json.dumps(package.snapshot, ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+        restored.append(_SNAPSHOT_FILE)
+    if not (directory / _MANIFEST_FILE).is_file():
+        created_at = package.created_at.isoformat() if package.created_at else ""
+        _write_atomically(
+            directory / _MANIFEST_FILE,
+            json.dumps(
+                {
+                    "share_token": package.share_token,
+                    "permission": package.permission,
+                    "title": package.title,
+                    "created_at": created_at,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ).encode("utf-8"),
+        )
+        restored.append(_MANIFEST_FILE)
+    if restored:
+        logger.info("已按快照重新生成分享包文件 id=%s files=%s", package.id, restored)
+    return restored
 
 
 def create_share_token() -> str:
@@ -330,6 +441,7 @@ __all__ = [
     "SharePackageError",
     "create_share_package",
     "create_share_token",
+    "ensure_package_files",
     "import_comments",
     "list_share_packages",
     "package_directory",

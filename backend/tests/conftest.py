@@ -78,6 +78,14 @@ def no_real_search_network(monkeypatch):
     monkeypatch.setattr("app.services.search.aggregate.fetch_page_text", empty_page)
     monkeypatch.setattr("app.services.assistant_web_search.fetch_bing_rss", empty_rss)
 
+    def no_filter_network(url: str, timeout: float):
+        # 站点筛选项清单的默认取数口子。**默认封掉**：忘了注入 fetcher 的用例会立刻失败，
+        # 而不是安静地去请求 zhipin.com——后者在能联网的开发机上"碰巧通过"、在 CI 上超时，
+        # 是最难定位的一类测试问题。需要真实响应的用例自己 monkeypatch 回来。
+        raise OSError(f"测试环境不访问真实站点：{url}")
+
+    monkeypatch.setattr("app.services.sites.boss_filters.default_fetcher", no_filter_network)
+
 
 @pytest.fixture(autouse=True)
 def clean_db():

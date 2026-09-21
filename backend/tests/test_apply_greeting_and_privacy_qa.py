@@ -115,13 +115,15 @@ class _ScriptedCdp(CdpClient):
 
 
 def test_required_but_empty_greeting_raises_greeting_missing():
-    # 调用顺序：entry 状态（found）→ click-apply → form controls（[]）→ greeting_state（required & 未填）
+    # 新聊天链路：先取沟通入口坐标（rf:entry-rect，就绪即返回），随后在**点击入口之前**
+    # 发现招呼语为空，直接拦截——不会点出任何会话。
     import json
 
-    entry = json.dumps({"found": True, "url": "u", "title": "t", "matched": 1})
-    controls = json.dumps({"url": "u", "title": "t", "controls": []})
-    greeting_state = json.dumps({"found": True, "required": True, "url": "u", "title": "t"})
-    client = _ScriptedCdp([entry, entry, controls, greeting_state])
+    entry_rect = json.dumps(
+        {"found": True, "matched": 1, "label": "立即沟通",
+         "x": 500, "y": 200, "width": 120, "height": 40, "url": "u", "title": "t"}
+    )
+    client = _ScriptedCdp([entry_rect])
     adapter = BossAdapter()
     with pytest.raises(SiteFailure) as exc:
         adapter.fill_and_submit(client, {}, "")
@@ -129,18 +131,23 @@ def test_required_but_empty_greeting_raises_greeting_missing():
     assert "招呼语" in exc.value.detail
 
 
-def test_non_required_empty_greeting_does_not_block_greeting_step():
+def test_empty_greeting_is_always_blocked_in_the_chat_flow():
+    """现版 BOSS 投递就是"发一条招呼消息"，不存在无招呼语的通用提交通道。
+
+    无论页面控件是否标 required，空招呼语都必须在点击沟通入口之前拦截，
+    避免建立一个没有任何内容的会话（旧版"非必填即可空着提交"的分支已随聊天页改版失效）。
+    """
     import json
 
-    entry = json.dumps({"found": True, "url": "u", "title": "t", "matched": 1})
-    controls = json.dumps({"url": "u", "title": "t", "controls": []})
-    greeting_state = json.dumps({"found": True, "required": False, "url": "u", "title": "t"})
-    submit_state = json.dumps({"success": True, "url": "u", "title": "t"})
-    # entry → click-apply → controls → greeting_state → click-submit → submit-state
-    client = _ScriptedCdp([entry, entry, controls, greeting_state, "{}", submit_state])
+    entry_rect = json.dumps(
+        {"found": True, "matched": 1, "label": "继续沟通",
+         "x": 500, "y": 200, "width": 120, "height": 40, "url": "u", "title": "t"}
+    )
+    client = _ScriptedCdp([entry_rect])
     adapter = BossAdapter()
-    outcome = adapter.fill_and_submit(client, {}, "")
-    assert outcome.success is True
+    with pytest.raises(SiteFailure) as exc:
+        adapter.fill_and_submit(client, {}, "   \n  ")
+    assert exc.value.category == FAILURE_GREETING_MISSING
 
 
 # ===== 凭据不落库 =====

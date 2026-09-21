@@ -321,3 +321,99 @@ def test_import_path_is_registered():
     from app.application import create_app
 
     assert datasets_api.IMPORT_PATH in set(create_app().openapi()["paths"])
+
+
+# ===== 导出全部数据集（含其余数据集）=====
+#
+# 背景：默认导出只带**当前活动**的那一份。用户可能有好几份数据集（给不同求职方向各开一套），
+# 只备份活动那份的后果是"以为备份了、其实丢了几份"，而这类故障通常很久以后才发现。
+
+
+def _other_dataset_with_a_job(client, name: str, title: str) -> str:
+    """建一份新数据集、切过去放一个特征岗位、再切回主数据，返回它的 id。"""
+    created = client.post("/api/settings/datasets", json={"name": name}).json()
+    client.post(f"/api/settings/datasets/{created['id']}/activate")
+    _add_job(client, title)
+    client.post(f"/api/settings/datasets/{MAIN}/activate")
+    return created["id"]
+
+
+def test_export_all_carries_the_other_datasets(client, tmp_path):
+    _add_job(client, "主数据里的岗位")
+    other_id = _other_dataset_with_a_job(client, "校招线", "校招专有岗位")
+
+    response = client.get("/api/settings/datasets/export-all")
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        manifest = json.loads(archive.read("manifest.json"))
+    # 活动数据集仍在老位置，其余数据集放在 datasets/ 下。
+    assert "resume_forge.db" in names
+    assert f"datasets/{other_id}.db" in names
+    assert f"datasets/{other_id}.json" in names
+    # 格式号必须升到 2：老版本读不懂 datasets/ 这一段，得让它**明确拒收**而不是安静地
+    # 只恢复活动数据集。
+    assert manifest["format"] == 2
+    assert [item["id"] for item in manifest["datasets"]] == [other_id]
+    assert manifest["datasets"][0]["name"] == "校招线"
+
+
+def test_exporting_one_dataset_stays_format_1(client, tmp_path):
+    """只导一份时格式保持 1——老版本与旧备份的互操作不能因为这次改动受影响。"""
+    _other_dataset_with_a_job(client, "校招线", "校招专有岗位")
+
+    response = client.get(f"/api/settings/datasets/{MAIN}/export")
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        manifest = json.loads(archive.read("manifest.json"))
+    assert names == {"resume_forge.db", "manifest.json"}
+    assert manifest["format"] == 1
+    assert "datasets" not in manifest
+
+
+def test_import_restores_the_packaged_datasets(client, tmp_path):
+    """导入一份"全部"包，包里的其余数据集要各落成一份新数据集，且内容是真的。"""
+    other_id = _other_dataset_with_a_job(client, "校招线", "校招专有岗位")
+    payload = client.get("/api/settings/datasets/export-all").content
+
+    response = _import(client, payload, name="整包恢复")
+
+    assert response.status_code == 200
+    created = response.json()
+    restored = created.get("restored_datasets")
+    assert restored and len(restored) == 1
+    assert restored[0]["name"] == "校招线"  # 名字沿用包里的，用户靠它认人
+    # **新 id**：沿用包里的 id 会覆盖本机已有的那份同名 id 的数据集（不可逆）。
+    assert restored[0]["id"] not in {MAIN, other_id}
+    assert {item["id"] for item in _list_datasets(client)} >= {restored[0]["id"], other_id}
+
+    # 恢复出来的那份里确实有那个特征岗位。
+    client.post(f"/api/settings/datasets/{restored[0]['id']}/activate")
+    assert _job_titles(client) == {"校招专有岗位"}
+
+
+def test_import_rejects_a_packaged_dataset_pointing_outside_datasets(client, tmp_path):
+    """**路径是可以被构造的**：改过的包能把 file 指向主库或 ../../，导入必须拒收。"""
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr("resume_forge.db", b"")
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "format": 2,
+                    "api_key_included": False,
+                    "datasets": [{"id": "x", "name": "坏包", "file": "../resume_forge.db"}],
+                }
+            ),
+        )
+
+    response = _import(client, payload.getvalue())
+
+    assert response.status_code == 400
+    assert "路径不合法" in response.json()["detail"]
+    # 整包失败：不许留下半截的数据集。
+    assert {item["id"] for item in _list_datasets(client)} == {MAIN}

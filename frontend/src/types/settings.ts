@@ -96,6 +96,16 @@ export interface DatasetInfo {
   exists: boolean;
 }
 
+/**
+ * 导入备份包的结果。
+ *
+ * `restored_datasets` 只在两种情况出现：导入的是「导出全部数据集」产生的包（包里随行
+ * 带了几份数据集），或那份数据集的路径校验没通过（整包拒收，不会有这个字段）。
+ */
+export interface DatasetImportResult extends DatasetInfo {
+  restored_datasets?: DatasetInfo[];
+}
+
 /** 应用打开时是否弹出近期提醒（默认开）。 */
 export interface ReminderPopupSetting {
   enabled: boolean;

@@ -128,6 +128,10 @@ FAILURE_CAPTCHA_REQUIRED = "captcha_required"
 FAILURE_GREETING_MISSING = "greeting_missing"
 FAILURE_NETWORK_TIMEOUT = "network_timeout"
 FAILURE_FILE_UPLOAD_FAILED = "file_upload_failed"
+# 岗位不属于任何已注册的招聘网站（例如纯手动录入、来源与投递链接都指不到站点）。
+# 它**不是**运行时故障，而是"这个岗位本来就不该走到投递这一步"——所以单列一类，
+# 否则记录里只会写「未知失败」，用户与我们都看不出真正的原因。
+FAILURE_SITE_UNSUPPORTED = "site_unsupported"
 FAILURE_UNKNOWN = "unknown"
 FAILURE_CATEGORIES = (
     FAILURE_SELECTOR_INVALID,
@@ -136,6 +140,7 @@ FAILURE_CATEGORIES = (
     FAILURE_GREETING_MISSING,
     FAILURE_NETWORK_TIMEOUT,
     FAILURE_FILE_UPLOAD_FAILED,
+    FAILURE_SITE_UNSUPPORTED,
     FAILURE_UNKNOWN,
 )
 
@@ -147,6 +152,7 @@ FAILURE_CATEGORY_LABELS = {
     FAILURE_GREETING_MISSING: "招呼语缺失",
     FAILURE_NETWORK_TIMEOUT: "网络超时",
     FAILURE_FILE_UPLOAD_FAILED: "简历上传失败",
+    FAILURE_SITE_UNSUPPORTED: "岗位来源不支持自动投递",
     FAILURE_UNKNOWN: "未知失败",
 }
 

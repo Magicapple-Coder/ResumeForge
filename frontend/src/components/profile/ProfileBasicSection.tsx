@@ -58,7 +58,7 @@ export default function ProfileBasicSection({ photo, editing, saving, onPhotoSel
             </Col>
             <Col xs={24} sm={12} lg={8}>
               <Form.Item name="job_intent" label="求职意向">
-                <Input placeholder="如：后端开发工程师" />
+                <Input placeholder="如：市场营销专员" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12} lg={8}>

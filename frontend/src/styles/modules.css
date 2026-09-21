@@ -89,6 +89,13 @@
   height: 100%;
 }
 
+/* 卡片外层套了一层可点击容器，网格的等高要交给它传下去，否则同一行的卡片高矮不齐。 */
+.materials-grid > .detail-trigger,
+.knowledge-grid > .detail-trigger {
+  display: block;
+  height: 100%;
+}
+
 .material-card-head {
   display: flex;
   align-items: center;

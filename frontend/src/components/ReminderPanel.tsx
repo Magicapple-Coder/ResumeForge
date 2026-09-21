@@ -36,6 +36,8 @@ import { createReminder, deleteReminder, listReminders, updateReminder } from ".
 import { REMINDER_KINDS, REMINDER_KIND_LABELS, REMINDER_STATUS_LABELS } from "../types";
 import type { Reminder, ReminderKind, ReminderStatus } from "../types";
 import { formatDateTime } from "../utils/format";
+import { RecordDetailDrawer } from "./common/RecordDetail";
+import { isFromInnerControl } from "./common/recordDetailCore";
 import CalendarView from "./tracker/CalendarView";
 
 interface Option {
@@ -71,6 +73,7 @@ export default function ReminderPanel({
   const [view, setView] = useState<"list" | "calendar">("list");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
+  const [detail, setDetail] = useState<Reminder | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<ReminderForm>();
 
@@ -193,7 +196,12 @@ export default function ReminderPanel({
         <List
           dataSource={items}
           renderItem={(item) => {
-            const actions = [];
+            // 「详情」放在第一位：列表只放得下摘要，备注、绑定对象这些都得点进去看。
+            const actions = [
+              <Button key="detail" type="link" size="small" onClick={() => setDetail(item)}>
+                详情
+              </Button>,
+            ];
             if (item.status === "pending") {
               actions.push(
                 <Button
@@ -250,7 +258,15 @@ export default function ReminderPanel({
               </Popconfirm>,
             );
             return (
-              <List.Item actions={actions}>
+              <List.Item
+                className="detail-trigger"
+                actions={actions}
+                // 整条点开详情；行内按钮与二次确认不会被这一层抢走。
+                onClick={(event) => {
+                  if (isFromInnerControl(event)) return;
+                  setDetail(item);
+                }}
+              >
                 <List.Item.Meta
                   title={
                     <Space size={6} wrap>
@@ -328,6 +344,81 @@ export default function ReminderPanel({
           </Form.Item>
         </Form>
       </Modal>
+
+      <RecordDetailDrawer
+        open={detail !== null}
+        title={detail?.title || "提醒详情"}
+        tags={
+          detail && (
+            <Space size={6} wrap>
+              <Tag>{REMINDER_KIND_LABELS[detail.kind as ReminderKind] ?? detail.kind}</Tag>
+              <Tag
+                color={
+                  detail.status === "pending"
+                    ? "blue"
+                    : detail.status === "done"
+                      ? "green"
+                      : "default"
+                }
+              >
+                {REMINDER_STATUS_LABELS[detail.status as ReminderStatus] ?? detail.status}
+              </Tag>
+            </Space>
+          )
+        }
+        fields={
+          detail
+            ? [
+                { label: "提醒时间", value: formatDateTime(detail.remind_at) },
+                {
+                  label: "绑定漏斗",
+                  value:
+                    trackOptions.find((option) => option.value === detail.track_id)?.label ?? "-",
+                },
+                {
+                  label: "绑定岗位",
+                  value: jobOptions.find((option) => option.value === detail.job_id)?.label ?? "-",
+                },
+                {
+                  label: "绑定简历",
+                  value:
+                    resumeOptions.find((option) => option.value === detail.resume_id)?.label ?? "-",
+                },
+                { label: "创建时间", value: formatDateTime(detail.created_at) },
+                { label: "更新时间", value: formatDateTime(detail.updated_at) },
+              ]
+            : []
+        }
+        sections={detail ? [{ title: "备注", content: detail.note || "（无）" }] : []}
+        actions={
+          detail && (
+            <Space>
+              {detail.status === "pending" && (
+                <Button
+                  icon={<CheckOutlined />}
+                  onClick={() => {
+                    void setStatus(detail, "done");
+                    setDetail(null);
+                  }}
+                >
+                  标记完成
+                </Button>
+              )}
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  openEdit(detail);
+                  setDetail(null);
+                }}
+              >
+                编辑
+              </Button>
+            </Space>
+          )
+        }
+        onClose={() => setDetail(null)}
+      />
     </Space>
   );
 }

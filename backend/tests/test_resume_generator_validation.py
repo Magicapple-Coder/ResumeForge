@@ -244,8 +244,8 @@ def test_system_prompt_pins_writing_rules_for_both_modes():
         assert "30 字左右" in prompt and "不超过 35 字" in prompt
         assert "不超过 6 条" in prompt
         assert "个人总结保持 2-3 句、不超过 120 字" in prompt
-        # 要点必须写清"做了什么 + 结果"，不是只堆技术名词
-        assert "不能只堆技术名词" in prompt
+        # 要点必须写清"做了什么 + 结果"，不是只堆名词（工具/技术栈那一栏尤其容易变成名词堆）。
+        assert "不能只堆名词" in prompt
         # 真跑一次生成发现的问题：候选条目本身没有可写事实时，模型会输出只有名字的空壳
         assert "不要输出空壳条目" in prompt
 

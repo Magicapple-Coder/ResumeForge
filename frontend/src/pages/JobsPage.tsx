@@ -166,7 +166,15 @@ export default function JobsPage() {
       } catch (err) {
         if (err instanceof QueueConflictError) {
           const detail = err.detail;
-          if (detail.unanalyzed) {
+          if (detail.site_unsupported) {
+            // 这一类**没有"仍然加入"的选项**：确认也放行不了（投递时定位不到站点），
+            // 所以只给一个必须点掉的提示，而不是给个按钮让人以为可以强行通过。
+            modal.warning({
+              title: "这个岗位不能自动投递",
+              content: detail.message,
+              okText: "知道了",
+            });
+          } else if (detail.unanalyzed) {
             modal.confirm({
               title: "该岗位还没做过匹配分析",
               content: "建议先做「匹配度分析」。也可以直接加入队列，投递前仍会再核对一次。",

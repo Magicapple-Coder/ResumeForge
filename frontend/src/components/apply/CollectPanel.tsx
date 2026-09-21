@@ -1,9 +1,10 @@
 /**
  * 自动采集：设置关键词/城市/筛选条件后显式开始，并把无法映射的条件如实标为「未生效」。
  *
- * 为什么要把「未生效」单独拎出来：关键词 + 城市 + 翻页是站点一定能接受的，而薪资/经验/学历
- * 能不能落到查询参数取决于站点——若不明确提示，用户会以为筛选生效了，实际却把不符合条件的
- * 岗位也采了进来。后端把这些条件写进 `task.config["unmapped_conditions"]`，界面据此显示。
+ * 为什么要把「未生效」单独拎出来：关键词 + 城市 + 翻页是站点一定能接受的，而薪资/经验/
+ * 学历/岗位类型能不能落到查询参数取决于站点——若不明确提示，用户会以为筛选生效了，实际却把
+ * 不符合条件的岗位也采了进来。后端把这些条件写进 `task.config["unmapped_conditions"]`，
+ * 界面据此显示。
  */
 import { PlayCircleOutlined, SaveOutlined } from "@ant-design/icons";
 import {
@@ -27,6 +28,7 @@ import { useApi } from "../../hooks/useApi";
 import { formatDateTime } from "../../utils/format";
 import type { ApplyTask, ApplyTaskDetail, CollectConfig, CollectConfigOut } from "../../types";
 import CollectResultPanel from "./CollectResultPanel";
+import CollectSiteFilters from "./CollectSiteFilters";
 
 interface Props {
   disabled: boolean;
@@ -35,12 +37,28 @@ interface Props {
   collectTask: ApplyTaskDetail | null;
 }
 
-/** 采集结果的类型标注（C7）：仅入库标注，不参与站点筛选与去重。 */
+/** 采集结果的岗位类型（C7）。
+ *
+ * 实习/社招：BOSS 有官方「求职类型」参数（真实实测 jobType=1902/1901，站点侧严格过滤），
+ * 另外采集后按接口返回的岗位类型编码做第二道本地筛选；校招：BOSS 无官方参数（校招是
+ * 独立专区），只走采集后本地筛选（接口编码 5，实测校准）。BOSS 以外的站点将来接入时，
+ * 由适配器声明各自的能力。
+ */
 const JOB_TYPE_OPTIONS = [
   { value: "校招", label: "校招" },
   { value: "实习", label: "实习" },
   { value: "社招", label: "社招" },
 ];
+
+/** 岗位类型的筛选方式随所选值变化：能映射到站点参数的标「站点筛选」，否则标「采集后筛选」。 */
+const JOB_TYPE_TAG: Record<string, { color: string; text: string }> = {
+  实习: { color: "green", text: "站点筛选" },
+  社招: { color: "green", text: "站点筛选" },
+  校招: { color: "blue", text: "采集后筛选" },
+};
+
+const JOB_TYPE_EXTRA =
+  "实习/社招由招聘网站在搜索时就筛掉（更准更快）；校招由网站无此筛选，采回后按岗位的类型标记筛。岗位没给类型标记时会保留并如实计数";
 
 function unmappedConditions(task: ApplyTaskDetail | null): string[] {
   const raw = task?.config?.unmapped_conditions;
@@ -123,6 +141,29 @@ function filterSummary(task: ApplyTaskDetail | null): FilterSummary | null {
   };
 }
 
+interface SiteFilterSummary {
+  /** 这次真正生效的站点筛选条件（形如「学历要求：本科」）。 */
+  applied: string[];
+  /** 选了、但没能生效的——**必须说出来**，否则用户以为筛过了。 */
+  unapplied: string[];
+}
+
+/**
+ * 站点侧筛选的账目。
+ *
+ * 后端把「哪几条生效 / 哪几条没生效」写进了 `task.config`，这里只是把它摆到用户眼前。
+ * **不显示就等于没记账**：用户选了「公司规模：1000人以上」却拿到各种规模的岗位时，
+ * 这句话是唯一的解释来源。
+ */
+function siteFilterSummary(task: ApplyTaskDetail | null): SiteFilterSummary | null {
+  const config = task?.config;
+  if (!config) return null;
+  const applied = stringList(config.site_filter_applied);
+  const unapplied = stringList(config.site_filter_unapplied);
+  if (applied.length === 0 && unapplied.length === 0) return null;
+  return { applied, unapplied };
+}
+
 export default function CollectPanel({ disabled, onStarted, collectTask }: Props) {
   const { message } = App.useApp();
   const [form] = Form.useForm<CollectConfig>();
@@ -134,6 +175,8 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
   // 历史条件快照（localStorage 读取，最新在前）。
   const [history, setHistory] = useState<CollectConfigSnapshot[]>(() => readConfigHistory());
   const [historyValue, setHistoryValue] = useState<string | undefined>(undefined);
+  // 岗位类型的筛选方式标签随所选值变化（站点筛选 / 采集后筛选）。
+  const jobTypeValue = Form.useWatch("job_type", form);
 
   useEffect(() => {
     if (data) form.setFieldsValue(data);
@@ -211,6 +254,7 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
 
   const unmapped = unmappedConditions(collectTask);
   const filtered = filterSummary(collectTask);
+  const siteFiltered = siteFilterSummary(collectTask);
 
   return (
     <div className="apply-collect-panel">
@@ -269,7 +313,7 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
 
       <Form form={form} layout="vertical">
         <Form.Item name="keywords" label="关键词" extra="最多 10 个；与城市至少要填一个。">
-          <Select mode="tags" placeholder="例如：后端开发、算法工程师" open={false} />
+          <Select mode="tags" placeholder="例如：市场营销、财务会计" open={false} />
         </Form.Item>
         <Space size={16} wrap>
           <Form.Item name="city" label="城市">
@@ -283,10 +327,12 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
             label={
               <Space size={4}>
                 岗位类型
-                <Tag color="blue">仅标注</Tag>
+                <Tag color={JOB_TYPE_TAG[jobTypeValue ?? ""]?.color ?? "default"}>
+                  {JOB_TYPE_TAG[jobTypeValue ?? ""]?.text ?? "选择后生效"}
+                </Tag>
               </Space>
             }
-            extra="只用于给采集结果标注类型，不参与站点筛选，也不影响去重"
+            extra={JOB_TYPE_EXTRA}
           >
             <Select
               allowClear
@@ -297,12 +343,21 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
           </Form.Item>
         </Space>
 
+        {/* 站点侧筛选：招聘网站自己的筛选栏。放在"我的条件"之前——它是粗筛，先筛掉大部分
+            不符合的岗位，后面的本地筛选才只对少量结果做判断。 */}
+        <CollectSiteFilters disabled={disabled} />
+
+        {/* 「我的条件」：与上面的站点筛选语义不同——这里填的是**你自己**的情况，
+            用来筛掉你投不了的岗位（岗位要求高于你）。两条一起用时先站点筛、再本地筛。 */}
+        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
+          按你的条件筛（采集后）——填你自己的情况，要求高于它的岗位会被筛掉
+        </Typography.Text>
         <Space size={16} wrap>
           <Form.Item
             name="salary_min"
             label={
               <Space size={4}>
-                最低薪资（K）
+                我的期望薪资（K）
                 <Tag color="blue">采集后筛选</Tag>
               </Space>
             }
@@ -314,11 +369,11 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
             name="experience"
             label={
               <Space size={4}>
-                经验要求
+                我的经验
                 <Tag color="blue">采集后筛选</Tag>
               </Space>
             }
-            extra="填你自己的经验；与它没有重叠的岗位会被筛掉"
+            extra="与它没有重叠的岗位会被筛掉"
           >
             <Input placeholder="例如：3-5 年" style={{ width: 180 }} />
           </Form.Item>
@@ -326,11 +381,11 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
             name="education"
             label={
               <Space size={4}>
-                学历要求
+                我的学历
                 <Tag color="blue">采集后筛选</Tag>
               </Space>
             }
-            extra="填你自己的学历；要求高于它的岗位会被筛掉"
+            extra="要求高于它的岗位会被筛掉"
           >
             <Input placeholder="例如：本科" style={{ width: 180 }} />
           </Form.Item>
@@ -390,6 +445,36 @@ export default function CollectPanel({ disabled, onStarted, collectTask }: Props
               <Typography.Text strong>没有</Typography.Text>
               按它们筛选；结果里可能包含不满足这些条件的岗位。关键词、城市与翻页正常生效。
             </Typography.Paragraph>
+          }
+        />
+      )}
+
+      {/* 站点侧筛选的账目：**哪几条真的生效了**，以及**哪几条没能生效**。后端早就把这两笔账
+          写进了批次配置，一直没在界面上露面——那等于记了账不给看。 */}
+      {siteFiltered && (
+        <Alert
+          className="apply-collect-site-filtered"
+          type={siteFiltered.unapplied.length > 0 ? "warning" : "success"}
+          showIcon
+          message={
+            siteFiltered.applied.length > 0
+              ? `招聘网站已按这些条件筛掉不符合的岗位：${siteFiltered.applied.join("、")}`
+              : "有筛选条件没能生效"
+          }
+          description={
+            siteFiltered.unapplied.length > 0 ? (
+              <Typography.Text type="danger">
+                这些条件本次
+                <Typography.Text strong>没有生效</Typography.Text>：
+                {siteFiltered.unapplied.join("、")}
+                ——编码没能在站点当前的清单里核对上，所以没有发出去（发一个对不上的编码，
+                网站会照常返回结果，你会以为筛过了）。点上面「重新读取」刷新清单后再试。
+              </Typography.Text>
+            ) : (
+              <Typography.Text type="secondary">
+                网站在搜索时就完成了这些筛选，所以结果里不会有不符合的岗位。
+              </Typography.Text>
+            )
           }
         />
       )}

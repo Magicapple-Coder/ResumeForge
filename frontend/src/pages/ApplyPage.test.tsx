@@ -30,6 +30,7 @@ const apiMocks = vi.hoisted(() => ({
   createCollectTask: vi.fn(),
   listSites: vi.fn(),
   getSiteHealth: vi.fn(),
+  getCollectFilterOptions: vi.fn(),
 }));
 
 vi.mock("../api/apply", () => ({
@@ -108,6 +109,7 @@ const COLLECT_CONFIG: CollectConfigOut = {
   experience: "",
   education: "",
   job_type: "",
+  filters: {},
   per_task_limit: 20,
   interval_seconds: 6,
   interval_jitter_seconds: 3,
@@ -117,6 +119,7 @@ const COLLECT_CONFIG: CollectConfigOut = {
     salary_min: null,
     experience: "",
     education: "",
+    filters: {},
     job_type: "",
     per_task_limit: 20,
     interval_seconds: 6,
@@ -135,6 +138,7 @@ beforeEach(() => {
   apiMocks.listSites.mockResolvedValue(SITES);
   // 站点健康度：本文件不测 degraded 标记，给一份"无告警"的空列表即可（当前站点会被判为 ok）。
   apiMocks.getSiteHealth.mockResolvedValue({ sites: [] });
+  apiMocks.getCollectFilterOptions.mockResolvedValue({ groups: [] });
 });
 
 afterEach(() => {
@@ -210,6 +214,49 @@ describe("ApplyPage", () => {
     fireEvent.click(stop);
 
     await waitFor(() => expect(apiMocks.stopTask).toHaveBeenCalledWith(7));
+  });
+
+  it("returns to the console mid-collection and still shows the collect progress", async () => {
+    // 用户开始采集后切走，再回到投递台——这条路径背后是后端 `/tasks/current`。
+    // 它曾经写死只认投递批次，于是采集批次在界面上"不存在"：进度面板空着，暂停按钮也没有。
+    apiMocks.getCurrentTask.mockResolvedValue({
+      ...runningTask(),
+      kind: "collect",
+      total: 30,
+      processed: 12,
+      succeeded: 12,
+    });
+    apiMocks.getCollectTaskDetail.mockResolvedValue(
+      detail({ kind: "collect", total: 30, processed: 12, succeeded: 12 }),
+    );
+
+    render(
+      <AntdApp>
+        <ApplyPage />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText("采集批次", {}, { timeout: 20_000 })).toBeInTheDocument();
+    expect(screen.getByText(/已处理/)).toBeInTheDocument();
+    // 采集跑到一半也必须能暂停——用户可能刚发现关键词写错了。
+    expect(screen.getByRole("button", { name: /暂停/ })).toBeEnabled();
+    expect(apiMocks.getCollectTaskDetail).toHaveBeenCalledWith(7);
+  });
+
+  it("pauses and resumes a running collect batch from the console", async () => {
+    apiMocks.getCurrentTask.mockResolvedValue({ ...runningTask(), kind: "collect" });
+    apiMocks.getCollectTaskDetail.mockResolvedValue(detail({ kind: "collect" }));
+    apiMocks.pauseTask.mockResolvedValue({ ...runningTask(), kind: "collect", status: "paused" });
+
+    render(
+      <AntdApp>
+        <ApplyPage />
+      </AntdApp>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /暂停/ }, { timeout: 20_000 }));
+
+    await waitFor(() => expect(apiMocks.pauseTask).toHaveBeenCalledWith(7));
   });
 
   it("raises a prominent banner when the batch is circuit-breaker paused", async () => {

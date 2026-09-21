@@ -68,6 +68,12 @@ export default function BrowserStatusBar() {
   const running = state === "running";
   // 标签页被用户关掉或跳走时用它把招聘网站找回来，不必重启浏览器。
   const canOpenSite = running && Boolean(data?.entry_url);
+  // 只有**本次运行**拉起的窗口才关得掉：后端重启会丢掉进程句柄，而应用只关自己拉起的
+  // 进程，绝不按 PID 去猜（见 browser_manager.stop）。这种窗口照样能用，只是要用户自己关。
+  const canStop = Boolean(data?.owned) && (running || state === "starting");
+  // 关不掉时得把原因**写在页面上**，不能只挂在悬停提示里：antd 的 Tooltip 不会特殊处理
+  // 禁用子元素，而浏览器不给 disabled 按钮派发鼠标事件——悬停上去什么都不会弹。
+  const adopted = Boolean(data) && !data?.owned && (running || state === "starting");
 
   return (
     <div className="apply-browser-bar">
@@ -110,7 +116,7 @@ export default function BrowserStatusBar() {
           <Button
             icon={<StopOutlined />}
             loading={busy}
-            disabled={!running && state !== "starting"}
+            disabled={!canStop}
             onClick={() => void handleStop()}
           >
             关闭浏览器
@@ -135,6 +141,16 @@ export default function BrowserStatusBar() {
         或验证码；登录态由浏览器自己保留，下次启动无需重复登录。若你把标签页关掉或跳到了别处，
         点「打开招聘网站」即可找回来，不用重启浏览器。
       </Typography.Paragraph>
+
+      {adopted && (
+        <Typography.Paragraph type="secondary" className="apply-browser-hint">
+          这个窗口是<Typography.Text strong>上一次运行</Typography.Text>
+          打开的，应用重启时丢掉了它的进程句柄，因此
+          <Typography.Text strong>关不掉它</Typography.Text>
+          ——应用只关自己启动的窗口，不按进程号去猜（免得误关你自己的浏览器）。直接关闭那个窗口即可，
+          <Typography.Text strong>采集与投递不受影响</Typography.Text>。
+        </Typography.Paragraph>
+      )}
 
       {data?.logged_in_hint && (
         <Alert type="info" showIcon message={data.logged_in_hint} style={{ marginTop: 8 }} />

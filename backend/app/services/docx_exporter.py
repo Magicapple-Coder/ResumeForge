@@ -241,7 +241,7 @@ def _build_document(
                 layout=layout,
             )
             if project.tech_stack:
-                _meta_line(doc, f"技术栈：{'、'.join(project.tech_stack)}", base=base, layout=layout)
+                _meta_line(doc, f"技术栈/工具：{'、'.join(project.tech_stack)}", base=base, layout=layout)
             _bullets(doc, project.description, base=base)
             _bullets(doc, project.highlights, base=base)
 

@@ -2,19 +2,23 @@
 import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ApplyRecord, ApplyTaskDetail } from "../../types";
+import type { ApplyRecord, ApplyRecordBatch, ApplyTaskDetail } from "../../types";
 import { formatDateTime } from "../../utils/format";
 import ApplyProgressPanel from "./ApplyProgressPanel";
 import ApplyRecordsPanel from "./ApplyRecordsPanel";
 
 const apiMocks = vi.hoisted(() => ({
-  listRecords: vi.fn(),
+  listRecordBatches: vi.fn(),
   retryRecord: vi.fn(),
 }));
 
 vi.mock("../../api/apply", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/apply")>();
-  return { ...actual, listRecords: apiMocks.listRecords, retryRecord: apiMocks.retryRecord };
+  return {
+    ...actual,
+    listRecordBatches: apiMocks.listRecordBatches,
+    retryRecord: apiMocks.retryRecord,
+  };
 });
 
 const STARTED_AT = "2026-09-18T10:00:00";
@@ -81,7 +85,20 @@ function record(): ApplyRecord {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  apiMocks.listRecords.mockResolvedValue({ items: [record()], total: 1 });
+  const batch: ApplyRecordBatch = {
+    id: 7,
+    status: "completed",
+    total: 1,
+    processed: 1,
+    succeeded: 1,
+    failed: 0,
+    skipped: 0,
+    message: "投递任务已完成",
+    created_at: STARTED_AT,
+    finished_at: FINISHED_AT,
+    items: [record()],
+  };
+  apiMocks.listRecordBatches.mockResolvedValue({ items: [batch], total: 1 });
 });
 
 afterEach(cleanup);
@@ -91,15 +108,21 @@ describe("投递台本地时间", () => {
     expect(formatDateTime(FINISHED_AT)).toBe(formatDateTime(`${FINISHED_AT}Z`));
   });
 
-  it("投递记录显示转换后的完成时间", async () => {
+  it("投递记录显示转换后的完成时间（组头与展开后的记录都要转换）", async () => {
     render(
       <AntdApp>
         <ApplyRecordsPanel disabled={false} onRetried={vi.fn()} />
       </AntdApp>,
     );
 
+    // 组头上就有批次的完成时间。
     expect(await screen.findByText(formatDateTime(FINISHED_AT))).toBeInTheDocument();
     expect(screen.queryByText(FINISHED_AT)).not.toBeInTheDocument();
+
+    // 展开后记录行的"时间"列同样是转换过的。
+    fireEvent.click(screen.getByRole("button", { name: /批次 #7/ }));
+    const times = await screen.findAllByText(formatDateTime(FINISHED_AT));
+    expect(times.length).toBeGreaterThanOrEqual(2);
   });
 
   it("执行进度详情显示转换后的开始和结束时间", () => {

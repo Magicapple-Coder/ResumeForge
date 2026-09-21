@@ -47,6 +47,8 @@ interface Props {
   createOpen: boolean;
   createName: string;
   onExport: (dataset: DatasetInfo) => void;
+  /** 导出全部数据集（活动的那份 + 列表里其余每一份）。 */
+  onExportAll: () => void;
   onImport: (file: File, name: string) => void;
   onActivate: (dataset: DatasetInfo) => void;
   onOpenRename: (dataset: DatasetInfo) => void;
@@ -85,6 +87,7 @@ export default function DatasetsCard({
   createOpen,
   createName,
   onExport,
+  onExportAll,
   onImport,
   onActivate,
   onOpenRename,
@@ -110,14 +113,31 @@ export default function DatasetsCard({
             <Button icon={<PlusOutlined />} disabled={busy} onClick={onOpenCreate}>
               新建空数据集
             </Button>
-            <Button
-              icon={<DownloadOutlined />}
-              loading={exporting}
-              disabled={busy || !active}
-              onClick={() => active && onExport(active)}
-            >
-              导出当前数据集
-            </Button>
+            <Tooltip title="只导出当前这一份数据集；列表里其余几份不会进包">
+              <Button
+                icon={<DownloadOutlined />}
+                loading={exporting}
+                disabled={busy || !active}
+                onClick={() => active && onExport(active)}
+              >
+                导出当前数据集
+              </Button>
+            </Tooltip>
+            {/* 只在**确实有别的数据集**时出现：只有一份时两个按钮做的事一模一样，多一个
+                选择只是噪声。它出现本身也是一个提示——"你还有别的数据集，默认那个按钮
+                不会把它们装进去"。 */}
+            {datasets.length > 1 && (
+              <Tooltip title="当前这份 + 列表里其余每一份都装进同一个备份包">
+                <Button
+                  icon={<DownloadOutlined />}
+                  loading={exporting}
+                  disabled={busy}
+                  onClick={onExportAll}
+                >
+                  导出全部数据集
+                </Button>
+              </Tooltip>
+            )}
           </Space>
         }
       >

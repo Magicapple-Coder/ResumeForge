@@ -71,6 +71,21 @@
   margin-bottom: 12px;
 }
 
+/* 队列的入口说明：与「自动采集」用同一套写法（浅色说明块 + 有序步骤），
+   用户在这个页面反馈过两次「不知道下一步做什么」，所以步骤要留得住视线。 */
+.apply-queue-flow {
+  margin-bottom: 16px;
+}
+
+.apply-queue-flow ol {
+  line-height: 1.9;
+}
+
+.apply-queue-flow-em {
+  font-weight: 600;
+  color: #1554ad;
+}
+
 /* 投递队列勾选行：覆盖 antd 默认的灰底（.ant-table-row-selected），
    换成品牌浅蓝，选中态与悬停态一致，避免"勾一下就变成一坨灰"。 */
 .apply-queue-panel .ant-table-tbody > tr.ant-table-row-selected > td,
@@ -206,6 +221,45 @@
 
 .apply-collect-records .ant-collapse-header {
   align-items: center !important;
+}
+
+/* ===== 投递记录：按批次分组 ===== */
+
+/* 每个批次是一张浅色卡片：组头可点击展开/收起，展开后是组内记录表。 */
+.apply-records-batch {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.apply-records-batch-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: #fafbfc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.apply-records-batch-head:hover {
+  background: #f3f5f8;
+}
+
+.apply-records-batch-head:focus-visible {
+  outline: 2px solid #1554ad;
+  outline-offset: -2px;
+}
+
+.apply-records-batch-stats {
+  margin-left: auto;
+}
+
+.apply-records-batch-body {
+  padding: 8px 12px 12px;
 }
 
 @media (max-width: 768px) {

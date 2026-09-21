@@ -90,11 +90,18 @@ foreach ($requiredSetting in @(
 
 # UTF-8 mode must be on before the launcher does any work, because pip 24.x
 # decodes a BOM-less requirements file with the locale codec.
+#
+# The call is matched as a *statement* (any leading whitespace) rather than as
+# "a newline immediately followed by Start-ResumeForge": the entry point wraps
+# the call in try/catch so a failure prints one clean paragraph instead of a
+# PowerShell error record, and that indents the line. Pinning the indentation
+# here would make "add a wrapper" look like "removed the call".
 $utf8Index = $launcherContent.IndexOf('$env:PYTHONUTF8')
-$startCallIndex = $launcherContent.IndexOf("`nStart-ResumeForge")
+$startCallMatch = [regex]::Match($launcherContent, '(?m)^[ \t]*Start-ResumeForge[ \t]*$')
+$startCallIndex = if ($startCallMatch.Success) { $startCallMatch.Index } else { -1 }
 Assert-LauncherTest `
     -Condition ($utf8Index -ge 0 -and $startCallIndex -gt $utf8Index) `
-    -Message "The launcher must set PYTHONUTF8 before it starts doing work, so venv creation, pip and uvicorn all inherit it."
+    -Message "The launcher must set PYTHONUTF8 before it starts doing work (and must still call Start-ResumeForge), so venv creation, pip and uvicorn all inherit it."
 
 # This is the test that would have caught the GBK failure: CI runs under a UTF-8
 # locale, so nothing there ever reproduces it.
@@ -104,6 +111,32 @@ foreach ($asciiOnlyName in @("requirements.txt", "requirements-dev.txt")) {
     Assert-LauncherTest `
         -Condition ($nonAsciiCount -eq 0) `
         -Message "$asciiOnlyName must stay pure ASCII: pip decodes it with the locale codec (cp936 on Chinese Windows) when the file has no BOM."
+}
+
+# A launcher script that contains any non-ASCII byte MUST carry a UTF-8 BOM.
+#
+# This is the rule behind "keep the launcher pure ASCII": Windows PowerShell 5.1
+# (which is what start.cmd invokes) decodes a BOM-less file with the ANSI code
+# page, so on a Chinese Windows the UTF-8 bytes of a Chinese string are read as
+# GBK. Comments then turn into mojibake, and **strings break the parse outright**
+# - measured: dropping the BOM from ResumeForge.Process.ps1 makes PS 5.1 report
+# 33 syntax errors. A BOM makes 5.1 read the file as UTF-8 and everything works.
+#
+# So the invariant is not "ASCII only" but "non-ASCII implies BOM". Checking the
+# bytes catches what a syntax check cannot: PowerShell 7 parses a BOM-less file
+# perfectly, so this defect is invisible to every pwsh-based check and to CI.
+$launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot "scripts") -Filter "*.ps1" -File)
+foreach ($source in $launcherSources) {
+    $bytes = [IO.File]::ReadAllBytes($source.FullName)
+    $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $nonAscii = @($bytes | Where-Object { $_ -gt 0x7F }).Count
+    Assert-LauncherTest `
+        -Condition ($nonAscii -eq 0 -or $hasBom) `
+        -Message "$($source.Name) contains $nonAscii non-ASCII byte(s) but has no UTF-8 BOM: PowerShell 5.1 (what start.cmd runs) would decode it with the ANSI code page and fail to parse. Add a BOM, or keep the file pure ASCII."
+    # The BOM itself is not ASCII, so it must not be the only reason the check above passes.
+    Assert-LauncherTest `
+        -Condition ($nonAscii -eq 0 -or $nonAscii -gt 3) `
+        -Message "$($source.Name) looks like a BOM-only file."
 }
 
 # start.cmd must forward its arguments; the launcher's own port-conflict message

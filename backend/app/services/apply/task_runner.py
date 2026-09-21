@@ -121,6 +121,25 @@ class StopAwareCdpClient(CdpClient):
     def drain_events(self) -> list[dict[str, Any]]:
         return self._inner.drain_events()
 
+    # 窗口可见性与标签页切换同样必须**显式转发**（可选能力，基类没有强制）：
+    # - ensure_page_visible：BOSS 对隐藏窗口（最小化 / 被遮挡 / 其他虚拟桌面）上的点击
+    #   静默忽略——不还原窗口，可信点击点了也白点，投递会在"等聊天页"上超时。
+    # - switch_to_target：点击「立即沟通」后聊天页可能开在新标签页，适配器要在快照比对
+    #   后切换过去填写与发送。
+    def ensure_page_visible(self, *, timeout_seconds: float = 8.0) -> bool:
+        self._guard()
+        ensure = getattr(self._inner, "ensure_page_visible", None)
+        if ensure is None:
+            return False
+        return ensure(timeout_seconds=timeout_seconds)
+
+    def switch_to_target(self, target_id: str) -> bool:
+        self._guard()
+        switch = getattr(self._inner, "switch_to_target", None)
+        if switch is None:
+            return False
+        return switch(target_id)
+
     def close(self) -> None:
         self._inner.close()
 

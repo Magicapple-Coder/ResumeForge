@@ -7,6 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   activateDataset: vi.fn(),
   deleteDataset: vi.fn(),
   deleteLLMConfigRecord: vi.fn(),
+  exportAllDatasets: vi.fn(),
   exportDataset: vi.fn(),
   getLLMConfig: vi.fn(),
   getReminderPopupSetting: vi.fn(),
@@ -648,6 +649,31 @@ describe("SettingsPage datasets", () => {
     await waitFor(() => expect(apiMocks.exportDataset).toHaveBeenCalledWith("main"));
     expect(click).toHaveBeenCalledOnce();
     click.mockRestore();
+  });
+
+  it("offers to export everything once there is more than one dataset", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    apiMocks.exportAllDatasets.mockResolvedValue({
+      blob: new Blob(["zip-bytes"], { type: "application/zip" }),
+      filename: "resumeforge-backup-all.zip",
+    });
+    apiMocks.listDatasets.mockResolvedValue([mainDataset, imported]);
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /导出全部数据集/ }));
+
+    await waitFor(() => expect(apiMocks.exportAllDatasets).toHaveBeenCalledOnce());
+    expect(click).toHaveBeenCalledOnce();
+    click.mockRestore();
+  });
+
+  it("hides the export-all button when there is only one dataset", async () => {
+    // 只有一份时两个按钮做的事一模一样，多一个选择只是噪声；它出现本身才是信号。
+    apiMocks.listDatasets.mockResolvedValue([mainDataset]);
+    await renderPage();
+
+    expect(await screen.findByText("主数据")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /导出全部数据集/ })).not.toBeInTheDocument();
   });
 
   it("imports a chosen archive as a new dataset without switching to it", async () => {

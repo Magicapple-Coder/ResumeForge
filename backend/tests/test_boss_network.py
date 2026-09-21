@@ -37,6 +37,7 @@ from app.services.sites.boss_network import (
     looks_like_detail,
     looks_like_search,
     parse_detail_response,
+    parse_salary_text,
     parse_search_response,
 )
 
@@ -762,3 +763,91 @@ def test_the_fields_the_local_filters_read_are_the_ones_the_api_parser_produces(
     decision = evaluate_filters(education="大专", extra=extra)
     assert decision.keep is False
     assert decision.rejected_by == ("学历",)
+
+
+# ===== 薪资文本解析（2026-09-20 真实验证发现的回归：接口只有 salaryDesc 文本，没有数字
+# 字段——不解析文本的话，薪资筛选在真实数据下从不生效，低于期望下限的岗位全部漏进来）=====
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # 真实抓包里的三种写法。
+        ("12-24K·14薪", (12000, 24000)),
+        ("500-1000元/天", (500, 1000)),  # 日薪：数字如实返回，salary_band 会识别为"判断不了"
+        ("200-250元/天", (200, 250)),
+        ("12-24K", (12000, 24000)),
+        ("1.5-2.5万", (15000, 25000)),
+        # 单位的边界。
+        ("2-3k", (2000, 3000)),
+        ("10~20千", (10000, 20000)),
+        # 读不出 → None（绝不编造）。
+        ("面议", None),
+        ("", None),
+        ("8-15万/年", None),  # 年薪口径不与月薪比较
+    ],
+)
+def test_parse_salary_text(text, expected):
+    assert parse_salary_text(text) == expected
+
+
+def test_search_response_parses_salary_from_desc_when_numeric_fields_missing():
+    """真实接口只有 `salaryDesc` 文本：extra 的数字区间要从文本解析出来。"""
+    payload = {
+        "code": 0,
+        "zpData": {
+            "jobList": [
+                {
+                    "encryptJobId": "abc",
+                    "jobName": "后端开发",
+                    "brandName": "某某科技",
+                    "salaryDesc": "12-24K·14薪",
+                    "jobExperience": "3-5年",
+                    "jobDegree": "本科",
+                    "jobType": 0,
+                },
+                {
+                    "encryptJobId": "def",
+                    "jobName": "后端开发实习生",
+                    "brandName": "某某科技",
+                    "salaryDesc": "500-1000元/天",
+                    "jobType": 4,
+                },
+            ]
+        },
+    }
+
+    parsed = parse_search_response(payload)
+
+    assert parsed is not None
+    assert parsed[0]["extra"]["salary_low"] == 12000
+    assert parsed[0]["extra"]["salary_high"] == 24000
+    assert parsed[0]["extra"]["job_type_code"] == 0
+    # 日薪岗位：数字如实带上（上层按"单位不同"处理），编码 4=实习。
+    assert parsed[1]["extra"]["salary_low"] == 500
+    assert parsed[1]["extra"]["salary_high"] == 1000
+    assert parsed[1]["extra"]["job_type_code"] == 4
+
+
+def test_numeric_salary_fields_still_win_over_text():
+    """将来站点若恢复数字字段，数字优先、文本只是兜底。"""
+    payload = {
+        "code": 0,
+        "zpData": {
+            "jobList": [
+                {
+                    "encryptJobId": "abc",
+                    "jobName": "后端开发",
+                    "salaryDesc": "1-2K",
+                    "lowSalary": 20000,
+                    "highSalary": 30000,
+                }
+            ]
+        },
+    }
+
+    parsed = parse_search_response(payload)
+
+    assert parsed is not None
+    assert parsed[0]["extra"]["salary_low"] == 20000
+    assert parsed[0]["extra"]["salary_high"] == 30000

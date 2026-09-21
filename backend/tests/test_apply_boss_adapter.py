@@ -129,6 +129,7 @@ def test_salary_experience_education_are_locally_filtered_instead_of_unmapped():
     以前这三项一律标「未生效」，用户以为自己填的条件被丢掉了。现在它们真的会生效，
     只是生效的位置从"查询参数"换成了"采集后的本地筛选"（见 ``collect_filters``）。
     适配器要**声明**这件事，否则采集器不知道可以按接口字段筛。
+    岗位类型同理：原始编码来自列表接口（``extra["job_type_code"]``）。
     """
     adapter = BossAdapter()
     query = CollectQuery(keywords=["后端"], salary_min=20, experience="3-5年", education="本科")
@@ -136,9 +137,31 @@ def test_salary_experience_education_are_locally_filtered_instead_of_unmapped():
     # 不再有"未生效"的条件——真的没有条件被丢掉了。
     assert adapter.unmapped_conditions(query) == []
     assert adapter.unmapped_conditions(CollectQuery(keywords=["后端"], city="北京")) == []
-    # 声明了这三项，采集器才会执行本地筛选。
-    assert adapter.post_filter_conditions == ("薪资", "经验", "学历")
+    # 声明了这四项，采集器才会执行本地筛选。
+    assert adapter.post_filter_conditions == ("薪资", "经验", "学历", "岗位类型")
     assert adapter.requires_resume is False
+
+
+@pytest.mark.parametrize(
+    ("job_type", "expected_param"),
+    [
+        ("实习", "jobType=1902"),
+        ("社招", "jobType=1901"),
+        # 校招在 BOSS 官方筛选里没有对应档（校招是独立专区）——不传参数，
+        # 由采集后的本地筛选按接口编码判定。
+        ("校招", None),
+        ("", None),
+    ],
+)
+def test_job_type_maps_to_official_site_param(job_type, expected_param):
+    """实习/社招映射到站点官方 jobType 参数（真实实测的编码）；校招不映射。"""
+    adapter = BossAdapter()
+    url = adapter.build_search_url(CollectQuery(keywords=["后端"], city="北京", job_type=job_type), 1)
+    assert "query=%E5%90%8E%E7%AB%AF" in url
+    if expected_param is None:
+        assert "jobType" not in url
+    else:
+        assert expected_param in url
 
 
 def test_an_adapter_without_the_capability_still_reports_conditions_as_unmapped():
@@ -521,13 +544,22 @@ def test_fill_and_submit_success_sends_the_greeting():
     adapter = BossAdapter()
     client = ScriptedCdpClient(
         {
-            "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
-            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
-            "rf:form-controls": json.dumps({"controls": []}),
-            "rf:greeting-state": {"found": True, "required": True, "url": "u", "title": "t"},
+            "rf:entry-rect": {
+                "found": True, "matched": 1, "label": "立即沟通",
+                "x": 500, "y": 200, "width": 120, "height": 40,
+                "url": "u", "title": "t",
+            },
+            "rf:chat-state": {
+                "on_chat": True, "input_found": True, "found": True,
+                "kind": "contenteditable", "url": "u", "title": "聊天",
+            },
             "rf:fill-greeting": {"ok": True, "value": "您好，很感兴趣。"},
-            "rf:click-send": {"ok": True, "label": "发送"},
-            "rf:submit-state": {"success": True, "url": "u", "title": "t"},
+            "rf:send-rect": {
+                "found": True, "disabled": False, "label": "发送",
+                "x": 900, "y": 700, "width": 60, "height": 36,
+                "url": "u", "title": "聊天",
+            },
+            "rf:submit-state": {"success": True, "url": "u", "title": "聊天"},
         }
     )
 
@@ -536,16 +568,20 @@ def test_fill_and_submit_success_sends_the_greeting():
     assert outcome.success is True
     assert outcome.greeting_sent == "您好，很感兴趣。"
     assert any("rf:fill-greeting" in expression for expression in client.expressions)
+    # 现版链路用可信鼠标事件点击，不再发合成 click 探针。
+    assert not any("rf:click-apply" in e or "rf:click-send" in e
+                   for e in client.expressions)
 
 
 def test_fill_and_submit_blocks_when_a_required_greeting_is_empty():
     adapter = BossAdapter()
     client = ScriptedCdpClient(
         {
-            "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
-            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
-            "rf:form-controls": json.dumps({"controls": []}),
-            "rf:greeting-state": {"found": True, "required": True, "url": "u", "title": "t"},
+            "rf:entry-rect": {
+                "found": True, "matched": 1, "label": "立即沟通",
+                "x": 500, "y": 200, "width": 120, "height": 40,
+                "url": "u", "title": "t",
+            },
         }
     )
 
@@ -559,12 +595,21 @@ def test_fill_and_submit_propagates_a_captcha_at_submit():
     adapter = BossAdapter()
     client = ScriptedCdpClient(
         {
-            "rf:apply-entry": {"found": True, "matched": 1, "url": "u", "title": "t"},
-            "rf:click-apply": {"ok": True, "url": "u", "title": "t"},
-            "rf:form-controls": json.dumps({"controls": []}),
-            "rf:greeting-state": {"found": True, "required": False, "url": "u", "title": "t"},
+            "rf:entry-rect": {
+                "found": True, "matched": 1, "label": "立即沟通",
+                "x": 500, "y": 200, "width": 120, "height": 40,
+                "url": "u", "title": "t",
+            },
+            "rf:chat-state": {
+                "on_chat": True, "input_found": True, "found": True,
+                "kind": "contenteditable", "url": "u", "title": "聊天",
+            },
             "rf:fill-greeting": {"ok": True, "value": "您好"},
-            "rf:click-send": {"ok": True, "label": "发送"},
+            "rf:send-rect": {
+                "found": True, "disabled": False, "label": "发送",
+                "x": 900, "y": 700, "width": 60, "height": 36,
+                "url": "u", "title": "聊天",
+            },
             "rf:submit-state": {"captcha": True, "url": "u", "title": "t"},
         }
     )

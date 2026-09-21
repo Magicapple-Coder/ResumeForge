@@ -33,7 +33,7 @@ from ...schemas.job import RECOGNITION_SOURCE_COLLECT
 from .. import trash
 from ..candidate_jobs import find_staged_candidate, stage_candidate_job
 from ..job_service import find_job_by_identity, refresh_job_keywords
-from ..sites.base import CollectQuery, SearchResult, SiteAdapter, SiteFailure
+from ..sites.base import CollectQuery, FilterResolution, SearchResult, SiteAdapter, SiteFailure
 from .collect_filters import FilterTally, evaluate_filters
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,18 @@ class Collector:
         """
         report = CollectReport()
         limit = config.per_task_limit
+        # 站点侧筛选：**整个批次只解析一次**——校验编码要读一次站点清单，逐页重复读没有意义。
+        # 解析不出来（站点改版 / 清单读不到）时按"这次没筛"如实记账，绝不发未经校验的编码：
+        # 旧编码在站点看来同样"合法"，发出去会静默筛错，比不筛更糟。
+        site_filters = FilterResolution()
+        if not backfill_job_ids:
+            # **补详情模式不解析站点筛选**：它是按用户点名的岗位逐个打开详情，不走搜索，
+            # 筛选条件在这里没有任何作用；照解析一遍就可能为它白开一次搜索页。
+            try:
+                site_filters = adapter.prepare_collect_filters(config.filters, client)
+            except Exception:  # noqa: BLE001 - 读清单失败不该让整次采集失败
+                logger.warning("解析站点筛选条件失败，本次不按站点条件筛选", exc_info=True)
+                site_filters = FilterResolution(unapplied=list(config.filters or {}))
         query = CollectQuery(
             keywords=list(config.keywords),
             city=config.city,
@@ -104,6 +116,7 @@ class Collector:
             experience=config.experience,
             education=config.education,
             job_type=config.job_type,
+            filters=dict(site_filters.params),
         )
         unmapped: set[str] = set()
         tally = FilterTally()
@@ -168,6 +181,7 @@ class Collector:
                         salary_min=query.salary_min if "薪资" in declared else None,
                         experience=query.experience if "经验" in declared else "",
                         education=query.education if "学历" in declared else "",
+                        job_type=query.job_type if "岗位类型" in declared else "",
                         extra=result.extra,
                     )
                     tally.unapplied.update(decision.unapplied)
@@ -233,6 +247,7 @@ class Collector:
             "薪资": query.salary_min is not None,
             "经验": bool(query.experience),
             "学历": bool(query.education),
+            "岗位类型": bool(query.job_type),
         }
         applied_filters = [
             condition
@@ -248,6 +263,12 @@ class Collector:
             summary["filter_undecided"] = sorted(tally.undecided)
             summary["filter_undecided_count"] = tally.undecided_count
             summary["filter_unapplied"] = sorted(tally.unapplied)
+        if site_filters.applied or site_filters.unapplied:
+            # 站点侧筛选的账目：**生效了哪几条**（站点在接口侧就筛掉了，用户能少翻很多页）、
+            # **哪几条没能生效**。后者必须说出来——用户选了「公司规模：1000人以上」却拿到
+            # 各种规模的岗位，唯一能解释这件事的就是这句话。
+            summary["site_filter_applied"] = list(site_filters.applied)
+            summary["site_filter_unapplied"] = list(site_filters.unapplied)
         if summary:
             task.config = {**(task.config or {}), **summary}
         # 进度口径只能有一处实现（搜索算 collected、补详情算 backfilled）。此前收尾又按搜索口径

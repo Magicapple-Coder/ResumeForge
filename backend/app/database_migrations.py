@@ -71,6 +71,19 @@ def is_unversioned_legacy_database(bind: Engine) -> bool:
         return MigrationContext.configure(connection).get_current_revision() is None
 
 
+def snapshot_sqlite_file(source: Path, destination: Path) -> None:
+    """把一个 SQLite 文件按 ``sqlite3.backup`` 复制成一致快照。
+
+    导出活动数据集、导出其余数据集、迁移前备份都走这一份实现：三处各写一遍的下场是
+    某一处忘了关闭连接，备份文件在 Windows 上一直被占着，调用方既删不掉也替换不了。
+    """
+    # sqlite3 连接的上下文管理器只提交事务、不关闭连接；这里必须显式关闭。
+    with closing(sqlite3.connect(source)) as source_db:
+        with closing(sqlite3.connect(destination)) as target_db:
+            source_db.backup(target_db)
+            target_db.commit()
+
+
 def backup_sqlite_database(bind: Engine, output_dir: Path | None = None) -> Path | None:
     """Create a consistent SQLite backup and return its path.
 
@@ -85,12 +98,7 @@ def backup_sqlite_database(bind: Engine, output_dir: Path | None = None) -> Path
     destination_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     destination = destination_dir / f"{source.stem}-{timestamp}{source.suffix or '.db'}"
-    # sqlite3 连接的上下文管理器只提交事务、不关闭连接；不显式关闭会让备份文件在
-    # Windows 上一直被占用，调用方既删不掉也替换不了它。
-    with closing(sqlite3.connect(source)) as source_db:
-        with closing(sqlite3.connect(destination)) as backup_db:
-            source_db.backup(backup_db)
-            backup_db.commit()
+    snapshot_sqlite_file(source, destination)
     logger.info("SQLite 备份已创建 path=%s", destination)
     return destination
 

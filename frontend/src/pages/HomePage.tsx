@@ -442,7 +442,7 @@ export default function HomePage() {
           全局搜索
         </Typography.Title>
         <Input.Search
-          placeholder="搜索岗位、简历，或内推、提醒、面经、台账、资料、技能，如：后端开发 / 字节跳动"
+          placeholder="搜索岗位、简历，或内推、提醒、面经、台账、资料、技能，如：市场营销 / 财务会计"
           enterButton="搜索"
           size="large"
           loading={searching}

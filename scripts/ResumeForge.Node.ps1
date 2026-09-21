@@ -1,4 +1,4 @@
-# ResumeForge launcher: Node.js/npm discovery and bootstrap.
+﻿# ResumeForge launcher: Node.js/npm discovery and bootstrap.
 
 function Get-NodeVersion {
     param([string]$NodePath)
@@ -148,7 +148,7 @@ function Try-InstallNodeWithWinget {
             return $false
         }
 
-        Write-Host "A compatible Node.js/npm runtime was not found. Trying a per-user installation through Windows winget..."
+        Write-Host "没有找到可用的 Node.js/npm，正在尝试用 Windows 自带的 winget 为当前用户安装..."
         & $wingetPath install `
             --id OpenJS.NodeJS.LTS `
             --exact `
@@ -160,7 +160,7 @@ function Try-InstallNodeWithWinget {
             --accept-package-agreements *> $null
         $wingetExitCode = $LASTEXITCODE
         if ($wingetExitCode -ne 0) {
-            Write-Warning "winget could not install Node.js (exit code $wingetExitCode). Trying the verified portable runtime."
+            Write-Warning "winget 装不上 Node.js（退出码 $wingetExitCode），改用经过校验的便携版运行时。"
             return $false
         }
 
@@ -168,7 +168,7 @@ function Try-InstallNodeWithWinget {
         return $true
     }
     catch {
-        Write-Warning "Could not use winget to install Node.js: $($_.Exception.Message)"
+        Write-Warning "winget 无法用来安装 Node.js：$($_.Exception.Message)"
         return $false
     }
 }
@@ -192,7 +192,9 @@ function Get-NodeBootstrapPackage {
         }
     }
 
-    throw "Windows architecture '$architecture' is not supported by the portable Node.js fallback. Enable winget or install Node.js $MinimumNodeVersion or later manually from https://nodejs.org/."
+    throw ("当前 Windows 架构（$architecture）没有随附的便携版 Node.js。`n" +
+            "怎么办：到 https://nodejs.org/ 手动安装 Node.js $MinimumNodeVersion 或更新版本，`n" +
+            "装好后重新双击 start.cmd。")
 }
 
 function Get-NodeBootstrapUrls {
@@ -230,7 +232,7 @@ function Install-PortableNodeRuntime {
     $stagingDirectory = Join-Path $NodeToolsDirectory ("node-bootstrap-" + [Guid]::NewGuid().ToString("N"))
 
     try {
-        Write-Host "Downloading the verified portable Node.js $NodeBootstrapVersion runtime (about 37 MB)..."
+        Write-Host "正在下载经过校验的便携版 Node.js $NodeBootstrapVersion 运行时（约 37 MB）..."
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         }
@@ -260,7 +262,7 @@ function Install-PortableNodeRuntime {
             catch {
                 $downloadError = "$candidateUrl failed: $($_.Exception.Message)"
                 Remove-Item -LiteralPath $temporaryArchive -Force -ErrorAction SilentlyContinue
-                Write-Warning "Could not download Node.js from $candidateUrl. Trying the next source..."
+                Write-Warning "从 $candidateUrl 下载 Node.js 失败，换下一个源..."
                 continue
             }
 
@@ -277,7 +279,13 @@ function Install-PortableNodeRuntime {
             break
         }
         if ($null -ne $downloadError) {
-            throw "Could not download the Node.js runtime from any source. Check the network or proxy settings. $downloadError"
+            throw ("所有下载源都没能拿到 Node.js 运行时。`n" +
+            "可能原因：网络不通、公司代理、或安全软件拦截了下载。`n" +
+            "怎么办：`n" +
+            "  1) 用浏览器打开 https://mirrors.huaweicloud.com/nodejs/ 确认能否访问；`n" +
+            "  2) 需要代理时，先在 PowerShell 里设好 `$env:HTTP_PROXY / `$env:HTTPS_PROXY 再重试；`n" +
+            "  3) 也可以自己到 https://nodejs.org/ 装好 Node.js $MinimumNodeVersion 或更新版本后重新双击 start.cmd。`n" +
+            "原始错误：$downloadError")
         }
 
         New-Item -ItemType Directory -Path $stagingDirectory -Force | Out-Null
@@ -286,7 +294,7 @@ function Install-PortableNodeRuntime {
         $extractedNodePath = Join-Path $extractedDirectory "node.exe"
         $extractedNpmPath = Join-Path $extractedDirectory "npm.cmd"
         if (-not (Test-NodeRuntimeCandidate -NodePath $extractedNodePath -NpmPath $extractedNpmPath)) {
-            throw "The verified Node.js archive did not contain a usable Node.js/npm runtime."
+            throw "下载到的 Node.js 压缩包里没有可用的 node/npm，可能下载不完整。请重试，或手动安装 Node.js $MinimumNodeVersion 或更新版本。"
         }
 
         if (Test-Path -LiteralPath $portableDirectory) {
@@ -314,19 +322,26 @@ function Ensure-NodeRuntime {
         if ($null -ne $nodeRuntime) {
             return $nodeRuntime
         }
-        Write-Warning "winget reported success, but this process still cannot find compatible Node.js/npm. Trying the portable runtime."
+        Write-Warning "winget 报告安装成功，但当前进程仍然找不到可用的 Node.js/npm，改用便携版运行时。"
     }
 
     try {
         Install-PortableNodeRuntime
     }
     catch {
-        throw "Unable to prepare Node.js/npm automatically: $($_.Exception.Message) If network or system policy prevents this, install Node.js $MinimumNodeVersion or later from https://nodejs.org/ and run start.cmd again."
+        throw ("无法自动准备 Node.js/npm：$($_.Exception.Message)`n" +
+            "怎么办：`n" +
+            "  1) 确认能打开 https://nodejs.org/（国内可用 https://mirrors.huaweicloud.com/nodejs/）；`n" +
+            "  2) 手动安装 Node.js $MinimumNodeVersion 或更新版本；`n" +
+            "  3) 装完关掉这个窗口，重新双击 start.cmd。")
     }
 
     $nodeRuntime = Find-SystemNodeRuntime
     if ($null -eq $nodeRuntime) {
-        throw "The Node.js setup finished, but no compatible Node.js/npm runtime was found. Restart start.cmd; if it still fails, install Node.js $MinimumNodeVersion or later manually."
+        throw ("Node.js 安装流程跑完了，但系统里仍然找不到可用的 Node.js/npm。`n" +
+            "怎么办：`n" +
+            "  1) 关掉这个窗口，重新双击 start.cmd（安装后需要新进程才能看到新装的 Node.js）；`n" +
+            "  2) 仍失败：到 https://nodejs.org/ 手动安装 Node.js $MinimumNodeVersion 或更新版本。")
     }
     return $nodeRuntime
 }

@@ -79,7 +79,7 @@ export default function ProfileTextModal({
         maxLength={100_000}
         showCount
         placeholder={
-          "例如：\n姓名：张三\n教育经历\n天津工业大学｜软件工程｜本科｜2022.09-2026.06\n项目经历\n简历通｜核心开发｜Python、FastAPI"
+          "例如：\n姓名：张三\n教育经历\n示例大学｜市场营销｜本科｜2022.09-2026.06\n项目经历\n校园招聘会策划｜负责人｜活动策划、渠道对接"
         }
         autoSize={{ minRows: 14, maxRows: 24 }}
       />

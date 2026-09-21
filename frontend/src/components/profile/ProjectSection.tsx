@@ -42,7 +42,7 @@ export function ProjectSection({ editable }: Props) {
           </Col>
           <Col xs={24} md={8}>
             <Form.Item name={[field.name, "role"]} label="担任角色">
-              <Input placeholder="如：核心开发" />
+              <Input placeholder="如：项目负责人" />
             </Form.Item>
           </Col>
           <Col xs={12} md={4}>
@@ -56,8 +56,8 @@ export function ProjectSection({ editable }: Props) {
             </Form.Item>
           </Col>
           <Col xs={24}>
-            <Form.Item name={[field.name, "tech_stack"]} label="技术栈">
-              <Input placeholder="逗号分隔，如：Python, FastAPI, React" />
+            <Form.Item name={[field.name, "tech_stack"]} label="技术栈 / 工具 / 方法">
+              <Input placeholder="逗号分隔，如：Excel, SQL, 用户调研" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>

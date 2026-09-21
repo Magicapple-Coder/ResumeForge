@@ -1,5 +1,6 @@
 /** 设置相关接口。 */
 import type {
+  DatasetImportResult,
   DatasetInfo,
   LLMApiKeyRevealResult,
   LLMConfig,
@@ -88,7 +89,7 @@ export function createDataset(name: string): Promise<DatasetInfo> {
 }
 
 /** 把备份包导入为一份**新数据集**；不触碰当前正在使用的数据。 */
-export async function importDataset(file: File, name: string): Promise<DatasetInfo> {
+export async function importDataset(file: File, name: string): Promise<DatasetImportResult> {
   const resp = await fetch(`/api/settings/datasets/import?name=${encodeURIComponent(name)}`, {
     method: "POST",
     // 必须写死 application/zip：浏览器按系统映射给出的 File.type 不可靠，而这个
@@ -97,7 +98,7 @@ export async function importDataset(file: File, name: string): Promise<DatasetIn
     body: file,
   });
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
-  return (await resp.json()) as DatasetInfo;
+  return (await resp.json()) as DatasetImportResult;
 }
 
 export function activateDataset(id: string): Promise<DatasetInfo> {
@@ -114,8 +115,22 @@ export function deleteDataset(id: string): Promise<void> {
 
 /** 导出指定数据集（不含大模型 API Key）。 */
 export async function exportDataset(id: string): Promise<{ blob: Blob; filename: string }> {
+  return downloadArchive(`/api/settings/datasets/${id}/export`);
+}
+
+/**
+ * 导出**全部数据集**：当前活动的那份 + 列表里其余每一份。
+ *
+ * 与 `exportDataset` 的区别是"包里有没有其余数据集"。默认的导出只带当前这一份——多份
+ * 数据集的用户如果按默认方式备份，其余几份不会进包，而这种事通常要到需要恢复时才发现。
+ */
+export async function exportAllDatasets(): Promise<{ blob: Blob; filename: string }> {
+  return downloadArchive("/api/settings/datasets/export-all");
+}
+
+async function downloadArchive(url: string): Promise<{ blob: Blob; filename: string }> {
   // 走裸 fetch 而不是 request()：这个响应是二进制压缩包，不是 JSON。
-  const resp = await fetch(`/api/settings/datasets/${id}/export`);
+  const resp = await fetch(url);
   if (!resp.ok) throw new ApiError(await extractError(resp), resp.status);
   return {
     blob: await resp.blob(),

@@ -10,6 +10,7 @@ import {
   updateKnowledge,
 } from "../api/knowledge";
 import { RowActions, RowContextMenu } from "../components/common/RowActions";
+import { DetailTrigger } from "../components/common/RecordDetail";
 import KnowledgeFormModal from "../components/knowledge/KnowledgeFormModal";
 import { AssistantMessageContent } from "../features/assistant/components/AssistantMessageContent";
 import type { Knowledge, KnowledgePayload } from "../types";
@@ -186,39 +187,44 @@ export default function KnowledgePage() {
             const { primary, more, all } = actionsFor(entry);
             return (
               <RowContextMenu key={entry.id} items={all}>
-                <Card size="small" className="knowledge-card">
-                  <div className="knowledge-card-head">
-                    <Tag color="blue">{entry.category}</Tag>
-                    <RowActions primary={primary} more={more} />
-                  </div>
-                  <Typography.Title level={5} ellipsis={{ tooltip: entry.title }}>
-                    {entry.title}
-                  </Typography.Title>
-                  {entry.tags.length > 0 && (
-                    <Space size={4} wrap className="knowledge-card-tags">
-                      {entry.tags.map((tag) => (
-                        <Tag key={tag}>{tag}</Tag>
-                      ))}
-                    </Space>
-                  )}
-                  {entry.content && (
-                    <Typography.Paragraph
-                      type="secondary"
-                      ellipsis={{ rows: 3 }}
-                      className="knowledge-card-content"
-                    >
-                      {entry.content}
-                    </Typography.Paragraph>
-                  )}
-                  <div className="knowledge-card-meta">
-                    {entry.source && (
-                      <Typography.Text type="secondary">{entry.source}</Typography.Text>
+                <DetailTrigger
+                  label={`打开知识条目「${entry.title}」的详情`}
+                  onOpen={() => setViewing(entry)}
+                >
+                  <Card size="small" className="knowledge-card">
+                    <div className="knowledge-card-head">
+                      <Tag color="blue">{entry.category}</Tag>
+                      <RowActions primary={primary} more={more} />
+                    </div>
+                    <Typography.Title level={5} ellipsis={{ tooltip: entry.title }}>
+                      {entry.title}
+                    </Typography.Title>
+                    {entry.tags.length > 0 && (
+                      <Space size={4} wrap className="knowledge-card-tags">
+                        {entry.tags.map((tag) => (
+                          <Tag key={tag}>{tag}</Tag>
+                        ))}
+                      </Space>
                     )}
-                    <Typography.Text type="secondary">
-                      {formatDateTime(entry.updated_at)}
-                    </Typography.Text>
-                  </div>
-                </Card>
+                    {entry.content && (
+                      <Typography.Paragraph
+                        type="secondary"
+                        ellipsis={{ rows: 3 }}
+                        className="knowledge-card-content"
+                      >
+                        {entry.content}
+                      </Typography.Paragraph>
+                    )}
+                    <div className="knowledge-card-meta">
+                      {entry.source && (
+                        <Typography.Text type="secondary">{entry.source}</Typography.Text>
+                      )}
+                      <Typography.Text type="secondary">
+                        {formatDateTime(entry.updated_at)}
+                      </Typography.Text>
+                    </div>
+                  </Card>
+                </DetailTrigger>
               </RowContextMenu>
             );
           })}

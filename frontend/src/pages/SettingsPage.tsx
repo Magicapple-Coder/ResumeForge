@@ -7,6 +7,7 @@ import {
   createDataset,
   deleteDataset,
   deleteLLMConfigRecord,
+  exportAllDatasets,
   exportDataset,
   getLLMConfig,
   importDataset,
@@ -182,13 +183,34 @@ export default function SettingsPage() {
     }
   };
 
+  const runExportAllDatasets = async () => {
+    if (datasetExporting) return;
+    setDatasetExporting(true);
+    try {
+      const { blob, filename } = await exportAllDatasets();
+      downloadBlob(blob, filename);
+      message.success(`已把全部 ${datasets.length} 份数据集导出到浏览器的下载目录`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "导出全部数据集失败");
+    } finally {
+      setDatasetExporting(false);
+    }
+  };
+
   const importDatasetFile = async (file: File, name: string) => {
     if (datasetImporting) return;
     setDatasetImporting(true);
     try {
       const created = await importDataset(file, name);
       await loadDatasetList();
-      message.success(`已导入数据集「${created.name}」，当前数据未受影响`);
+      // "导出全部数据集"产生的包里会随行带上其余几份，导入时它们也各成一份新数据集。
+      // 只报主数据集的名字会让用户以为另外几份没被恢复。
+      const extras = created.restored_datasets?.length ?? 0;
+      message.success(
+        extras > 0
+          ? `已导入数据集「${created.name}」，并随包恢复了另外 ${extras} 份数据集；当前数据未受影响`
+          : `已导入数据集「${created.name}」，当前数据未受影响`,
+      );
     } catch (err) {
       message.error(err instanceof Error ? err.message : "导入备份失败");
     } finally {
@@ -625,6 +647,7 @@ export default function SettingsPage() {
                   createOpen={createDatasetOpen}
                   createName={createDatasetName}
                   onExport={(dataset) => void runDatasetExport(dataset)}
+                  onExportAll={() => void runExportAllDatasets()}
                   onImport={(file, name) => void importDatasetFile(file, name)}
                   onActivate={(dataset) => void switchDataset(dataset)}
                   onOpenRename={(dataset) => {

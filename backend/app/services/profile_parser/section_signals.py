@@ -10,7 +10,7 @@ def _is_project_detail_line(line: str) -> bool:
     """“技术栈：...”是项目字段，不应在项目块中误切为技能分区。"""
     return bool(
         re.match(
-            r"^(?:技术栈|技术能力|技术方案|开发工具|使用工具|"
+            r"^(?:技术栈|技术栈/工具|技术能力|技术方案|开发工具|使用工具|"
             r"tech\s+stack|technical\s+stack|technologies|technology|tech\s+skills|"
             r"development\s+tools|tools)\s*[:：]",
             line,

@@ -1,4 +1,4 @@
-# ResumeForge launcher: process probes, health checks and shared lifecycle helpers.
+﻿# ResumeForge launcher: process probes, health checks and shared lifecycle helpers.
 
 function Test-TcpPortInUse {
     param([int]$Port)
@@ -240,7 +240,7 @@ function Get-ProcessRecordMatch {
         else {
             # Records written before the Unix timestamp existed cannot be verified
             # by start time; the command line above still had to match.
-            Write-Warning "The record at $RecordPath predates start-time verification; matching on the command line only."
+            Write-Warning "记录文件 $RecordPath 早于启动时间校验；只按命令行匹配。"
         }
         return $process
     }
@@ -271,25 +271,25 @@ function Stop-RecordedProcess {
             $null
         }
         if ($null -eq $runningProcess) {
-            Write-Host "Removed stale $DisplayName record."
+            Write-Host "已清理 $DisplayName 的过期记录。"
             $removeRecord = $true
             return
         }
 
         if ($null -eq (Get-ProcessRecordMatch -RecordPath $RecordPath -CommandPattern $CommandPattern)) {
-            Write-Warning "Did not stop ${DisplayName}: its record does not match the current process."
+            Write-Warning "没有停止 ${DisplayName}：记录与当前进程对不上（可能是上一次运行留下的）。"
             return
         }
 
         & taskkill.exe /PID $processId /T /F | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw "taskkill returned exit code $LASTEXITCODE"
+            throw "taskkill 返回了退出码 $LASTEXITCODE"
         }
         $removeRecord = $true
-        Write-Host "Stopped $DisplayName."
+        Write-Host "已停止 $DisplayName。"
     }
     catch {
-        Write-Warning "Could not stop ${DisplayName}: $($_.Exception.Message)"
+        Write-Warning "无法停止 ${DisplayName}：$($_.Exception.Message)"
     }
     finally {
         if ($removeRecord) {

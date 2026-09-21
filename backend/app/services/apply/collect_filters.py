@@ -1,13 +1,26 @@
-"""采集条件的本地筛选：把"站点不支持筛选"的条件改成"采集后按岗位字段筛掉"。
+"""采集条件的本地筛选：**按"我的条件"筛掉我投不了的岗位**。
 
-**为什么不映射到查询参数**：站点把这些筛选项做成**不透明的数字编码**（形如 ``degree=202``），
-既没有官方文档、也无法在没有真机验证的情况下确认。猜错编码的后果是**静默返回错误结果**——
-比"没筛"更糟，因为用户会以为自己筛过了。所以适配器一直如实标着「未生效」。
+## 它和「站点筛选栏」是两件事，不要混
 
-而岗位列表接口本来就返回每条岗位的**学历要求、经验要求与薪资数字**，所以正确的做法是
-**采完之后按这些字段筛**：不需要编码表，而且"筛掉了几条、为什么筛"都可以如实报出来。
+2026-09-21 起，采集条件分成**两层**，各有各的语义：
 
-四条贯穿全模块的原则：
+- **站点侧筛选**（``services/sites/boss_filters.py`` + ``BossAdapter.build_search_url``）：
+  就是招聘网站筛选栏里的那几格——求职类型 / 薪资待遇 / 工作经验 / 学历要求 / 公司行业 /
+  公司规模 / 融资阶段。筛的是**"岗位要求什么"**，网站在搜索时就完成了，更快也更准。
+- **本模块**：筛的是**"我的条件够不够得上"**。用户填的是**自己的**学历 / 经验 / 期望薪资，
+  用来丢掉自己投不了的岗位（岗位要求「硕士」而我是「本科」→ 投不了 → 筛掉）。
+
+两层可以同时用，互不替代。
+
+## 为什么这一层仍然必要
+
+站点筛选栏筛的是单一岗位的某个字段，而"我够不够得上"这个判断**站点没有对应的筛选项**：
+它需要拿用户自身条件和岗位要求做比较（方向性），而站点只提供"岗位要求等于某档"。
+
+另外，这条本地路径是**站点参数失效时的兜底**：历史上 ``jobType=4`` 就不是有效参数，
+站点侧的过滤会静默失效，本地这一层仍能按接口编码把不符合的筛掉。
+
+三条贯穿全模块的原则：
 
 1. **判断不了就保留。** 字段缺失、格式不认识时**不排除**该岗位——宁可让用户多看到几条，
    也不能悄悄丢掉他真正想要的那条。这类情况会单独计数（``undecided``）并如实上报。
@@ -140,6 +153,22 @@ def salary_band(extra: dict[str, Any]) -> NumberRange | None:
 _DAILY_SALARY_CEILING = 3000
 
 
+# 岗位类型的原始编码（BOSS 接口字段 `jobType`）与用户可选岗位类型的对应关系。
+# 2026-09-20 用真实登录会话实测（`/wapi/zpgeek/search/joblist.json` 响应 + 三个筛选参数
+# 各返回 15 条逐条核对）：0=全职（社招）、4=实习、5=校招（两条校招岗均为 5，且
+# `jobExperience="在校/应届"`）、6=兼职；站点官方筛选参数只有 全职=1901 / 兼职=1903 /
+# 实习=1902（无校招档，校招是独立专区）。
+JOB_TYPE_CODE_FULL_TIME = 0
+JOB_TYPE_CODE_INTERNSHIP = 4
+JOB_TYPE_CODE_CAMPUS = 5
+# 用户岗位类型 → 期望的接口编码；None = 该类型没有可靠判据（不在字典里即如此）。
+JOB_TYPE_EXPECTED_CODES: dict[str, int] = {
+    "社招": JOB_TYPE_CODE_FULL_TIME,
+    "实习": JOB_TYPE_CODE_INTERNSHIP,
+    "校招": JOB_TYPE_CODE_CAMPUS,
+}
+
+
 @dataclass(frozen=True)
 class FilterDecision:
     """一次筛选的结论。**区分"明确不符合"、"判断不了"与"我的条件没被用上"**。
@@ -168,15 +197,19 @@ def evaluate_filters(
     salary_min: int | None = None,
     experience: str = "",
     education: str = "",
+    job_type: str = "",
     extra: dict[str, Any] | None = None,
 ) -> FilterDecision:
-    """按用户填的三项条件判断这条岗位该不该留。
+    """按用户填的条件判断这条岗位该不该留。
 
     - **学历**：岗位要求 ≤ 用户学历才留（岗位要求「硕士」而用户「本科」→ 筛掉）。
       岗位写「学历不限」按满足处理。
     - **经验**：岗位要求的区间与用户的区间**有重叠**才留。
     - **薪资**：岗位**能达到**用户期望的下限才留（岗位 10-20K、期望 ≥15K → 有交集 → 留；
       岗位 10-12K、期望 ≥15K → 筛掉）。比较的是月薪，日薪岗位判断不了。
+    - **岗位类型**：按接口返回的岗位类型编码判定（``extra["job_type_code"]``，编码表见
+      ``JOB_TYPE_EXPECTED_CODES``）。接口没给这个字段（DOM 兜底路径）时**保留**并计入
+      "未能判断"——绝不凭标题猜类型，那是"看起来像"式的误杀。
     """
     payload = extra or {}
     rejected: list[str] = []
@@ -214,6 +247,20 @@ def evaluate_filters(
             # 岗位的**上限**都到不了我的期望下限 → 没得谈。
             rejected.append("薪资")
 
+    wanted_job_type = str(job_type or "").strip()
+    if wanted_job_type:
+        expected_code = JOB_TYPE_EXPECTED_CODES.get(wanted_job_type)
+        if expected_code is None:
+            # 认不出的岗位类型词：如实报出来，绝不假装筛过了。
+            unapplied.append("岗位类型")
+        else:
+            job_type_code = payload.get("job_type_code")
+            if not isinstance(job_type_code, int) or job_type_code < 0:
+                # 接口没给编码（DOM 路径 / 结构变化）→ 判断不了 → 保留并计数。
+                undecided.append("岗位类型")
+            elif job_type_code != expected_code:
+                rejected.append("岗位类型")
+
     return FilterDecision(
         keep=not rejected,
         rejected_by=tuple(rejected),
@@ -234,6 +281,7 @@ class FilterTally:
 
 
 __all__ = [
+    "JOB_TYPE_EXPECTED_CODES",
     "FilterDecision",
     "FilterTally",
     "education_level",

@@ -110,6 +110,44 @@ def format_salary(low: Any, high: Any, months: Any = None) -> str:
     return base
 
 
+# 从接口展示文本（``salaryDesc``）里解析月薪区间的正则。真实接口（2026-09-20 实测抓包）
+# **只有文本没有数字字段**：形如 "12-24K·14薪"、"500-1000元/天"、"1.5-2.5万"。若只认数字
+# 字段（``lowSalary`` 等），薪资筛选会在真实数据下**全程落进"未能判断"而从不生效**。
+_SALARY_TEXT_K = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–—至]\s*(\d+(?:\.\d+)?)\s*[Kk千]")
+_SALARY_TEXT_WAN = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–—至]\s*(\d+(?:\.\d+)?)\s*万")
+_SALARY_TEXT_YUAN_DAY = re.compile(r"(\d+)\s*[-~–—至]\s*(\d+)\s*元/天")
+
+
+def parse_salary_text(value: Any) -> tuple[int, int] | None:
+    """把薪资展示文本折成 (下限, 上限)（单位：元/月）。
+
+    **按月返回**：K 与"万"都是月薪口径；"元/天"按字面数字返回（日薪在几百的量级，
+    ``collect_filters.salary_band`` 据此识别为"单位不同、判断不了"，不会被当成月薪）。
+    读不出的写法（含"万/年"这类年薪口径）返回 ``None``，由调用方按"未能判断"处理——
+    **绝不猜**。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if "/年" in text or "年薪" in text:
+        return None
+    match = _SALARY_TEXT_K.search(text)
+    if match is not None:
+        low = int(float(match.group(1)) * 1000)
+        high = int(float(match.group(2)) * 1000)
+        return (min(low, high), max(low, high))
+    match = _SALARY_TEXT_WAN.search(text)
+    if match is not None:
+        low = int(float(match.group(1)) * 10000)
+        high = int(float(match.group(2)) * 10000)
+        return (min(low, high), max(low, high))
+    match = _SALARY_TEXT_YUAN_DAY.search(text)
+    if match is not None:
+        low, high = int(match.group(1)), int(match.group(2))
+        return (min(low, high), max(low, high))
+    return None
+
+
 def _skill_tags(values: Any) -> list[str]:
     """技能标签去重并保序。
 
@@ -244,6 +282,19 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
             # 全空卡片同理（例如接口把列表多套了一层，每个 item 变成 `{"jobList": [...]}`）。
             untitled += 1
             continue
+        salary_low = _int_or_none(_first(item, "lowSalary", "salaryLow", "salaryMin"))
+        salary_high = _int_or_none(_first(item, "highSalary", "salaryHigh", "salaryMax"))
+        if salary_low is None or salary_high is None:
+            # 数字字段缺失是**常态**（真实接口只给展示文本 ``salaryDesc``）：从文本里
+            # 解析区间兜底，否则薪资筛选在真实数据下从不生效（2026-09-20 真实验证
+            # 发现的回归，已用真实采集复测修复）。文本也读不出时保持 None → 薪资
+            # 筛选按"未能判断"如实保留，绝不编造。
+            parsed = parse_salary_text(
+                _first(item, "salaryDesc", "salaryText", "salary") or title_salary
+            )
+            if parsed is not None:
+                salary_low = salary_low if salary_low is not None else parsed[0]
+                salary_high = salary_high if salary_high is not None else parsed[1]
         results.append(
             {
                 "title": title,
@@ -279,13 +330,14 @@ def parse_search_response(payload: Any) -> list[dict[str, Any]] | None:
                     "hr_active": _text(_first(item, "bossOnline", "recruiterOnline"))
                     == "true"
                     or _text(_first(item, "bossActiveTimeDesc", "activeDesc")),
-                    # 原始数字（元/月）：界面上的"15-25K"是格式化结果，做薪资区间筛选要原始值。
-                    "salary_low": _int_or_none(
-                        _first(item, "lowSalary", "salaryLow", "salaryMin")
-                    ),
-                    "salary_high": _int_or_none(
-                        _first(item, "highSalary", "salaryHigh", "salaryMax")
-                    ),
+                    # 原始数字（元/月）：做薪资区间筛选要原始值；真实数据下来自展示文本解析。
+                    "salary_low": salary_low,
+                    "salary_high": salary_high,
+                    # 岗位类型的**原始编码**（接口字段 `jobType`）。2026-09-20 用真实登录会话
+                    # 实测的取值：0=全职（社招）、4=实习、5=校招（实测两条校招岗均为 5，且
+                    # `jobExperience="在校/应届"`）、6=兼职。岗位类型筛选（采集后本地筛）靠它
+                    # 判定；DOM 那条路拿不到这个字段，按"判断不了就保留"处理并如实计数。
+                    "job_type_code": _int_or_none(item.get("jobType")),
                 },
             }
         )
@@ -427,6 +479,7 @@ __all__ = [
     "looks_like_detail",
     "looks_like_search",
     "parse_detail_response",
+    "parse_salary_text",
     "parse_search_response",
     "search_has_more",
 ]

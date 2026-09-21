@@ -362,7 +362,9 @@ export default function InterviewPage() {
                       form={form}
                       layout="vertical"
                       initialValues={{
-                        interviewType: "技术面",
+                        // 默认「综合面」而不是「技术面」：技术面只是其中一种类型，
+                        // 把它当默认会让非技术岗的用户每次都要先改一次。
+                        interviewType: "综合面",
                         difficulty: "中级",
                         interviewerStyle: "严谨专业",
                         rounds: 6,
@@ -413,7 +415,7 @@ export default function InterviewPage() {
                         <Form.Item
                           label="考察重点（选填）"
                           name="focus"
-                          extra="例如：Go 并发、分布式、项目取舍"
+                          extra="例如：用户增长、跨部门协作、成本控制"
                         >
                           <Input maxLength={255} placeholder="留空则按面试类型通用考察" />
                         </Form.Item>
@@ -421,7 +423,7 @@ export default function InterviewPage() {
                       <Form.Item
                         label="自定义面试官人设（选填）"
                         name="persona"
-                        extra="例如：某大厂后端团队负责人，喜欢追问性能指标与故障处理细节。优先级高于上面的默认风格。"
+                        extra="例如：某公司业务负责人，喜欢追问具体数字与落地过程。优先级高于上面的默认风格。"
                       >
                         <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} />
                       </Form.Item>

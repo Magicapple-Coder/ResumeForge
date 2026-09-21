@@ -160,7 +160,7 @@ _SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "执业医师资格证": ("医师资格证", "医师执业证"),
     "护士执业资格证": ("护士资格证", "护士执业证"),
     "法律职业资格证": ("法考证书", "法律职业资格"),
-    "注册会计师": ("cpa证书", "certified public accountant"),
+    "注册会计师": ("cpa证书", "cpa", "certified public accountant"),
     "焊工证": ("焊工资格证",),
     "电工证": ("电工资格证",),
     "数据结构": ("data structures",),

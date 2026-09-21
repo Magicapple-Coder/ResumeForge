@@ -29,6 +29,13 @@ export async function extractError(resp: Response): Promise<string> {
     if (Array.isArray(detail) && detail.length > 0) {
       return detail.map((item) => item?.msg ?? String(item)).join("；");
     }
+    // 结构化 detail：投递台的 409 就是这种形状（`{message, unanalyzed, gaps, site_unsupported…}`）。
+    // 不取 message 的话，所有走 `request()` 的调用方只能看到「请求失败（HTTP 409）」——
+    // 用户拿到的是一句没信息量的话，而真正的原因（例如"来源不支持自动投递，请先移出队列"）
+    // 就躺在响应体里。
+    if (detail && typeof detail === "object" && typeof detail.message === "string") {
+      return detail.message;
+    }
   } catch {
     // 响应体不是 JSON 时退回状态码提示
   }

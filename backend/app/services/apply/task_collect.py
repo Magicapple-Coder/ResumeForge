@@ -181,6 +181,10 @@ def collect_message(task: ApplyTask) -> str:
     skipped = int(task.skipped or 0)
     filtered = int(config.get("filtered_out") or 0)
     unapplied = config.get("filter_unapplied") or []
+    # 站点侧筛选**没能生效**的那几条。和本地筛选的"没能识别"是两回事（一个发给了站点但被
+    # 拒收，一个根本没发出去），但对用户是同一件事：**你选了这个条件，它这次没起作用**。
+    # 收尾文案是用户最先看到的一句话（完成通知里带的也是它），漏掉这句就等于静默失效。
+    site_unapplied = config.get("site_filter_unapplied") or []
 
     if succeeded > 0:
         parts = [f"采集完成：已暂存 {succeeded} 个岗位。"]
@@ -190,6 +194,11 @@ def collect_message(task: ApplyTask) -> str:
             parts.append(
                 f"注意：{'、'.join(str(item) for item in unapplied)} "
                 "这条筛选条件没能识别，本次没有生效。"
+            )
+        if site_unapplied:
+            parts.append(
+                f"注意：{'、'.join(str(item) for item in site_unapplied)} "
+                "这条站点筛选条件没能生效（编码没能在站点当前清单里核对上，没有发出去）。"
             )
         parts.append(
             "在下方「本次采集结果」里勾选要收进岗位广场的岗位，再点「导入选中的岗位」。"
@@ -209,6 +218,14 @@ def collect_message(task: ApplyTask) -> str:
                 "——想重新收进来，先去「回收站」恢复或彻底删除它"
             )
         return message
+    if config.get("site_filter_applied"):
+        # 一条都没采到、站点侧筛选又开着时，最可能的原因就是筛选太窄——而默认文案会把人
+        # 往"改关键词"上引。把已经生效的条件列出来，用户才知道该松哪一条。
+        return (
+            "采集完成：没有找到匹配的岗位。这次还按招聘网站的条件筛过"
+            f"（{'、'.join(str(item) for item in config['site_filter_applied'])}），"
+            "关键词、城市或这些筛选条件可能太窄，调整后重试"
+        )
     return "采集完成：没有找到匹配的岗位（关键词或城市可能太窄），请调整后重试"
 
 

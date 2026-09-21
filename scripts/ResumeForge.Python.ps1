@@ -1,4 +1,4 @@
-# ResumeForge launcher: Python discovery and bootstrap.
+﻿# ResumeForge launcher: Python discovery and bootstrap.
 
 function Test-PythonCandidate {
     param(
@@ -242,7 +242,7 @@ function Try-InstallPythonWithWinget {
             return $false
         }
 
-        Write-Host "Python was not found. Trying a per-user installation through Windows winget..."
+        Write-Host "没有找到 Python，正在尝试用 Windows 自带的 winget 为当前用户安装..."
         & $wingetPath install `
             --id Python.Python.3.12 `
             --exact `
@@ -253,7 +253,7 @@ function Try-InstallPythonWithWinget {
             --accept-package-agreements *> $null
         $wingetExitCode = $LASTEXITCODE
         if ($wingetExitCode -ne 0) {
-            Write-Warning "winget could not install Python (exit code $wingetExitCode). Trying the official Python installer."
+            Write-Warning "winget 装不上 Python（退出码 $wingetExitCode），改用 Python 官方安装包。"
             return $false
         }
 
@@ -261,7 +261,7 @@ function Try-InstallPythonWithWinget {
         return $true
     }
     catch {
-        Write-Warning "Could not use winget to install Python: $($_.Exception.Message)"
+        Write-Warning "winget 无法用来安装 Python：$($_.Exception.Message)"
         return $false
     }
 }
@@ -269,7 +269,11 @@ function Try-InstallPythonWithWinget {
 function Install-PythonWithOfficialInstaller {
     $architecture = Get-WindowsArchitecture
     if ($architecture -notin @("AMD64", "X64", "X86_64")) {
-        throw "Windows architecture '$architecture' is not supported by the bundled fallback installer (x64 only). Enable winget or install Python $(Format-PythonWindow) manually from https://www.python.org/downloads/windows/."
+        throw ("当前 Windows 架构（$architecture）没有随附的自动安装包（只提供 x64）。`n" +
+            "怎么办：`n" +
+            "  1) 打开「设置 → 应用 → 高级应用设置 → 应用执行别名」，确认 Python 的 winget 可用后重试；或`n" +
+            "  2) 到 https://www.python.org/downloads/windows/ 手动安装 $(Format-PythonWindow)（安装时勾选 Add python.exe to PATH），`n" +
+            "     装好后重新双击 start.cmd。")
     }
 
     $temporaryFile = [IO.Path]::GetTempFileName()
@@ -277,7 +281,7 @@ function Install-PythonWithOfficialInstaller {
     $installerPath = "$temporaryFile.exe"
 
     try {
-        Write-Host "Downloading the verified Python $PythonBootstrapVersion installer (about 26 MB) from python.org..."
+        Write-Host "正在从 python.org 下载经过校验的 Python $PythonBootstrapVersion 安装包（约 26 MB）..."
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         }
@@ -290,11 +294,17 @@ function Install-PythonWithOfficialInstaller {
             Invoke-WebRequest -UseBasicParsing -Uri $PythonBootstrapUrl -OutFile $installerPath -TimeoutSec 180
         }
         catch {
-            throw "Could not download the official Python installer. Check the network or proxy settings. $($_.Exception.Message)"
+            throw ("下载 Python 官方安装包失败。`n" +
+            "可能原因：网络不通、公司代理、或安全软件拦截了下载。`n" +
+            "怎么办：`n" +
+            "  1) 用浏览器打开 https://www.python.org/ftp/python/$PythonBootstrapVersion/python-$PythonBootstrapVersion-amd64.exe 确认能否下载；`n" +
+            "  2) 需要代理时，先在 PowerShell 里设好 `$env:HTTP_PROXY / `$env:HTTPS_PROXY 再重试；`n" +
+            "  3) 也可以自己装好 Python $(Format-PythonWindow)（勾选 Add python.exe to PATH）后重新双击 start.cmd。`n" +
+            "原始错误：$($_.Exception.Message)")
         }
 
         if (-not (Test-Path -LiteralPath $installerPath)) {
-            throw "The downloaded Python installer was not found."
+            throw "下载 Python 安装包后没有找到文件（可能被杀毒软件删掉了）。请检查安全软件后重试，或手动安装 Python $(Format-PythonWindow)。"
         }
 
         $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerPath).Hash.ToLowerInvariant()
@@ -302,7 +312,7 @@ function Install-PythonWithOfficialInstaller {
             throw "Python installer verification failed; execution was stopped (expected SHA-256: $PythonBootstrapSha256; actual: $actualHash)."
         }
 
-        Write-Host "Verification passed. Installing Python silently for the current user..."
+        Write-Host "校验通过，正在为当前用户静默安装 Python..."
         $installerProcess = Start-Process -FilePath $installerPath `
             -ArgumentList @(
                 "/quiet",
@@ -317,10 +327,14 @@ function Install-PythonWithOfficialInstaller {
             -PassThru
 
         if ($installerProcess.ExitCode -notin @(0, 3010)) {
-            throw "The Python installer failed (exit code $($installerProcess.ExitCode))."
+            throw ("Python 安装程序执行失败（退出码 $($installerProcess.ExitCode)）。`n" +
+            "怎么办：`n" +
+            "  1) 手动运行安装包试试，看是否有权限/安全软件的提示；`n" +
+            "  2) 或到 https://www.python.org/downloads/windows/ 手动安装 $(Format-PythonWindow)（勾选 Add python.exe to PATH），`n" +
+            "     装好后重新双击 start.cmd。")
         }
         if ($installerProcess.ExitCode -eq 3010) {
-            Write-Warning "Python installed successfully, but Windows requested a restart. The launcher will try to continue."
+            Write-Warning "Python 已装好，但 Windows 要求重启后才完全生效。启动器会先继续尝试，若失败请重启电脑后再双击 start.cmd。"
         }
     }
     finally {
@@ -337,7 +351,7 @@ function Ensure-SystemPython {
 
     # An interpreter may exist yet still be outside the window (a machine with
     # only 3.14 installed lands here), so say what we are looking for.
-    Write-Host "No supported Python ($(Format-PythonWindow)) found. Preparing one automatically..."
+    Write-Host "没有找到受支持的 Python（需要 $(Format-PythonWindow)），正在自动准备一个..."
 
     $wingetSucceeded = Try-InstallPythonWithWinget
     if ($wingetSucceeded) {
@@ -346,20 +360,32 @@ function Ensure-SystemPython {
         if ($null -ne $systemPython) {
             return $systemPython
         }
-        Write-Warning "winget reported success, but this process still cannot find Python. Trying the official installer."
+        Write-Warning "winget 报告安装成功，但当前进程仍然找不到 Python，改用官方安装包。"
     }
 
     try {
         Install-PythonWithOfficialInstaller
     }
     catch {
-        throw "Unable to prepare Python $(Format-PythonWindow) automatically: $($_.Exception.Message) If network, policy, or permissions prevent this, install Python manually from https://www.python.org/downloads/windows/ and run start.cmd again."
+        throw ("无法自动准备 Python $(Format-PythonWindow)：$($_.Exception.Message)`n" +
+            "怎么办：`n" +
+            "  1) 到 https://www.python.org/downloads/windows/ 手动安装 $(Format-PythonWindow)`n" +
+            "     （安装时务必勾选 Add python.exe to PATH）；`n" +
+            "  2) 装完关掉这个窗口，重新双击 start.cmd。`n" +
+            "注意：本项目目前只支持 Python 3.10 ~ 3.13，3.14 及更新版本还装不上依赖。")
     }
 
     Refresh-ProcessPath
     $systemPython = Find-SystemPython
     if ($null -eq $systemPython) {
-        throw "The Python installer finished, but no usable Python $(Format-PythonWindow) was found. Newer interpreters do not work yet: the pinned backend dependencies have no Python 3.14 wheels. Restart start.cmd; if it still fails, install the Python Launcher and disable the Microsoft Store execution alias."
+        throw ("Python 安装程序跑完了，但系统里仍然找不到可用的 Python $(Format-PythonWindow)。`n" +
+            "最常见的原因有两个：`n" +
+            "  1) 本项目的依赖还没有 Python 3.14 的现成包，所以只支持 3.10 ~ 3.13；`n" +
+            "  2) Windows 自带的「应用执行别名」把 python 指向了 Microsoft Store。`n" +
+            "怎么办：`n" +
+            "  1) 关掉这个窗口，重新双击 start.cmd（安装后需要新进程才能看到新装的 Python）；`n" +
+            "  2) 仍失败：打开「设置 → 应用 → 高级应用设置 → 应用执行别名」，`n" +
+            "     关掉 Python / python3 的别名开关，再重新双击 start.cmd。")
     }
     return $systemPython
 }

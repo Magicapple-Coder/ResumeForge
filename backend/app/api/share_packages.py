@@ -27,6 +27,7 @@ from ..services.privacy import RedactionOptions as PrivacyRedactionOptions
 from ..services.share_package import (
     SharePackageError,
     create_share_package,
+    ensure_package_files,
     import_comments,
     list_share_packages,
     package_directory,
@@ -113,6 +114,12 @@ def reveal_share_package_directory(share_id: int, db: Session = Depends(get_db))
     目录内（``share_root``），否则按不存在处理，防越界。仅 Windows 支持自动打开。
     """
     package = _package_or_404(db, share_id)
+    # 目录是空的（换过数据集、或从备份恢复过）就先按快照把产物补回来，否则用户打开的
+    # 是一个空文件夹，同样会以为东西丢了。
+    try:
+        ensure_package_files(db, package)
+    except Exception as exc:  # noqa: BLE001 - 补不出来不影响"打开目录"本身
+        logger.warning("补齐分享包文件失败 id=%s：%s", package.id, exc)
     directory = package_directory(db.get_bind(), package.id).resolve()
     root = share_root(db.get_bind()).resolve()
     # ``package_directory`` 恒为 ``<root>/<id>``，这里再校验一次兜底：只要不是 root 的直接
@@ -147,13 +154,25 @@ def import_share_package_comments(
 
 @router.get("/{share_id}/files/{filename}")
 def download_share_package_file(share_id: int, filename: str, db: Session = Depends(get_db)):
-    """下载分享包里的某个产物文件（只允许目录内的文件，防路径穿越）。"""
+    """下载分享包里的某个产物文件（只允许目录内的文件，防路径穿越）。
+
+    磁盘上的文件**不随备份包走**，所以换数据集或从备份恢复之后目录是空的——那时先按
+    库里的快照把缺的产物重新渲染出来（见 ``ensure_package_files``），否则用户会遇到
+    "列表和详情都正常、偏偏下载 404"这种看起来像坏了的状况。
+    """
     package = _package_or_404(db, share_id)
     directory = package_directory(db.get_bind(), package.id).resolve()
     # 只取 basename，并拒绝任何仍逃逸到目录外的路径。
     safe_name = Path(filename).name
     path = (directory / safe_name).resolve()
-    if path.parent != directory or not path.is_file():
+    if path.parent != directory:
         raise HTTPException(status_code=404, detail="文件不存在")
+    if not path.is_file():
+        try:
+            ensure_package_files(db, package)
+        except Exception as exc:  # noqa: BLE001 - 重新生成失败要给出可读原因，而不是 500
+            logger.warning("重新生成分享包文件失败 id=%s：%s", package.id, exc)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
     media_type = _MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
     return FileResponse(path, media_type=media_type, filename=safe_name)

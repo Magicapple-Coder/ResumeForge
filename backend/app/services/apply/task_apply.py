@@ -8,6 +8,7 @@ from typing import Any, Callable
 from ...models.apply import (
     FAILURE_CAPTCHA_REQUIRED,
     FAILURE_NETWORK_TIMEOUT,
+    FAILURE_SITE_UNSUPPORTED,
     FAILURE_UNKNOWN,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_RUNNING,
@@ -42,6 +43,33 @@ logger = logging.getLogger(__name__)
 
 class ItemSkip(Exception):
     """单个条目的软跳过，不计失败且不触发熔断。"""
+
+
+def company_key(company: str) -> str:
+    """公司名的归一化键：压掉空白、统一大小写。
+
+    招聘网站上的公司名会带前后空格与不同写法（"字节跳动" / "字节跳动 "），不归一化就会
+    把同一家公司当成两家，**「同公司只投一个岗位」于是形同虚设**。空名返回空串——
+    没有公司名的条目不计入同公司判断（判断不了就不做判断）。
+    """
+    return " ".join((company or "").split()).casefold()
+
+
+def same_company_skip_reason(
+    config: ApplyConfigIn, item: ApplyTaskItem, attempted: set[str]
+) -> str:
+    """这条岗位是否该按「同公司只投一个岗位」跳过；不该跳过时返回空串。
+
+    **记的是"尝试过"而不是"成功过"**：投递失败可能发生在确认环节——招呼语其实已经发出去
+    了，只是没读到对方的回执。这时再给同一家公司发第二条，才是用户开这个开关要避免的事。
+    所以只要动手了，这家公司就算数；方向始终是"宁可少发一条，不可重发一家"。
+    """
+    if not config.skip_same_company:
+        return ""
+    key = company_key(item.company)
+    if not key or key not in attempted:
+        return ""
+    return f"按「同公司只投一个岗位」跳过：本批次已经投过「{' '.join(item.company.split())}」的岗位"
 
 
 def interruptible_sleep(runner: Any, interval: int, jitter: int) -> bool:
@@ -124,6 +152,8 @@ def run_apply(
     wrapped = wrap_client(client)
     registry = runner._registry or get_registry()
     consecutive = 0
+    # 「同公司只投一个岗位」的作用域是**本批次**：这次投过的公司，后面同公司的岗位直接跳过。
+    attempted_companies: set[str] = set()
     try:
         for index, item in enumerate(items):
             try:
@@ -138,11 +168,24 @@ def run_apply(
                         message=f"今日投递已达上限（{config.daily_limit}），剩余岗位已跳过",
                     )
                     return
+                skip_reason = same_company_skip_reason(config, item, attempted_companies)
+                if skip_reason:
+                    # 与 ItemSkip 同一形态：软跳过、不计失败、不触发熔断，但**留下原因**——
+                    # 用户看到"已跳过"却不知道为什么，只会以为程序漏投了。
+                    item.status = ITEM_STATUS_SKIPPED
+                    item.failure_detail = skip_reason
+                    item.finished_at = utcnow()
+                    task.processed += 1
+                    task.skipped += 1
+                    session.commit()
+                    continue
                 item.status = ITEM_STATUS_RUNNING
                 item.attempt += 1
                 item.started_at = utcnow()
                 task.current_step = STEP_OPENING
                 session.commit()
+                # 动手之前就把公司记下来：失败的条目可能已经把招呼语发出去了。
+                attempted_companies.add(company_key(item.company))
                 runner._execute_item(session, task, item, config, wrapped, registry, apply_service)
             except stopped_error:
                 item.status = ITEM_STATUS_SKIPPED
@@ -236,7 +279,11 @@ def execute_item(
     job = session.get(Job, item.job_id) if item.job_id else None
     if job is None:
         raise ItemSkip("岗位已被删除，跳过该条目")
-    adapter = registry.for_job(job)
+    # 正常路径上，来源不支持的岗位在入队与开始投递两处就被拦住了；这里再判一次是**兜底**：
+    # 真漏过来时，记录里要写清「来源不支持」而不是含糊的「未知失败」——后者让人以为是站点出问题。
+    adapter = registry.resolve_for_job(job)
+    if adapter is None:
+        raise SiteFailure(FAILURE_SITE_UNSUPPORTED, apply_service.unsupported_site_message(job))
     resume = apply_service.resolve_resume(session, job.id, item.resume_id)
     if resume is None and adapter.requires_resume:
         raise ItemSkip("未找到可用简历：请先在简历中心为该岗位生成简历后再投递")

@@ -11,12 +11,14 @@ import {
   ArrowUpOutlined,
   DeleteOutlined,
   EditOutlined,
+  EyeOutlined,
   MoreOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
   App,
+  Alert,
   Button,
   Dropdown,
   Empty,
@@ -52,6 +54,8 @@ import {
   type ApplyTask,
   type ResumeBrief,
 } from "../../types";
+import { formatDateTime } from "../../utils/format";
+import { RecordDetailDrawer } from "../common/RecordDetail";
 import { useRowActionMenu } from "../common/rowActionMenu";
 
 interface Props {
@@ -193,6 +197,7 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
   );
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [editing, setEditing] = useState<ApplyQueueItem | null>(null);
+  const [detail, setDetail] = useState<ApplyQueueItem | null>(null);
   const [busy, setBusy] = useState(false);
   // 右键菜单：记录鼠标位置与目标行，用定位式 Menu 渲染（避免把 <tr> 包进 Dropdown 造成行重建竞态）。
   const [contextMenu, setContextMenu] = useState<{
@@ -211,6 +216,12 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
     () => items.filter((item) => item.status === "pending" && item.job_id !== null),
     [items],
   );
+  // 来源不支持的待投条目：它们**无法**被自动投递，整队列投递时会被后端一次性拦下。
+  // 提前在页面上说明，用户才不会在点了「开始投递」之后才被一条 409 拦住。
+  const unsupportedPending = useMemo(
+    () => pendingItems.filter((item) => item.apply_supported === false),
+    [pendingItems],
+  );
 
   const refresh = () => {
     setReloadKey((value) => value + 1);
@@ -220,8 +231,18 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
   /**
    * 右键菜单项：与「···」菜单一致（编辑 / 移出队列）。移出队列走 Modal.confirm。
    */
-  const contextMenuItems = (record: ApplyQueueItem) =>
+  /**
+   * 行操作的唯一清单：右键菜单与「···」下拉都从这里取，避免两处慢慢长歪。
+   * 「移出队列」走 Modal.confirm（由 buildMenu 统一加二次确认）。
+   */
+  const rowMenuItems = (record: ApplyQueueItem) =>
     buildMenu([
+      {
+        key: "detail",
+        label: "查看详情",
+        icon: <EyeOutlined />,
+        onClick: () => setDetail(record),
+      },
       {
         key: "edit",
         label: "编辑",
@@ -300,27 +321,57 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
     }
   };
 
+  /**
+   * 列宽全部写死、`tableLayout="fixed"`：
+   * 招呼语是用户可编辑的长文本，之前不设宽度时它会跟「准入 / 状态」抢空间——编辑过一条
+   * 队列条目之后整张表就挤成一团。定宽 + 省略号让每列宽度只由表头决定，内容长短不再影响排版。
+   */
   const columns: ColumnsType<ApplyQueueItem> = [
     {
       title: "岗位",
       dataIndex: "job_title",
+      width: 220,
       render: (title: string, item) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{title || "（岗位已删除）"}</Typography.Text>
-          {item.company && <Typography.Text type="secondary">{item.company}</Typography.Text>}
-        </Space>
+        <Tooltip title={`加入队列于 ${formatDateTime(item.created_at)}`}>
+          <Space direction="vertical" size={0} style={{ width: "100%" }}>
+            <Button
+              type="link"
+              className="table-text-link"
+              onClick={() => setDetail(item)}
+              aria-label={`查看队列条目详情：${title || "岗位已删除"}`}
+            >
+              {title || "（岗位已删除）"}
+            </Button>
+            <Space size={4} wrap>
+              {item.company && (
+                <Typography.Text type="secondary" ellipsis>
+                  {item.company}
+                </Typography.Text>
+              )}
+              {item.apply_supported === false && (
+                // 和岗位广场上的「采集 / 手动」同一个位置放来源类标签：用户看来源就看这里。
+                <Tooltip title="来源不在投递台支持的招聘网站内，无法自动投递；移出队列或到原网站自行投递">
+                  <Tag color="red" style={{ marginInlineEnd: 0 }}>
+                    来源不支持
+                  </Tag>
+                </Tooltip>
+              )}
+            </Space>
+          </Space>
+        </Tooltip>
       ),
     },
     {
       title: "准入",
       key: "admission",
-      width: 180,
+      width: 140,
       render: (_, item) => <AdmissionTag item={item} />,
     },
     {
       title: "状态",
       dataIndex: "status",
-      width: 90,
+      width: 96,
+      align: "center",
       render: (value: ApplyQueueItem["status"]) => {
         const meta = QUEUE_STATUS_META[value];
         return <Tag color={meta.color}>{meta.label}</Tag>;
@@ -329,9 +380,13 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
     {
       title: "简历 / 招呼语",
       key: "assets",
+      width: 260,
       render: (_, item) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text type="secondary">
+        <Space direction="vertical" size={0} style={{ width: "100%" }}>
+          <Typography.Text
+            type="secondary"
+            ellipsis={{ tooltip: item.resume_title || "按默认规则解析" }}
+          >
             {item.resume_title || "按默认规则解析"}
           </Typography.Text>
           <Typography.Text type="secondary" ellipsis={{ tooltip: item.greeting || "默认招呼语" }}>
@@ -343,13 +398,15 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
     {
       title: "操作",
       key: "actions",
-      width: 210,
+      width: 130,
+      // 表头与单元格一起右对齐：否则「操作」两字靠左、按钮靠右，看起来像没对齐（用户反馈过）。
+      align: "right",
       render: (_, item, index) => (
         <div
           className="apply-queue-actions"
           style={{ display: "flex", justifyContent: "flex-end", marginLeft: "auto" }}
         >
-          <Space>
+          <Space size={4}>
             <Tooltip title="上移">
               <Button
                 size="small"
@@ -368,27 +425,7 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
                 onClick={() => void move(index, 1)}
               />
             </Tooltip>
-            <Dropdown
-              trigger={["click"]}
-              menu={{
-                items: buildMenu([
-                  {
-                    key: "edit",
-                    label: "编辑",
-                    icon: <EditOutlined />,
-                    onClick: () => setEditing(item),
-                  },
-                  {
-                    key: "remove",
-                    label: "移出队列",
-                    danger: true,
-                    icon: <DeleteOutlined />,
-                    confirm: "移出投递队列？",
-                    onClick: () => void remove(item),
-                  },
-                ]),
-              }}
-            >
+            <Dropdown trigger={["click"]} menu={{ items: rowMenuItems(item) }}>
               <Button
                 size="small"
                 aria-label={`更多操作 ${item.job_title}`}
@@ -405,7 +442,9 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
     selectedRowKeys: selectedIds,
     onChange: (keys) => setSelectedIds(keys.map(Number)),
     getCheckboxProps: (item) => ({
-      disabled: item.status !== "pending" || item.job_id === null || busy,
+      // 来源不支持的条目**不可勾选**：勾了也投不出去，不如一开始就不让选（后端还会再拦一次）。
+      disabled:
+        item.status !== "pending" || item.job_id === null || item.apply_supported === false || busy,
     }),
   };
 
@@ -413,6 +452,58 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
 
   return (
     <div className="apply-queue-panel">
+      {/* 用户反馈过「点进来不知道下一步干什么」：这一段是唯一的入口说明，明确"岗位从哪来、
+          在这里做什么、什么时候才真的投出去"。不用弹窗，避免每次进来都要关一次。 */}
+      <Alert
+        className="apply-queue-flow"
+        type="info"
+        showIcon
+        message="队列里放的是「准备投、但还没投」的岗位"
+        description={
+          <ol style={{ margin: 0, paddingLeft: 18 }}>
+            <li>
+              在<span className="apply-queue-flow-em">「岗位广场」</span>
+              打开岗位详情，点<span className="apply-queue-flow-em">「加入投递台」</span>
+              把它加进来（从「自动采集」导入的岗位也是同一入口）。
+            </li>
+            <li>
+              在这里核对每个岗位的<span className="apply-queue-flow-em">准入结论</span>
+              ：不确定的先回岗位广场做「匹配度分析」，判定有真实缺口的默认不投。
+            </li>
+            <li>
+              需要时逐行点岗位名<span className="apply-queue-flow-em">查看详情或编辑</span>
+              ，换一份更贴岗位的简历、改一版招呼语。
+            </li>
+            <li>
+              勾选本轮要投的岗位（
+              <span className="apply-queue-flow-em">不勾选＝按顺序投整个队列</span>
+              ），再点右上角「开始投递」——在那之前不会打开任何招聘网站。
+            </li>
+          </ol>
+        }
+      />
+
+      {/* 来源不支持的条目现在的**唯一**来源是"闸门上线前就已经在队列里"的历史数据。
+          写清楚它们是什么、以及两种处理方式，用户才不会在点开始时被一条 409 拦住。 */}
+      {unsupportedPending.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`队列里有 ${unsupportedPending.length} 个岗位不能用投递台自动投递`}
+          description={
+            <span>
+              它们的来源不在投递台支持的招聘网站内（已在「岗位」列标出
+              <Tag color="red" style={{ margin: "0 4px" }}>
+                来源不支持
+              </Tag>
+              ）。按「开始投递」投整个队列时会被拦下，请先点行末「更多操作 → 移出队列」把它们清掉；
+              只想投其中几个时，勾选要投的岗位再点「开始投递」即可。
+            </span>
+          }
+        />
+      )}
+
       <div className="apply-queue-head">
         <Space wrap>
           <Typography.Text type="secondary">
@@ -434,7 +525,17 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
       </div>
 
       {items.length === 0 ? (
-        <Empty description="队列还是空的：到「岗位广场」的岗位详情里点「加入投递台」" />
+        <Empty
+          description={
+            <Space direction="vertical" size={4}>
+              <Typography.Text>队列还是空的：先去「岗位广场」挑几个岗位。</Typography.Text>
+              <Typography.Text type="secondary">
+                在「岗位广场」点岗位名打开详情 → 点「加入投递台」，就能把它加到这里；
+                加完之后回到本页，勾选要投的岗位再点「开始投递」。
+              </Typography.Text>
+            </Space>
+          }
+        />
       ) : (
         <Table<ApplyQueueItem>
           rowKey="id"
@@ -443,7 +544,8 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
           dataSource={items}
           pagination={false}
           rowSelection={rowSelection}
-          scroll={{ x: "max-content" }}
+          tableLayout="fixed"
+          scroll={{ x: 880 }}
           onRow={(record) => ({
             onContextMenu: (event) => {
               event.preventDefault();
@@ -452,6 +554,71 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
           })}
         />
       )}
+
+      {/* 队列条目的详情：表格里只放得下摘要，招呼语全文、准入结论与时间都在这里看。 */}
+      <RecordDetailDrawer
+        open={detail !== null}
+        title={detail?.job_title || "（岗位已删除）"}
+        subtitle={detail?.company}
+        tags={detail && <AdmissionTag item={detail} />}
+        fields={
+          detail
+            ? [
+                {
+                  label: "自动投递",
+                  value:
+                    detail.apply_supported === false ? (
+                      <Tag color="red">来源不支持：请到原网站自行投递</Tag>
+                    ) : (
+                      "可以：来源在投递台支持的招聘网站内"
+                    ),
+                },
+                {
+                  label: "状态",
+                  value: (
+                    <Tag color={QUEUE_STATUS_META[detail.status].color}>
+                      {QUEUE_STATUS_META[detail.status].label}
+                    </Tag>
+                  ),
+                },
+                {
+                  label: "排队序号",
+                  value: `第 ${items.findIndex((i) => i.id === detail.id) + 1} 位`,
+                },
+                { label: "使用简历", value: detail.resume_title || "按默认规则解析" },
+                { label: "加入队列", value: formatDateTime(detail.created_at) },
+                { label: "最近更新", value: formatDateTime(detail.updated_at) },
+              ]
+            : []
+        }
+        sections={detail ? [{ title: "招呼语", content: detail.greeting || "默认招呼语" }] : []}
+        actions={
+          detail && (
+            <Space>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditing(detail);
+                  setDetail(null);
+                }}
+              >
+                编辑
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => {
+                  void remove(detail);
+                  setDetail(null);
+                }}
+              >
+                移出队列
+              </Button>
+            </Space>
+          )
+        }
+        onClose={() => setDetail(null)}
+      />
 
       {editing && (
         <QueueItemEditor
@@ -483,7 +650,7 @@ export default function ApplyQueuePanel({ disabled, onStarted, onChanged }: Prop
               minWidth: 150,
               boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
             }}
-            items={contextMenuItems(contextMenu.record)}
+            items={rowMenuItems(contextMenu.record)}
             onClick={() => setContextMenu(null)}
           />
         </>

@@ -19,6 +19,8 @@ from app.services.data_backup import (
     DATABASE_MEMBER,
     MANIFEST_MEMBER,
     BackupError,
+    ExtraDatabase,
+    build_manifest,
     create_backup_archive,
     inspect_archive,
 )
@@ -120,10 +122,35 @@ def test_export_writes_a_manifest_describing_the_data(db_session, tmp_path):
 
     manifest = _manifest(_export(tmp_path))
 
-    assert manifest["format"] == BACKUP_FORMAT_VERSION
+    # **只带一份数据集的包保持格式 1**：老版本与旧备份的互操作不能因为"加上导出全部数据集"
+    # 这件事受影响。带其余数据集时才升到 2（见 test_manifest_marks_the_format_when_datasets_ride_along）。
+    assert manifest["format"] == 1
     assert manifest["api_key_included"] is False
     assert manifest["tables"]["job"] == 1
     assert manifest["alembic_revision"]
+    # 只有活动数据集时不该出现这一段——它正是"包里还有别的数据集"的声明。
+    assert "datasets" not in manifest
+
+
+def test_manifest_marks_the_format_when_datasets_ride_along(tmp_path):
+    """带上其余数据集时必须升到当前格式号。
+
+    格式号是**给老版本看的信号**：它读不懂 ``datasets/`` 这一段，若还按格式 1 放行，用户会
+    以为"恢复成功"，实际那几份数据集根本没被恢复——而这类故障通常很久以后才发现。
+    """
+    extra = tmp_path / "extra.db"
+    extra.write_bytes(b"")
+
+    manifest = build_manifest(
+        engine,
+        datasets=[
+            ExtraDatabase(dataset_id="a" * 16, name="校招线", source=extra).manifest_entry(1)
+        ],
+    )
+
+    assert manifest["format"] == BACKUP_FORMAT_VERSION
+    assert manifest["datasets"][0]["name"] == "校招线"
+    assert manifest["datasets"][0]["file"] == f"datasets/{'a' * 16}.db"
 
 
 def test_inspect_rejects_a_payload_that_is_not_a_zip(tmp_path):

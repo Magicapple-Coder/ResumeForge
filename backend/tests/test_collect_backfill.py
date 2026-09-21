@@ -20,7 +20,7 @@ from app.schemas.apply import DEFAULT_COLLECT_PER_TASK_LIMIT, CollectConfigIn
 from app.services import trash
 from app.services.apply.collector import Collector
 from app.services.apply.task_runner import TaskRunner, TaskStopped
-from app.services.sites.base import SiteFailure
+from app.services.sites.base import FilterResolution, SearchPage, SiteFailure
 from test_collector import FakeCollectAdapter, _FakeClock, _config, _task
 
 # 一段含明显技能词的 JD：补到正文后若没重算标签，这里就没有 "Python"，标签相关的搜索会失效。
@@ -77,6 +77,59 @@ def _run(db_session, task, adapter, ids, *, checkpoint=None):
         clock=_FakeClock(),
         backfill_job_ids=ids,
     )
+
+
+class _FilterRecordingAdapter(_DetailAdapter):
+    """记录站点筛选有没有被解析过。
+
+    "补详情模式不该解析站点筛选"这条只能靠**没被调用**来证明——它没有可观察的副作用，
+    只能反证（同 ``_DetailAdapter.fetched`` 的思路）。
+    """
+
+    def __init__(self, detail=None, *, fail: bool = False, pages=None) -> None:
+        super().__init__(detail, fail=fail)
+        if pages is not None:
+            self._pages = pages
+        self.filter_calls = 0
+
+    def prepare_collect_filters(self, selected, client=None):  # type: ignore[override]
+        self.filter_calls += 1
+        return FilterResolution()
+
+
+def test_backfill_never_resolves_site_filters(db_session):
+    """补详情是按用户点名的岗位逐个打开，不走搜索——筛选条件在这里没有任何作用。
+
+    照解析一遍的代价不只是白读一次清单：浏览器停在岗位详情页时，适配器会为了读筛选栏
+    **再开一次搜索页**，而用户只是想把几条旧岗位的 JD 补回来。
+    """
+    job = _empty_job(db_session)
+    task = _task(db_session)
+    adapter = _FilterRecordingAdapter()
+
+    report = _run(db_session, task, adapter, [job.id])
+
+    assert report.backfilled == 1
+    assert adapter.filter_calls == 0, "补详情模式不该解析站点筛选条件"
+
+
+def test_search_collect_still_resolves_site_filters(db_session):
+    """正向的一半：搜索采集**必须**解析（否则站点侧筛选永远不生效）。"""
+    task = _task(db_session)
+    # 给一页空结果即可：本用例只问"有没有去解析筛选条件"，不关心采到什么。
+    adapter = _FilterRecordingAdapter(pages=[SearchPage(results=[], page=1, has_next=False)])
+    collector = Collector()
+    collector.run(
+        session=db_session,
+        task=task,
+        client=object(),
+        adapter=adapter,
+        config=_config(filters={"degree": "203"}),
+        checkpoint=lambda: None,
+        sleeper=lambda _seconds: None,
+        clock=_FakeClock(),
+    )
+    assert adapter.filter_calls == 1
 
 
 # ===== 采集器：补详情的判定与副作用 =====
@@ -367,6 +420,42 @@ def test_backfill_message_says_nothing_was_backfilled():
     assert "没有补到新的职位描述" in message
     assert "2 条岗位已跳过" in message
     assert "重试" in message
+
+
+# ===== 站点筛选的账目必须出现在收尾文案里（2026-09-21）=====
+#
+# 后端把「哪几条站点筛选生效 / 哪几条没能生效」写进了 task.config。写进去不等于说出去：
+# 收尾文案是用户最先看到的一句话（**完成通知里带的也是它**），漏掉就等于静默失效。
+
+
+def test_message_reports_site_filters_that_did_not_take_effect():
+    task = ApplyTask(
+        kind=TASK_KIND_COLLECT,
+        succeeded=4,
+        config={"site_filter_unapplied": ["公司规模"], "site_filter_applied": ["学历要求：本科"]},
+    )
+    message = TaskRunner._collect_message(task)
+    assert "公司规模" in message
+    assert "没能生效" in message
+
+
+def test_message_points_at_site_filters_when_nothing_came_back():
+    """一条都没采到、站点筛选又开着时，默认文案会把人往"改关键词"上引——该提的是筛选条件。"""
+    task = ApplyTask(
+        kind=TASK_KIND_COLLECT,
+        succeeded=0,
+        config={"site_filter_applied": ["学历要求：本科", "融资阶段：A轮"]},
+    )
+    message = TaskRunner._collect_message(task)
+    assert "学历要求：本科" in message and "融资阶段：A轮" in message
+    assert "没有找到匹配的岗位" in message
+
+
+def test_message_does_not_mention_site_filters_when_none_were_used():
+    """没配站点筛选时文案保持原样——不能凭空多出一句让人以为自己筛过的话。"""
+    task = ApplyTask(kind=TASK_KIND_COLLECT, succeeded=0, config={})
+    message = TaskRunner._collect_message(task)
+    assert "招聘网站的条件" not in message
 
 
 def test_backfill_dispatch_does_not_change_search_mode_message():

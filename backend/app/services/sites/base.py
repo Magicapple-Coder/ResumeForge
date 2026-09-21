@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +37,14 @@ class SiteFailure(Exception):
         self.title = title
 
 
+# 筛选项清单的来源标记。**定义在站点无关的基类里**，因为"这份清单可信度如何"是通用的概念，
+# 而业务层（投递台服务）要拿它判断"要不要提示用户只是公共清单"，不该为此认识某一个站点模块。
+SOURCE_SESSION = "session"
+SOURCE_PUBLIC = "public"
+SOURCE_SNAPSHOT = "snapshot"
+SOURCE_UNAVAILABLE = "unavailable"
+
+
 @dataclass(frozen=True)
 class RiskProfile:
     """站点的风控参数：决定岗位之间的最小间隔与每小时上限。"""
@@ -56,10 +65,39 @@ class CollectQuery:
     salary_min: int | None = None
     experience: str = ""
     education: str = ""
-    # 岗位类型标注（校招/实习/社招）；空串 = 不限。**不透传给站点查询**，
-    # 只随采集结果入库（与薪资/经验/学历"采集后本地筛选"口径一致）。
+    # 岗位类型（校招/实习/社招）；空串 = 不限。能映射到站点官方参数的（BOSS：实习/社招）
+    # 由适配器放进搜索 URL 做站点侧过滤；没有官方参数的（校招）+ 所有类型的兜底判定走
+    # 采集后本地筛选（``collect_filters``，按接口返回的岗位类型编码判定）。采集器无论哪条
+    # 路都会把它随结果入库标注。
     job_type: str = ""
+    # **站点侧筛选项**：``{站点参数名: 编码}``，由适配器在采集开始前解析并校验好
+    # （见 ``SiteAdapter.prepare_collect_filters``）。适配器不认识这里的键名——它只负责把
+    # 它们拼进搜索 URL。**编码必须是当次校验过的**：站点改版后旧编码照样"合法"，
+    # 发出去会静默筛错，那比不筛更糟。
+    filters: dict[str, str] = field(default_factory=dict)
     page: int = 1
+
+
+@dataclass
+class FilterResolution:
+    """站点侧筛选的解析结果：真正生效的参数，以及**没能执行**的那几项。
+
+    ``unapplied`` 不为空时必须展示给用户——它意味着"你选了这个条件，但它这次没生效"。
+    静默丢掉是最坏的：用户以为筛过了，拿到的是没筛的结果。
+    """
+
+    params: dict[str, str] = field(default_factory=dict)
+    # 人话写法的"已生效"清单（如 ``["学历要求：本科"]``），直接给界面用。
+    applied: list[str] = field(default_factory=list)
+    # 没能生效的条件名（如 ``["公司规模"]``）。
+    unapplied: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "params": dict(self.params),
+            "applied": list(self.applied),
+            "unapplied": list(self.unapplied),
+        }
 
 
 @dataclass
@@ -126,6 +164,32 @@ class SiteAdapter(ABC):
     # （装饰器不会安装，一个文件都不写）。
     sample_markers: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
+    # ===== 站点侧筛选项（可选能力）=====
+    #
+    # 与 ``post_filter_conditions``（"采完之后按岗位字段本地筛"）是两件事，**不要混**：
+    # 那一条筛的是"我的条件 vs 岗位要求"（例如"我的学历是本科"），这一条是**站点自己的筛选栏**
+    # （例如"岗位要求本科"），筛得更准、也不用翻那么多页。两者可以同时用。
+    #
+    # 默认不支持：对多数站点，返回空列表就是"该站点没有这个能力"，界面据此不显示筛选区。
+
+    def fetch_filter_options(self, client: CdpClient | None = None) -> tuple[Any, ...]:
+        """本站点筛选栏的可选项（供界面渲染下拉框）。
+
+        ``client`` 是**可选的**：能给就给，站点可以借此读到"当前登录账号可见"的那份清单；
+        给不了（浏览器没启动）要能退回匿名可得的公共清单，而不是直接失败。
+        """
+        return ()
+
+    def prepare_collect_filters(
+        self, selected: Mapping[str, str] | None, client: CdpClient | None = None
+    ) -> FilterResolution:
+        """把用户在界面上选的 ``{分组: 编码}`` 解析成可以拼进搜索 URL 的查询参数。
+
+        **在采集开始前调用一次**（不是每次翻页调一次）：校验编码要读一次站点清单，
+        逐页重复读没有意义。返回的 ``unapplied`` 必须如实上报给用户。
+        """
+        return FilterResolution()
+
     def matches(self, url_or_source: str) -> bool:
         """给定的 URL 或来源文本是否属于本站点。"""
         target = (url_or_source or "").casefold()
@@ -157,8 +221,13 @@ class SiteAdapter(ABC):
 
 
 __all__ = [
+    "SOURCE_PUBLIC",
+    "SOURCE_SESSION",
+    "SOURCE_SNAPSHOT",
+    "SOURCE_UNAVAILABLE",
     "ApplyOutcome",
     "CollectQuery",
+    "FilterResolution",
     "RiskProfile",
     "SearchPage",
     "SearchResult",

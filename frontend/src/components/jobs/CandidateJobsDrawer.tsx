@@ -303,7 +303,7 @@ export default function CandidateJobsDrawer({
             <Input
               value={formState.title}
               maxLength={128}
-              placeholder="如：后端开发工程师"
+              placeholder="如：市场营销专员"
               onChange={(event) => setFormState((c) => ({ ...c, title: event.target.value }))}
             />
           </Form.Item>

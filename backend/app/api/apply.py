@@ -25,6 +25,7 @@ from ..schemas.apply import (
     ApplyQueueItemOut,
     ApplyQueueItemUpdate,
     ApplyQueueReorderRequest,
+    ApplyRecordBatchOut,
     ApplyRecordOut,
     ApplyTaskCreate,
     ApplyTaskDetailOut,
@@ -34,6 +35,7 @@ from ..schemas.apply import (
     CollectBackfillIn,
     CollectConfigIn,
     CollectConfigOut,
+    CollectFilterOptionsOut,
     CollectTaskCreateIn,
     GreetingPreviewOut,
     GreetingPreviewRequest,
@@ -74,6 +76,16 @@ def update_apply_config(payload: ApplyConfigIn, db: Session = Depends(get_db)):
 @collect_router.get("/config", response_model=CollectConfigOut)
 def get_collect_config(db: Session = Depends(get_db)):
     return apply_service.collect_config_out(apply_service.get_collect_config(db))
+
+
+@collect_router.get("/filters", response_model=CollectFilterOptionsOut)
+def collect_filters(db: Session = Depends(get_db)):
+    """当前站点筛选栏的可选项（界面据此渲染下拉框）。
+
+    **清单由站点提供，不是我们写死的**：写死的一份在站点改编码之后会静默筛错。
+    每一项带 ``source`` 说明这份清单是从哪儿读来的（你的登录会话 / 全网通用 / 内置快照）。
+    """
+    return apply_service.collect_filter_options(db)
 
 
 @collect_router.put("/config", response_model=CollectConfigOut)
@@ -120,7 +132,15 @@ def browser_open(db: Session = Depends(get_db)):
 
 @router.post("/browser/stop", status_code=204)
 def browser_stop(db: Session = Depends(get_db)):
-    apply_service.stop_browser(db)
+    """关闭专用浏览器。
+
+    关不掉时（窗口是上一次运行留下的）必须给出可展示的中文提示，不能静默成功——
+    与 /browser/start、/browser/open 用同一套错误映射。
+    """
+    try:
+        apply_service.stop_browser(db)
+    except apply_service.ApplyServiceError as exc:
+        _raise(exc)
     return None
 
 
@@ -264,8 +284,25 @@ def list_tasks(
 
 
 @router.get("/tasks/current", response_model=ApplyTaskOut | None)
-def current_task(db: Session = Depends(get_db)):
-    task = apply_service.current_task(db, kind=TASK_KIND_APPLY)
+def current_task(
+    kind: str = Query(default="", description="collect / apply；留空表示不限类型"),
+    db: Session = Depends(get_db),
+):
+    """**正在进行中**的批次（投递或采集），没有则返回 null。
+
+    默认**不限类型**是 2026-09-21 修的：以前这里写死 ``kind=apply``，于是采集批次在它眼里
+    永远等于"没有任务"。后果不是少显示一行进度，而是两件体验直接失效——
+
+    - 用户开始采集后切走再回到投递台，看不到正在跑的采集，进度面板是空的；
+    - 全局完成通知（``useTaskCompletionWatcher``）靠它判断"这个批次刚才在跑"，采集批次
+      从不出现，于是**采集跑完永远不弹通知**。
+
+    两种批次本来就互斥（运行器同一时刻只跑一个），所以"任意类型"就是"那一个"。
+    需要限定类型的调用方传 ``kind`` 即可。
+    """
+    if kind and kind not in (TASK_KIND_APPLY, TASK_KIND_COLLECT):
+        raise HTTPException(status_code=422, detail="无效的批次类型")
+    task = apply_service.current_task(db, kind=kind or None)
     return ApplyTaskOut.model_validate(task) if task is not None else None
 
 
@@ -304,6 +341,25 @@ def list_records(
         db, keyword=keyword, result=result, page=page, page_size=page_size
     )
     return Page(items=items, total=total)
+
+
+@router.get("/records/grouped", response_model=Page[ApplyRecordBatchOut])
+def list_record_batches(
+    keyword: str = Query(default=""),
+    result: str = Query(default="", description="success / failed / skipped"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=5, ge=1, le=20, description="每页批次（组）数"),
+    db: Session = Depends(get_db),
+):
+    """投递记录按批次分组：一页若干个批次，每个批次带自己的记录。
+
+    分组键是批次（一次「开始投递」= 一个批次）：用户一次性投 N 个岗位时，这 N 条记录
+    在界面上折叠成一组、点击展开看明细。筛选作用在记录上；分页按批次计。
+    """
+    batches, total = apply_service.list_record_batches(
+        db, keyword=keyword, result=result, page=page, page_size=page_size
+    )
+    return Page(items=batches, total=total)
 
 
 @router.post("/records/{item_id}/retry", response_model=ApplyTaskOut)

@@ -233,3 +233,105 @@ def test_reveal_non_windows_returns_409(client, monkeypatch):
 
     assert response.status_code == 409
     assert "不支持自动打开" in response.json()["detail"]
+
+
+# ===== 产物文件是缓存，不是数据源（2026-09-21）=====
+#
+# 分享包的**内容**在数据库里（`snapshot` 列），渲染出来的 HTML/PDF/JSON 落在磁盘上。
+# 磁盘目录不随备份包走，所以换数据集、或从备份恢复到另一台机器之后目录是空的：列表和
+# 详情都正常（走数据库），偏偏点「下载」会 404——看起来像功能坏了。
+
+
+def _package_dir(client) -> Path:
+    """当前（测试）数据库的分享包根目录。"""
+    from app import database
+    from app.services.share_package import share_root
+
+    return share_root(database.engine)
+
+
+def test_download_regenerates_missing_artifacts_from_the_snapshot(client):
+    """把目录整个删掉（模拟"换数据集 / 从备份恢复"），下载仍应拿到内容。"""
+    resume_id = _manual_resume(client, {"name": "张三", "summary": "负责后端服务。"})
+    body = _create_package(client, resume_id)
+    share_id = body["id"]
+    directory = _package_dir(client) / str(share_id)
+    assert directory.is_dir()
+
+    import shutil
+
+    shutil.rmtree(directory)
+    assert not directory.exists()
+
+    for name in ("resume.html", "resume.pdf", "resume_snapshot.json", "manifest.json"):
+        response = client.get(f"/api/share-packages/{share_id}/files/{name}")
+        assert response.status_code == 200, f"{name} 没有按快照补回来：{response.text}"
+        assert response.content, f"{name} 补出来是空的"
+
+    # 补出来的内容确实来自那份快照，而不是一个空壳。
+    html = client.get(f"/api/share-packages/{share_id}/files/resume.html").text
+    assert "负责后端服务。" in html
+    snapshot = json.loads(
+        client.get(f"/api/share-packages/{share_id}/files/resume_snapshot.json").text
+    )
+    assert snapshot["summary"] == "负责后端服务。"
+    # 脱敏过的快照不会把姓名带回来——重新生成不能成为绕过脱敏的口子。
+    assert "张三" not in html
+
+
+def test_regeneration_keeps_the_original_token_and_permission(client):
+    """清单是按库里的字段重建的，不能凭空造一个新的 token（收件人手上那份就对不上了）。"""
+    resume_id = _manual_resume(client, {"name": "张三", "summary": "后端。"})
+    body = _create_package(client, resume_id, permission="comment")
+    share_id = body["id"]
+
+    directory = _package_dir(client) / str(share_id)
+    for name in ("manifest.json", "resume.html"):
+        (directory / name).unlink()
+
+    client.get(f"/api/share-packages/{share_id}/files/manifest.json")
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["share_token"] == body["share_token"]
+    assert manifest["permission"] == "comment"
+
+
+def test_comments_file_is_never_fabricated(client):
+    """``comments.md`` 是收件人写进来的内容，数据库里没有第二份。
+
+    补一个空白模板会在界面上假装"评论还在"，而它其实随着文件一起没了——那比 404 更糟。
+    """
+    resume_id = _manual_resume(client, {"name": "张三", "summary": "后端。"})
+    body = _create_package(client, resume_id, permission="comment")
+    share_id = body["id"]
+
+    directory = _package_dir(client) / str(share_id)
+    (directory / "comments.md").unlink()
+
+    response = client.get(f"/api/share-packages/{share_id}/files/comments.md")
+
+    assert response.status_code == 404
+    assert not (directory / "comments.md").exists()
+
+
+def test_non_main_datasets_get_their_own_share_root(client, tmp_path):
+    """**非主数据集的分享包目录要隔开。**
+
+    多个数据集共用 `data/datasets/` 一个目录，而分享包 id 是每个库各自自增的——不隔离的话，
+    数据集 A 的第 1 份会把数据集 B 的第 1 份覆盖掉。主数据保持原路径（那里已有用户的分享包）。
+    """
+    from app import database
+    from app.dataset_registry import dataset_database_file
+    from app.services.datasets import create_dataset
+    from app.services.share_package import share_root
+
+    main_root = share_root(database.engine)
+    created = create_dataset("第二份", database.engine)
+    dataset_path = Path(dataset_database_file(created["id"]))
+    other_engine = database.build_engine(database.database_url_for(dataset_path))
+    try:
+        other_root = share_root(other_engine)
+        assert other_root != main_root
+        # 落到以库文件名命名的那一层里，两个数据集不会撞在一起。
+        assert other_root.name == dataset_path.stem
+    finally:
+        other_engine.dispose()

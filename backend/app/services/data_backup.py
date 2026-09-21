@@ -1,11 +1,17 @@
 """用户数据备份：导出为可迁移的压缩包，以及从压缩包恢复。
 
-ResumeForge 的全部用户数据都在这一个 SQLite 文件里——照片、经历参考文件和助手
-图片附件都以 base64 存在数据库列中，磁盘上没有其它用户文件。所以一次备份就是
-「一份一致性快照 + 一份元信息」，用标准库 zipfile 即可，不需要搬运目录。
+ResumeForge 的用户数据都在 SQLite 文件里——照片、经历参考文件和助手图片附件都以
+base64 存在数据库列中，磁盘上没有其它用户文件。所以一次备份就是「一份一致性快照 +
+一份元信息」，用标准库 zipfile 即可，不需要搬运目录。
+
+**但"一份数据"未必只有一个文件**：应用支持多份数据集，每份各占一个数据库文件，而
+一次导出默认只带走**当前活动**的那一份。所以导出分两档：只导活动数据集（格式 1，
+老版本照常可读）与连同其余数据集一并导出（格式 2，老版本会明确拒收而不是安静地
+只恢复一份）。见 ``create_backup_archive`` 与 ``ExtraDatabase``。
 
 导出物**不包含**大模型 API Key：用户可能长期保存或转发这个包。SECURITY: 清空
-密钥必须配合 ``VACUUM`` 重建文件，只 UPDATE 是不够的——见 ``_strip_api_keys``。
+密钥必须配合 ``VACUUM`` 重建文件，只 UPDATE 是不够的——见 ``_strip_api_keys``；
+随包带走的**每一份**数据集都要各做一次，不能只做活动的那份。
 """
 
 from __future__ import annotations
@@ -17,13 +23,15 @@ import shutil
 import sqlite3
 import time
 import zipfile
+from collections.abc import Sequence
 from contextlib import closing
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import Engine, text
 
 from ..config import get_settings
 from ..database_migrations import (
@@ -31,14 +39,22 @@ from ..database_migrations import (
     backup_sqlite_database,
     build_alembic_config,
     run_database_migrations,
+    snapshot_sqlite_file,
 )
 from .settings_service import API_KEY_MASK, _LLM_CONFIG_KEY
 
 logger = logging.getLogger(__name__)
 
-BACKUP_FORMAT_VERSION = 1
+BACKUP_FORMAT_VERSION = 2
 DATABASE_MEMBER = "resume_forge.db"
 MANIFEST_MEMBER = "manifest.json"
+# 归档里"其余数据集"的存放前缀。
+#
+# 当前活动的那份**仍然叫 ``resume_forge.db``**（格式 1 的位置不变），其余数据集按
+# ``datasets/<id>.db`` 另放。这样即使有人拿格式 2 的包去喂老版本，老版本也至少能按老位置
+# 拿到活动数据集——不过清单里的 ``format`` 会被标成 2，老版本会**明确拒收**而不是安静地
+# 只恢复一份（见 ``_read_manifest`` 的前向兼容守卫）。
+ARCHIVE_DATASETS_DIRNAME = "datasets"
 
 # 临时文件放在数据库同级目录：Windows 上跨盘 os.replace 失败，而恢复正是要做
 # 一次原子替换。上传的待恢复包与导出产物分开放，避免启动清理时误删用户刚上传、
@@ -46,6 +62,38 @@ MANIFEST_MEMBER = "manifest.json"
 RESTORE_DIRNAME = "restore"
 EXPORT_DIRNAME = "exports"
 _STALE_TEMP_SECONDS = 1800
+
+
+@dataclass(frozen=True)
+class ExtraDatabase:
+    """随包一起带走的**其余数据集**。
+
+    ``data_backup`` 刻意不认识"数据集注册表"：它只管把一个数据库快照塞进包里，
+    "哪些数据集要带走、它们叫什么"由 ``services/datasets`` 决定。备份格式因此与
+    数据集的文件布局解耦。
+    """
+
+    dataset_id: str
+    name: str
+    source: Path
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def member(self) -> str:
+        return f"{ARCHIVE_DATASETS_DIRNAME}/{self.dataset_id}.db"
+
+    @property
+    def metadata_member(self) -> str:
+        return f"{ARCHIVE_DATASETS_DIRNAME}/{self.dataset_id}.json"
+
+    def manifest_entry(self, size_bytes: int) -> dict[str, Any]:
+        return {
+            "id": self.dataset_id,
+            "name": self.name,
+            "file": self.member,
+            "metadata_file": self.metadata_member,
+            "size_bytes": size_bytes,
+        }
 
 
 class BackupError(Exception):
@@ -94,10 +142,20 @@ def _table_counts(bind: Engine) -> dict[str, int]:
         }
 
 
-def build_manifest(bind: Engine) -> dict[str, Any]:
+def build_manifest(
+    bind: Engine, *, datasets: Sequence[dict[str, Any]] = ()
+) -> dict[str, Any]:
+    """生成包内清单。
+
+    **格式号随"包里有没有其余数据集"变化**：只有活动数据集时仍是格式 1，老版本照常可读；
+    一旦带上了其余数据集就标成 2，老版本会明确拒收。这是刻意的——老版本读不懂
+    ``datasets/`` 这一段，若还按格式 1 放行，用户会以为"恢复成功"，实际上那几份数据集
+    根本没被恢复，而**这类故障通常要到很久以后翻旧记录时才发现**。
+    """
     settings = get_settings()
-    return {
-        "format": BACKUP_FORMAT_VERSION,
+    extras = list(datasets)
+    manifest: dict[str, Any] = {
+        "format": BACKUP_FORMAT_VERSION if extras else 1,
         "app": settings.app_name,
         "app_version": settings.app_version,
         "alembic_revision": current_head_revision(bind),
@@ -105,20 +163,35 @@ def build_manifest(bind: Engine) -> dict[str, Any]:
         "tables": _table_counts(bind),
         "api_key_included": False,
     }
+    if extras:
+        manifest["datasets"] = extras
+    return manifest
 
 
 def _plaintext_api_keys(bind: Engine) -> list[str]:
-    """收集当前库里真实存在的明文密钥，用于导出后的残留校验。
+    """收集当前库里真实存在的明文密钥，用于导出后的残留校验。"""
+    return _plaintext_api_keys_in(database_path(bind))
+
+
+def _plaintext_api_keys_in(database: Path) -> list[str]:
+    """从**一个数据库文件**里收集明文密钥。
+
+    按文件而不是按 Engine 取，是因为"导出全部数据集"要为**每一份**数据集各做一次
+    密钥剥离——否则随包带走的第二份数据集会把它的明文 Key 一起送出去，而这个包正是
+    用户会长期保存或转发的东西。
 
     ``********`` 开头的是记录引用占位符而不是密钥本身，不参与校验。
     """
     found: list[str] = []
-    tables = set(inspect(bind).get_table_names())
-    with bind.connect() as connection:
+    with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
         if "app_setting" in tables:
             row = connection.execute(
-                text("SELECT value FROM app_setting WHERE key = :key"), {"key": _LLM_CONFIG_KEY}
-            ).first()
+                "SELECT value FROM app_setting WHERE key = ?", (_LLM_CONFIG_KEY,)
+            ).fetchone()
             if row and row[0]:
                 try:
                     value = json.loads(row[0]).get("api_key", "")
@@ -129,7 +202,7 @@ def _plaintext_api_keys(bind: Engine) -> list[str]:
         if "llm_config_record" in tables:
             found.extend(
                 key
-                for (key,) in connection.execute(text("SELECT api_key FROM llm_config_record"))
+                for (key,) in connection.execute("SELECT api_key FROM llm_config_record")
                 if key and not key.startswith(API_KEY_MASK)
             )
     # 太短的值会在几 MB 的文件里随机命中，只校验长度像密钥的内容。
@@ -187,41 +260,139 @@ def _assert_no_plaintext_key(database: Path, secrets_to_find: list[str]) -> None
         )
 
 
-def create_backup_archive(bind: Engine, staging_dir: Path) -> Path:
-    """生成导出用的压缩包并返回其路径；调用方负责在响应结束后删除。"""
+def create_backup_archive(
+    bind: Engine,
+    staging_dir: Path,
+    *,
+    extra_databases: Sequence[ExtraDatabase] = (),
+) -> Path:
+    """生成导出用的压缩包并返回其路径；调用方负责在响应结束后删除。
+
+    ``extra_databases`` 非空时会把那些数据集一并装进包里，并把清单的 ``format`` 标成 2。
+    **格式号是要紧的**：它让老版本遇到这种包时明确拒收（"请先升级应用再导入"），而不是
+    只恢复活动数据集、把其余几份安静地丢掉。
+    """
     database_path(bind)  # 内存库等无文件情况在此给出明确错误
     staging_dir.mkdir(parents=True, exist_ok=True)
-    secrets_to_find = _plaintext_api_keys(bind)
 
     snapshot = backup_sqlite_database(bind, output_dir=staging_dir)
     if snapshot is None:
         raise BackupError("无法创建数据库快照，请确认数据目录可写", status_code=500)
 
     archive_path = staging_dir / f"resumeforge-backup-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    extras: list[tuple[ExtraDatabase, Path]] = []
     try:
+        # **每一份数据库各剥离一次密钥**：把不同数据集的明文 Key 收集到一起再统一校验，
+        # 是为了让"包内任何位置都不该出现明文密钥"成为一条可断言的性质，而不是逐份靠自觉。
+        secrets_to_find = _plaintext_api_keys_in(snapshot)
         _strip_api_keys(snapshot)
+        for item in extra_databases:
+            if not item.source.exists():
+                raise BackupError(
+                    f"数据集「{item.name}」的文件已不存在，无法一并导出；"
+                    "请先在列表里把它移除或改名后重试",
+                    status_code=404,
+                )
+            copy = staging_dir / f"{secrets.token_hex(8)}.db"
+            snapshot_sqlite_file(item.source, copy)
+            secrets_to_find.extend(_plaintext_api_keys_in(copy))
+            _strip_api_keys(copy)
+            extras.append((item, copy))
         _assert_no_plaintext_key(snapshot, secrets_to_find)
-        manifest = build_manifest(bind)
+        for _, copy in extras:
+            _assert_no_plaintext_key(copy, secrets_to_find)
+
+        manifest = build_manifest(
+            bind,
+            datasets=[
+                item.manifest_entry(copy.stat().st_size) for item, copy in extras
+            ],
+        )
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.write(snapshot, DATABASE_MEMBER)
+            for item, copy in extras:
+                archive.write(copy, item.member)
+                archive.writestr(
+                    item.metadata_member,
+                    json.dumps(
+                        {"name": item.name, **item.metadata}, ensure_ascii=False, indent=2
+                    ),
+                )
             archive.writestr(MANIFEST_MEMBER, json.dumps(manifest, ensure_ascii=False, indent=2))
     except (OSError, sqlite3.Error) as exc:
         archive_path.unlink(missing_ok=True)
         raise BackupError(f"生成备份文件失败：{exc}", status_code=500) from exc
     finally:
         snapshot.unlink(missing_ok=True)
+        for _, copy in extras:
+            copy.unlink(missing_ok=True)
     return archive_path
 
 
 def extract_database(archive_path: Path, destination: Path) -> Path:
-    """把压缩包里的数据库成员写到 destination 并返回该路径。
+    """把压缩包里的数据库成员写到 destination 并返回该路径。"""
+    return extract_member(archive_path, DATABASE_MEMBER, destination)
 
-    用 ``ZipFile.open`` 逐块写出，不经过 ``extractall``，从结构上排除了 zip-slip。
+
+def extract_member(archive_path: Path, member: str, destination: Path) -> Path:
+    """把压缩包里指定的成员写到 destination 并返回该路径。
+
+    用 ``ZipFile.open`` 逐块写出，不经过 ``extractall``，从结构上排除了 zip-slip；
+    调用方仍需自行校验 ``member`` 是不是自己期望的那一个。
     """
     with zipfile.ZipFile(archive_path) as archive:
-        with archive.open(DATABASE_MEMBER) as source, destination.open("wb") as target:
+        with archive.open(member) as source, destination.open("wb") as target:
             shutil.copyfileobj(source, target)
     return destination
+
+
+def declared_datasets(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """清单里声明的"其余数据集"。格式 1 的包没有这一段，返回空列表。"""
+    entries = manifest.get("datasets")
+    if not isinstance(entries, list):
+        return []
+    return [item for item in entries if isinstance(item, dict)]
+
+
+def _assert_member_is_a_dataset(entry: dict[str, Any]) -> str:
+    """校验清单里那条记录指向的成员路径**确实落在 datasets/ 之下且是 .db**。
+
+    包内的路径是可以被构造的：一个改过的备份包可以在这里写 ``../../`` 或指向主数据库
+    成员，让导入过程把别的东西当成数据集写盘。因此路径只认
+    ``datasets/<合法的 id>.db`` 这一种形状，别的一律拒收。
+    """
+    member = str(entry.get("file") or "")
+    prefix = f"{ARCHIVE_DATASETS_DIRNAME}/"
+    if not member.startswith(prefix) or not member.endswith(".db"):
+        raise BackupError(f"备份包里有一份数据集的路径不合法（{member or '空'}），已停止导入")
+    stem = member[len(prefix) : -len(".db")]
+    if not stem or "/" in stem or "\\" in stem or stem.startswith("."):
+        raise BackupError(f"备份包里有一份数据集的路径不合法（{member}），已停止导入")
+    return member
+
+
+def inspect_extra_dataset(
+    archive_path: Path, entry: dict[str, Any], bind: Engine, staging_dir: Path
+) -> Path:
+    """解出包里的一份"其余数据集"并做与主库同样的校验，返回临时文件路径。
+
+    校验链与活动数据集**完全一致**（先核对 revision、再迁移、最后查表结构）：随包带走的
+    那几份也是用户的数据，不能因为"它是附带的"就降低标准。调用方负责把它落盘并在用完后
+    删除临时文件。
+    """
+    member = _assert_member_is_a_dataset(entry)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    candidate = staging_dir / f"dataset-{secrets.token_hex(8)}.db"
+    try:
+        extract_member(archive_path, member, candidate)
+        # 顺序不能调换：先按原始 revision 核对版本，再迁移，最后才校验表结构。
+        _check_candidate_revision(candidate, bind, {"alembic_revision": None})
+        _upgrade_candidate(candidate)
+        _database_info(candidate, bind)
+    except BaseException:
+        candidate.unlink(missing_ok=True)
+        raise
+    return candidate
 
 
 def _read_manifest(archive: zipfile.ZipFile) -> dict[str, Any]:
