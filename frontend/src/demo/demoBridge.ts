@@ -21,12 +21,22 @@
 /**
  * 允许发指令的父页面源。
  *
- * 默认只认官网的正式域名。本地联调时把官网的地址加到
- * `frontend/.env.demo.local` 的 `VITE_DEMO_PARENT_ORIGINS`（该文件在
- * `.gitignore` 里），**不写死在代码里**——把 localhost 编进正式产物
- * 等于永久放宽一个来源。
+ * 列的是**本站的正式部署位置**——演示实例可能被其中任何一个页面 iframe 嵌入：
+ *   - GitHub Pages：官网本体（demo.html 的 iframe 就指这儿）；
+ *   - 阿里云 IP：个人网站的镜像（同一份 demo.html 部署在 /resumeforge/ 下）。
+ *
+ * 两者都要收，否则镜像站上点六步引导会**静默失效**（父源不在名单里，
+ * postMessage 被直接丢弃，父页发了、实例没反应、控制台不报错）。
+ *
+ * 本地联调时把本机地址加到 `frontend/.env.demo.local` 的
+ * `VITE_DEMO_PARENT_ORIGINS`（该文件在 `.gitignore` 里），**不写死在代码里**——
+ * 把 localhost 编进正式产物等于永久放宽一个来源。
  */
-const DEFAULT_PARENTS = ["https://magicapple123.github.io"];
+const DEFAULT_PARENTS = [
+  "https://magicapple123.github.io",
+  // 个人网站镜像（Nginx / 阿里云）。目前只有 IP、无域名、走 HTTP。
+  "http://101.200.155.138",
+];
 
 function allowedParents(): string[] {
   const extra = (import.meta.env.VITE_DEMO_PARENT_ORIGINS || "").trim();

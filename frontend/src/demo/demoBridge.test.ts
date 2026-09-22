@@ -129,6 +129,22 @@ describe("installDemoBridge", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("个人网站镜像（阿里云 IP）也在白名单里", () => {
+    // 镜像站把同一份 demo.html 部署在 http://101.200.155.138/resumeforge/ 下，
+    // 父来源与 Pages 不同。漏掉它的话，镜像站的六步引导会**静默失效**
+    // （postMessage 被丢弃、不报错），所以这里钉死。
+    pretendEmbedded();
+    const navigate = vi.fn();
+    uninstall = installDemoBridge(navigate);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "rf-demo:navigate", path: "/claims" },
+        origin: "http://101.200.155.138",
+      }),
+    );
+    expect(navigate).toHaveBeenCalledWith("/claims");
+  });
+
   it("卸载后不再响应", () => {
     pretendEmbedded();
     const navigate = vi.fn();
