@@ -125,7 +125,18 @@ $ForbiddenPatterns = @(
 # Tracked paths that only look forbidden: the example configuration is meant to
 # ship, and .gitignore keeps the real .env out with a "!.env.example" exception.
 # Matches in any directory (backend/ and frontend/ both have one).
-$AllowedPathPattern = "(^|/)\.env\.example$"
+#
+# frontend/.env.demo is the second exception, for a different reason: it is not a
+# user configuration at all but the build-mode switch for the online demo bundle
+# (`vite build --mode demo` reads it, and it only holds VITE_DEMO_MODE=1). It has
+# to be tracked so the demo build is reproducible from a clean clone, and
+# .gitignore re-includes it for exactly that reason. Shipping it to end users
+# would be pointless but harmless; excluding it is the tidier contract, since
+# anything matching `\.env` in a release archive otherwise signals a leak. The
+# pattern is anchored so it cannot accidentally exempt `frontend/.env.demo.local`
+# (which is gitignored, but a future `!.env.demo.*` exception would be a real
+# leak: that file carries local parent-origin allowlist entries).
+$AllowedPathPattern = "(^|/)\.env\.example$|^frontend/\.env\.demo$"
 
 function Invoke-GitCapture {
     param([string[]]$Arguments)

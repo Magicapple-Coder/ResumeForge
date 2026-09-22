@@ -125,7 +125,14 @@ foreach ($asciiOnlyName in @("requirements.txt", "requirements-dev.txt")) {
 # So the invariant is not "ASCII only" but "non-ASCII implies BOM". Checking the
 # bytes catches what a syntax check cannot: PowerShell 7 parses a BOM-less file
 # perfectly, so this defect is invisible to every pwsh-based check and to CI.
-$launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot "scripts") -Filter "*.ps1" -File)
+#
+# Recurse: `scripts/tests/*.ps1` are invoked by pwsh in CI rather than by
+# start.cmd, so today they are lower risk, but they are still PowerShell files
+# maintained in this repo and a Chinese comment added without a BOM would land
+# silently. Sweeping them costs nothing. Measured 2026-09-22: Build-Demo.ps1 was
+# the only offender (2316 non-ASCII bytes, no BOM) and this check is what caught
+# it - but only after a push, because the local run predated the stray edit.
+$launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot "scripts") -Filter "*.ps1" -File -Recurse)
 foreach ($source in $launcherSources) {
     $bytes = [IO.File]::ReadAllBytes($source.FullName)
     $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF

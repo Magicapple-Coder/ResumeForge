@@ -1,62 +1,76 @@
-# 构建「在线体验」静态产物。
+# Build the "online demo" static bundle.
 #
-# 产物结构（可直接扔进 GitHub Pages 或官网目录）：
+# Layout (can be dropped straight into GitHub Pages or the marketing site):
 #   dist-demo/
-#     index.html, assets/…
-#     demo-data/api-snapshot.json     ← 录制的只读接口回放
-#     demo-data/ai-replies.json       ← AI 回放素材
+#     index.html, assets/...
+#     demo-data/api-snapshot.json     <- recorded read-only API replies
+#     demo-data/ai-replies.json       <- recorded AI playback
 #
-# 关键点：
-#   - `VITE_DEMO_MODE=1` 让 `main.tsx` 动态引入 `src/demo/*`，并让 vite 用 `base: "./"`。
-#   - 输出目录刻意放仓库外（默认为 $env:TEMP 下的一个目录），因为本机沙箱会在
-#     `vite build` 清空 dist 时命中批量删除守卫（SAFE_DELETE_BULK_CONFIRM_REQUIRED）。
-#     要放进仓库时用 -OutDir 指到 .gitignore 覆盖的位置。
+# Key points:
+#   - `VITE_DEMO_MODE=1` makes `main.tsx` dynamically import `src/demo/*`,
+#     and makes vite use `base: "./"`.
+#   - The output directory deliberately lives outside the repo (a directory
+#     under $env:TEMP by default): the local sandbox trips the bulk-delete
+#     guard (SAFE_DELETE_BULK_CONFIRM_REQUIRED) when `vite build` empties a
+#     dist directory inside the tree. Point -OutDir at a .gitignore'd path
+#     if you need it in the repo.
 #
-# 用法：
+# Usage:
 #   pwsh -File scripts/Build-Demo.ps1
 #   pwsh -File scripts/Build-Demo.ps1 -OutDir D:\rf-demo-dist
-#   pwsh -File scripts/Build-Demo.ps1 -Release      # 发布用：拒绝带上本机白名单
+#   pwsh -File scripts/Build-Demo.ps1 -Release      # release build: reject baked-in localhost allowlist
+#
+# NOTE: this file must stay pure ASCII, or carry a UTF-8 BOM.
+# Windows PowerShell 5.1 (which is what start.cmd invokes) decodes a BOM-less
+# file with the ANSI code page, so Chinese text here would be read as GBK and
+# break the parse. The launcher test in scripts/tests enforces this. Sibling
+# packaging script Build-Release.ps1 is pure ASCII too.
 param(
     [string]$OutDir = (Join-Path $env:TEMP "rf-demo-dist"),
     [string]$Snapshot = "D:\ResumeForge\runtime\demo\api-snapshot.json",
     [string]$AiReplies = "D:\ResumeForge\runtime\demo\ai-replies.json",
-    # 发布产物用 -Release：若 `frontend/.env.demo.local` 还在，构建会把
-    # localhost 白名单一并烘焙进 bundle（见下方校验）。发布态应当只认正式域名，
-    # 所以这里直接报错让你先把那个本地文件挪走或删掉。
+    # Pass -Release for a release build. If `frontend/.env.demo.local` is still
+    # present, localhost gets baked into the bundle (see the verification step
+    # below). Release bundles should only trust the real domains, so this mode
+    # fails loudly and asks you to move that local file away first.
     [switch]$Release
 )
 
 $ErrorActionPreference = "Stop"
-# 注意是「仓库根的 frontend 子目录」，不是仓库根——`vite build` 必须在能看见
-# index.html 的目录里跑，否则报 `Cannot resolve entry module index.html`。
+# Note this is "the frontend subdirectory of the repo root", not the repo root:
+# `vite build` must run where it can see index.html, otherwise it reports
+# `Cannot resolve entry module index.html`.
 $frontend = Join-Path (Split-Path -Parent $PSScriptRoot) "frontend"
 
 if (-not (Test-Path $Snapshot)) {
-    throw "缺少接口快照 $Snapshot，请先跑 runtime/demo/tools/record_api.js"
+    throw "Missing API snapshot $Snapshot. Run runtime/demo/tools/record_api.js first."
 }
 if (-not (Test-Path $AiReplies)) {
-    throw "缺少回放素材 $AiReplies，请先跑 runtime/demo/tools/build_ai_replies.js"
+    throw "Missing AI playback data $AiReplies. Run runtime/demo/tools/build_ai_replies.js first."
 }
 
-Write-Host "构建前端（demo 模式）→ $OutDir"
+Write-Host "Building frontend (demo mode) -> $OutDir"
 Push-Location $frontend
 try {
-    # 用 frontend/node_modules 里的本机二进制，不要用 npx：
-    # npx 会去 `D:\npm-cache\_npx\…` 找缓存里的包，拿到一个版本对不上的
-    # 全局 vite/tsc（实测报 "This is not the tsc command you are looking for"
-    # 并让 vite build 找不到 index.html）。改走 npm scripts 也是同样道理。
+    # Use the local binaries under frontend/node_modules, never npx:
+    # npx looks in `D:\npm-cache\_npx\...` for a cached global package and
+    # picks up a mismatched vite/tsc (measured: "This is not the tsc command
+    # you are looking for", then vite build cannot find index.html). Going
+    # through npm scripts has the same problem.
     $vite = Join-Path $frontend "node_modules\.bin\vite.cmd"
     $tsc = Join-Path $frontend "node_modules\.bin\tsc.cmd"
-    if (-not (Test-Path $vite)) { throw "找不到 $vite，请先在 frontend 目录跑 npm ci" }
+    if (-not (Test-Path $vite)) { throw "Cannot find $vite. Run npm ci in frontend first." }
 
-    # 先做类型检查：`vite build` 自己不做，tsc 才能挡住类型错误。
+    # Type-check first: `vite build` does not do it, and tsc is what catches
+    # type errors.
     & $tsc --noEmit
-    if ($LASTEXITCODE -ne 0) { throw "tsc --noEmit 失败" }
-    # `--mode demo` 会加载 frontend/.env.demo（`VITE_DEMO_MODE=1`）。
-    # **不要**改成 shell 里设环境变量：`loadEnv()` 只扫 .env* 文件，
-    # 那样写 `base` 会静默退回 "/"，产物就无法部署到子路径。
+    if ($LASTEXITCODE -ne 0) { throw "tsc --noEmit failed" }
+    # `--mode demo` loads frontend/.env.demo (`VITE_DEMO_MODE=1`).
+    # Do NOT set this as a shell environment variable instead: `loadEnv()` only
+    # scans .env* files, so `base` silently falls back to "/" and the bundle
+    # cannot be deployed under a subpath.
     & $vite build --mode demo --outDir $OutDir --emptyOutDir
-    if ($LASTEXITCODE -ne 0) { throw "vite build 失败" }
+    if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
 } finally {
     Pop-Location
 }
@@ -67,42 +81,49 @@ Copy-Item $Snapshot (Join-Path $dataDir "api-snapshot.json") -Force
 Copy-Item $AiReplies (Join-Path $dataDir "ai-replies.json") -Force
 
 # ---------------------------------------------------------------------------
-# 校验：产物里不能烘焙本机（localhost/127.0.0.1）的父来源白名单。
+# Verify the bundle does not bake in the local (localhost/127.0.0.1) parent
+# origin allowlist.
 #
-# 背景：`demoBridge.ts` 的 `allowedParents()` 会把 `DEFAULT_PARENTS`
-# （正式域名 magicapple123.github.io）与环境变量 `VITE_DEMO_PARENT_ORIGINS`
-# 拼在一起。后者由 `frontend/.env.demo.local` 注入（该文件 gitignore，
-# 内容是本机联调端口）。只要构建时那个文件在，localhost 就会**编进正式产物**，
-# 等于永久放宽一个来源。
+# Background: `allowedParents()` in `demoBridge.ts` concatenates
+# `DEFAULT_PARENTS` (the production domain magicapple123.github.io) with the
+# environment variable `VITE_DEMO_PARENT_ORIGINS`. The latter is injected by
+# `frontend/.env.demo.local` (gitignored, holds the local dev ports). As long
+# as that file exists at build time, localhost is **compiled into the
+# production bundle**, which permanently widens one allowed origin.
 #
-# 注意判定方式：不能在产物里简单地搜 "127.0.0.1"，因为 `DEFAULT_PARENTS`
-# 与额外名单被压成同一个函数体、两者都在同一个 chunk 里（实测：
+# Careful with the predicate: do NOT simply search the bundle for "127.0.0.1".
+# `DEFAULT_PARENTS` and the extra list are minified into the same chunk,
+# in the same function body (measured):
 #   const i=["https://magicapple123.github.io"];
 #   function s(){const e="http://127.0.0.1:8132,http://localhost:8132".trim();...}
-# ），`i`（正式域名）必然存在、不能当失败条件。真正该判的是**额外名单那一份**：
-# 它在产物里的形态是"赋值给局部变量的字符串字面量"，而正式域名那份是数组字面量。
-# 两者同时出现即说明本机白名单被烘焙进去了。
+# `i` (the production domain) is always present and must not fail the check.
+# What we actually want to detect is **the extra list only**: in the bundle it
+# appears as a string literal assigned to a local variable, whereas the
+# production domain appears as an array literal. Both present at once means the
+# local allowlist got baked in.
 # ---------------------------------------------------------------------------
 $bridgeChunk = Get-ChildItem $OutDir -Recurse -File -Filter "demoBridge-*.js" |
     Select-Object -First 1
 if (-not $bridgeChunk) {
-    throw "产物里找不到 demoBridge-*.js，构建似乎不完整"
+    throw "No demoBridge-*.js found in the output. The build looks incomplete."
 }
 $bridge = Get-Content $bridgeChunk.FullName -Raw
 $bakesLocalhost = $bridge -match '127\.0\.0\.1' -or $bridge -match 'localhost'
 if ($bakesLocalhost) {
     $msg = @"
-产物 ($($bridgeChunk.Name)) 里烘焙了本机父来源白名单（localhost/127.0.0.1）。
+The bundle ($($bridgeChunk.Name)) contains the local parent-origin allowlist (localhost/127.0.0.1).
 
-这来自 frontend/.env.demo.local —— 它是本机联调配置，不该进正式产物：
-带上它等于让线上实例接受来自本机端口的导航指令，白名单也就失去了意义。
+This comes from frontend/.env.demo.local, which is a local development setting
+and must not reach a production bundle: keeping it means the deployed instance
+accepts navigation commands from a local port, which defeats the allowlist.
 
-处置：把 frontend/.env.demo.local 临时改名或移走，再重新构建。
-（本机联调时保留它没问题；发布前务必用 -Release 重建一次。）
+Fix: rename or move frontend/.env.demo.local away, then rebuild.
+(Keeping it for local development is fine; just rebuild with -Release before
+publishing.)
 "@
     if ($Release) { throw $msg }
     Write-Warning $msg
 }
 
 $total = (Get-ChildItem $OutDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
-Write-Host ("完成：{0}（{1:N1} MB）" -f $OutDir, ($total / 1MB))
+Write-Host ("Done: {0} ({1:N1} MB)" -f $OutDir, ($total / 1MB))

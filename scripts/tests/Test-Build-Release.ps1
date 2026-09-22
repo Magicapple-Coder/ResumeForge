@@ -26,7 +26,11 @@ $ForbiddenInArchive = @(
     "(^|/)__pycache__/"
 )
 # .env.example ships on purpose (backend/ and frontend/ both have one).
-$AllowedInArchive = "(^|/)\.env\.example$"
+# frontend/.env.demo also ships on purpose: it is the demo build-mode switch
+# (VITE_DEMO_MODE=1), tracked for reproducibility, not user configuration.
+# Kept in sync with $AllowedPathPattern in Build-Release.ps1 - the test exists to
+# pin what that script does, so a change to one without the other is a defect.
+$AllowedInArchive = "(^|/)\.env\.example$|^frontend/\.env\.demo$"
 
 function Assert-ReleaseTest {
     param(
