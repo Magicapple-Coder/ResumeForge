@@ -24,6 +24,12 @@
 
 当前版本：`0.11.0` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [完整使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
 
+<p>
+<a href="#-交流与反馈"><b>💬 来群里聊：QQ <code>922830167</code></b></a>
+<br>
+<sub>装不上、跑不起来、想让 AI 更懂你的岗位，都可以在群里问；<b>群文件里也备了安装包</b>，GitHub 下载慢时可以直接从群里取。<a href="#-交流与反馈">看群二维码 ↓</a></sub>
+</p>
+
 </div>
 
 > 在线体验是一个**只读演示版**：界面是真的、数据是虚构的、AI 输出是预录回放。想真的生成、真的导出、真的投递，按下面的[快速开始](#-快速开始)在本机跑起来——第一次双击 `start.cmd` 会自动装好环境。
@@ -394,7 +400,8 @@ npm test && npm run lint && npm run typecheck && npm run build
 
 ## 💬 交流与反馈
 
-- **QQ 群 `922830167`** —— 交流使用体验、提需求、报问题，欢迎来聊：
+- **QQ 群 `922830167`** —— 交流使用体验、提需求、报问题，欢迎来聊。
+  **群文件里也放了安装包**：GitHub 下载慢（或下载总是中断）的时候可以直接从群里取。
 
 <p align="center">
   <img src="docs/images/qq-group.png" alt="简历通 QQ 群 922830167 二维码" width="300">
@@ -429,17 +436,6 @@ npm test && npm run lint && npm run typecheck && npm run build
 - 提交信息遵循 Conventional Commits（`feat:` / `fix:` / `docs:` …）。
 
 这个项目采用 [Contributor Covenant](CODE_OF_CONDUCT.md) 行为准则。
-
-## 🗺 路线图
-
-已完成的主线：岗位与资料 → 简历生成 / 编写 → 多格式导出 → 投递与进度 → 面试准备。近期方向：
-
-- [ ] 更多招聘网站适配（站点适配器是可插拔的：加一个站点只需新增一个类并注册一行）
-- [ ] 简历与岗位的批量对照视图（一次看多份岗位的匹配结论）
-- [ ] 导出 Word 模板的自定义边界检查（当前只做格式校验）
-- [ ] 更细的「投递 → 面试」转化分析（依赖新的状态历史表）
-
-想影响优先级的话，在 Issue 里说清你的使用场景比「希望支持 X」更有用。
 
 ## 📄 许可证
 
