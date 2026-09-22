@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" role="img" aria-label="简历通 ResumeForge 架构与数据边界示意图">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#16365c"/>
+    </marker>
+    <marker id="arrowMuted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b96a5"/>
+    </marker>
+    <filter id="soft" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.07"/>
+    </filter>
+    <style>
+      .t { font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="999" height="699" rx="14" fill="none" stroke="#e3e8ef"/>
+
+  <!-- 标题 -->
+  <text class="t" x="36" y="50" font-size="24" font-weight="700" fill="#16365c">简历通 ResumeForge · 架构与数据边界</text>
+  <text class="t" x="36" y="74" font-size="13.5" fill="#64748b">前后端分离，前端统一走同源 /api；业务数据默认只存在本机的一个 SQLite 文件里</text>
+
+  <!-- 前端 -->
+  <rect x="36" y="96" width="284" height="306" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#soft)"/>
+  <text class="t" x="56" y="126" font-size="17" font-weight="700" fill="#16365c">浏览器 · React 前端</text>
+  <line x1="36" y1="140" x2="320" y2="140" stroke="#e2e9f2"/>
+  <g class="t" font-size="14" fill="#334155">
+    <rect x="52" y="156" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="111" y="179" text-anchor="middle">岗位广场</text>
+    <rect x="186" y="156" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="245" y="179" text-anchor="middle">简历中心</text>
+
+    <rect x="52" y="200" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="111" y="223" text-anchor="middle">投递台</text>
+    <rect x="186" y="200" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="245" y="223" text-anchor="middle">求职进度</text>
+
+    <rect x="52" y="244" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="111" y="267" text-anchor="middle">求职统计</text>
+    <rect x="186" y="244" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="245" y="267" text-anchor="middle">模拟面试</text>
+
+    <rect x="52" y="288" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="111" y="311" text-anchor="middle">求职助手</text>
+    <rect x="186" y="288" width="118" height="36" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text x="245" y="311" text-anchor="middle">事实台账</text>
+  </g>
+  <text class="t" x="52" y="352" font-size="12.5" fill="#7b8794">Ant Design 5 + TypeScript（strict）</text>
+  <text class="t" x="52" y="372" font-size="12.5" fill="#7b8794">无全局状态库，状态在页面内</text>
+  <text class="t" x="52" y="392" font-size="12.5" fill="#7b8794">路由懒加载，16 个入口</text>
+
+  <!-- 连接 -->
+  <text class="t" x="400" y="178" font-size="13" font-weight="700" fill="#16365c" text-anchor="middle">同源 /api</text>
+  <line x1="328" y1="206" x2="470" y2="206" stroke="#16365c" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text class="t" x="400" y="199" font-size="11" fill="#7b8794" text-anchor="middle">REST 请求</text>
+  <line x1="472" y1="246" x2="330" y2="246" stroke="#16365c" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text class="t" x="400" y="265" font-size="11" fill="#7b8794" text-anchor="middle">SSE 流式响应</text>
+  <text class="t" x="400" y="296" font-size="11" fill="#9aa5b1" text-anchor="middle">开发由 Vite 代理</text>
+  <text class="t" x="400" y="314" font-size="11" fill="#9aa5b1" text-anchor="middle">生产需反代 /api</text>
+
+  <!-- 后端 -->
+  <rect x="480" y="96" width="484" height="306" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#soft)"/>
+  <text class="t" x="500" y="126" font-size="17" font-weight="700" fill="#16365c">FastAPI 后端</text>
+  <text class="t" x="500" y="146" font-size="12" fill="#7b8794">路由层 → 服务层 → 数据访问层</text>
+  <line x1="480" y1="160" x2="964" y2="160" stroke="#e2e9f2"/>
+
+  <g>
+    <rect x="496" y="172" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="508" y="196" font-size="13.5" font-weight="700" fill="#16365c">岗位 / JD 解析</text>
+    <text class="t" x="508" y="216" font-size="11.5" fill="#64748b">纯规则匹配，不调用模型</text>
+    <text class="t" x="508" y="232" font-size="11.5" fill="#64748b">离线可用</text>
+
+    <rect x="726" y="172" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="738" y="196" font-size="13.5" font-weight="700" fill="#16365c">简历生成与渲染</text>
+    <text class="t" x="738" y="216" font-size="11.5" fill="#64748b">Jinja2 模板，6 种样式</text>
+    <text class="t" x="738" y="232" font-size="11.5" fill="#64748b">版式诊断与自动一页</text>
+
+    <rect x="496" y="250" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="508" y="274" font-size="13.5" font-weight="700" fill="#16365c">多格式导出</text>
+    <text class="t" x="508" y="294" font-size="11.5" fill="#64748b">HTML / PDF / docx</text>
+    <text class="t" x="508" y="310" font-size="11.5" fill="#64748b">Markdown / txt / JSON</text>
+
+    <rect x="726" y="250" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="738" y="274" font-size="13.5" font-weight="700" fill="#16365c">匹配度与风险检查</text>
+    <text class="t" x="738" y="294" font-size="11.5" fill="#64748b">结论分五类，本地规则</text>
+    <text class="t" x="738" y="310" font-size="11.5" fill="#64748b">不输出百分比评分</text>
+
+    <rect x="496" y="328" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="508" y="352" font-size="13.5" font-weight="700" fill="#16365c">求职助手</text>
+    <text class="t" x="508" y="372" font-size="11.5" fill="#64748b">工具调用 + SSE 流式</text>
+    <text class="t" x="508" y="388" font-size="11.5" fill="#64748b">能力地图运行时渲染</text>
+
+    <rect x="726" y="328" width="222" height="72" rx="8" fill="#ffffff" stroke="#cfdcec"/>
+    <text class="t" x="738" y="352" font-size="13.5" font-weight="700" fill="#16365c">投递台</text>
+    <text class="t" x="738" y="372" font-size="11.5" fill="#64748b">CDP 驱动本机浏览器</text>
+    <text class="t" x="738" y="388" font-size="11.5" fill="#64748b">必须由你显式发起</text>
+  </g>
+
+  <!-- 落点：总线 -->
+  <line x1="620" y1="402" x2="620" y2="420" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrowMuted)"/>
+  <line x1="184" y1="420" x2="816" y2="420" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="184" y1="420" x2="184" y2="434" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrowMuted)"/>
+  <line x1="500" y1="420" x2="500" y2="434" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrowMuted)"/>
+  <line x1="816" y1="420" x2="816" y2="434" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrowMuted)"/>
+
+  <!-- 三块落点 -->
+  <rect x="36" y="436" width="296" height="164" rx="12" fill="#f8fdfb" stroke="#c9e6dc" filter="url(#soft)"/>
+  <text class="t" x="52" y="466" font-size="15.5" font-weight="700" fill="#0f766e">SQLite · 本地单文件</text>
+  <text class="t" x="52" y="492" font-size="12" fill="#5b6b7a">岗位 · 资料 · 简历 · 事实台账</text>
+  <text class="t" x="52" y="511" font-size="12" fill="#5b6b7a">助手历史 · 附件与照片都在库内</text>
+  <text class="t" x="52" y="530" font-size="12" fill="#5b6b7a">导出、渲染、PDF 生成均在本机</text>
+  <rect x="52" y="548" width="122" height="28" rx="14" fill="#e6f4ef" stroke="#b9dfd3"/>
+  <text class="t" x="113" y="567" font-size="12" font-weight="600" fill="#0f766e" text-anchor="middle">默认不出网</text>
+
+  <rect x="352" y="436" width="296" height="164" rx="12" fill="#fffbf5" stroke="#f0dcbc" filter="url(#soft)"/>
+  <text class="t" x="368" y="466" font-size="15.5" font-weight="700" fill="#b45309">你配置的模型服务商</text>
+  <text class="t" x="368" y="492" font-size="12" fill="#6b7280">OpenAI 兼容 / Anthropic 原生</text>
+  <text class="t" x="368" y="511" font-size="12" fill="#6b7280">只发送完成本次生成所需的最小资料</text>
+  <text class="t" x="368" y="530" font-size="12" fill="#6b7280">照片不发送给模型</text>
+  <rect x="368" y="548" width="166" height="28" rx="14" fill="#fdf1dd" stroke="#eccfa0"/>
+  <text class="t" x="451" y="567" font-size="12" font-weight="600" fill="#b45309" text-anchor="middle">可能出网 · 需你显式配置</text>
+
+  <rect x="668" y="436" width="296" height="164" rx="12" fill="#fffbf5" stroke="#f0dcbc" filter="url(#soft)"/>
+  <text class="t" x="684" y="466" font-size="15.5" font-weight="700" fill="#b45309">本机 Chrome / Edge</text>
+  <text class="t" x="684" y="492" font-size="12" fill="#6b7280">仅「投递台」使用，CDP 连接</text>
+  <text class="t" x="684" y="511" font-size="12" fill="#6b7280">登录在你自己浏览器里完成</text>
+  <text class="t" x="684" y="530" font-size="12" fill="#6b7280">不保存密码、Cookie、令牌</text>
+  <rect x="684" y="548" width="166" height="28" rx="14" fill="#fdf1dd" stroke="#eccfa0"/>
+  <text class="t" x="767" y="567" font-size="12" font-weight="600" fill="#b45309" text-anchor="middle">可能出网 · 需你显式点击</text>
+
+  <!-- 图例 -->
+  <line x1="36" y1="640" x2="66" y2="640" stroke="#16365c" stroke-width="1.6"/>
+  <text class="t" x="74" y="644" font-size="12" fill="#64748b">本机进程内调用</text>
+  <line x1="200" y1="640" x2="230" y2="640" stroke="#8b96a5" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text class="t" x="238" y="644" font-size="12" fill="#64748b">有出网可能，必须由你显式触发</text>
+  <text class="t" x="36" y="672" font-size="12" fill="#64748b">不硬编码密钥 · 不保存招聘网站登录态 · 单用户本地工具，默认只监听回环地址，不要暴露到公网</text>
+</svg>

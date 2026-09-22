@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="540" viewBox="0 0 1000 540" role="img" aria-label="简历通能干什么：一条完整的求职链路，六个阶段各自对应哪些功能">
+  <defs>
+    <marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b96a5"/>
+    </marker>
+    <filter id="cs" x="-6%" y="-10%" width="112%" height="128%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+    <style>
+      .t { font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif; }
+      .num { font-size: 14px; font-weight: 700; fill: #ffffff; }
+      .ct { font-size: 15.5px; font-weight: 700; fill: #16365c; }
+      .cb { font-size: 12.5px; fill: #55606e; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="540" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="999" height="539" rx="14" fill="none" stroke="#e3e8ef"/>
+
+  <text class="t" x="30" y="46" font-size="24" font-weight="700" fill="#16365c">简历通能干什么 · 一条完整的求职链路</text>
+  <text class="t" x="30" y="72" font-size="13.5" fill="#64748b">从看岗位到拿到 offer，每一步都有对应功能；每一步的产出都能回头修正上一步</text>
+
+  <!-- ① -->
+  <rect x="30" y="110" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="56" cy="136" r="14" fill="#16365c"/>
+  <text class="t" x="56" y="141" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">1</text>
+  <text class="t ct" x="80" y="142" >找到并读懂岗位</text>
+  <text class="t cb" x="48" y="176" >· 粘贴原文 / 截图 / pdf·docx 识别成草稿</text>
+  <text class="t cb" x="48" y="200" >· 一次粘贴多份自动拆分，逐条确认</text>
+  <text class="t cb" x="48" y="224" >· 按关键词与城市自动采集入库</text>
+  <text class="t cb" x="48" y="248" >· 技能标签保存时自动提取</text>
+
+  <!-- ② -->
+  <rect x="350" y="110" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="376" cy="136" r="14" fill="#16365c"/>
+  <text class="t" x="376" y="141" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">2</text>
+  <text class="t ct" x="400" y="142" >判断匹不匹配</text>
+  <text class="t cb" x="368" y="176" >· 五类结论代替百分比评分</text>
+  <text class="t cb" x="368" y="200" >· 每条结论附 JD 原文与你的证据</text>
+  <text class="t cb" x="368" y="224" >· 找不到依据就写「资料中未提供」</text>
+  <text class="t cb" x="368" y="248" >· 与「岗位需求解读」明确区分</text>
+
+  <!-- ③ -->
+  <rect x="670" y="110" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="696" cy="136" r="14" fill="#16365c"/>
+  <text class="t" x="696" y="141" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">3</text>
+  <text class="t ct" x="720" y="142" >写出站得住的简历</text>
+  <text class="t cb" x="688" y="176" >· AI 按 JD 筛选事实并流式生成</text>
+  <text class="t cb" x="688" y="200" >· 也可自行编写，支持 STAR 量化改写</text>
+  <text class="t cb" x="688" y="224" >· 事实台账挡掉没做过的事</text>
+  <text class="t cb" x="688" y="248" >· 查重 / 敏感词 / 夸大风险 / ATS 自检</text>
+
+  <!-- ④ -->
+  <rect x="30" y="300" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="56" cy="326" r="14" fill="#16365c"/>
+  <text class="t" x="56" y="331" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">4</text>
+  <text class="t ct" x="80" y="332" >导出与交付</text>
+  <text class="t cb" x="48" y="366" >· A4 直出 PDF / Word / MD / txt / JSON</text>
+  <text class="t cb" x="48" y="390" >· 自定义水印与一键隐私脱敏</text>
+  <text class="t cb" x="48" y="414" >· 离线分享包：只读、可回传评论</text>
+  <text class="t cb" x="48" y="438" >· 版本差异对比（本地计算，不调模型）</text>
+
+  <!-- ⑤ -->
+  <rect x="350" y="300" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="376" cy="326" r="14" fill="#16365c"/>
+  <text class="t" x="376" y="331" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">5</text>
+  <text class="t ct" x="400" y="332" >投递与跟进</text>
+  <text class="t cb" x="368" y="366" >· 投递台自动投递，必须你显式发起</text>
+  <text class="t cb" x="368" y="390" >· 进度粘邮件或截图即可识别</text>
+  <text class="t cb" x="368" y="414" >· 提醒按紧急度分色，内推算转化率</text>
+  <text class="t cb" x="368" y="438" >· 统计看板：转化、节奏、渠道、健康度</text>
+
+  <!-- ⑥ -->
+  <rect x="670" y="300" width="300" height="160" rx="12" fill="#f7fafd" stroke="#d9e3ef" filter="url(#cs)"/>
+  <circle cx="696" cy="326" r="14" fill="#16365c"/>
+  <text class="t" x="696" y="331" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">6</text>
+  <text class="t ct" x="720" y="332" >面试与复盘</text>
+  <text class="t cb" x="688" y="366" >· 模拟面试逐轮追问，给维度评分</text>
+  <text class="t cb" x="688" y="390" >· 面试深挖按台账逐条压力测试</text>
+  <text class="t cb" x="688" y="414" >· 标准在你看到问题之前就定下来</text>
+  <text class="t cb" x="688" y="438" >· 经验沉淀成知识库，回头修简历</text>
+
+  <!-- 行内箭头 -->
+  <path d="M 334 190 L 346 190" stroke="#8b96a5" stroke-width="1.4" marker-end="url(#fa)"/>
+  <path d="M 654 190 L 666 190" stroke="#8b96a5" stroke-width="1.4" marker-end="url(#fa)"/>
+  <path d="M 334 380 L 346 380" stroke="#8b96a5" stroke-width="1.4" marker-end="url(#fa)"/>
+  <path d="M 654 380 L 666 380" stroke="#8b96a5" stroke-width="1.4" marker-end="url(#fa)"/>
+
+  <!-- 回环：复盘结果回头改简历 -->
+  <path d="M 820 300 L 820 272" stroke="#8b96a5" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#fa)"/>
+  <text class="t" x="812" y="291" font-size="12" fill="#7b8794" text-anchor="end">复盘结果回头改简历</text>
+
+  <text class="t" x="30" y="506" font-size="12.5" fill="#64748b">所有数据默认只存在本机的一个 SQLite 文件里 · 永久开源免费、无账号体系，装完即用 · 不配模型时，解析、检查与全部导出仍可离线使用</text>
+</svg>

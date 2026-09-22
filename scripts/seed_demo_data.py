@@ -104,8 +104,10 @@ ins(
             github="",
             photo="",
             summary=(
-                "3 年市场与运营经验，主导过从 0 到 1 的会员增长项目，"
-                "擅长把一次性的活动经验沉淀成可复用的流程。"
+                "3 年市场与运营经验，主导过从 0 到 1 的会员增长项目与季度主题营销活动，"
+                "单场活动最高触达 1.2 万人、转化率环比提升 18%；"
+                "擅长把一次性的活动经验沉淀成可复用的流程与台账，"
+                "习惯用数据解释结论而不是凭感觉拍板。"
             ),
             section_order=["education", "experience", "projects", "campus", "skills", "awards"],
             updated_at=NOW,
@@ -142,9 +144,14 @@ ins(
             start_date="2023.07",
             end_date="至今",
             description=(
-                "- 主导季度主题营销活动，参与人数 1.2 万，活动转化率环比提升 18%。\n"
-                "- 把活动复盘模板沉淀成 SOP，团队复用后单场筹备时间从 10 天压缩到 4 天。\n"
-                "- 对接 12 家外部渠道并建立效果台账，年度渠道成本下降 15%。"
+                "- 主导季度主题营销活动，全程负责选题、预算分配与落地执行，"
+                "参与人数 1.2 万、活动转化率环比提升 18%，超出季度目标 6 个百分点。\n"
+                "- 把活动复盘模板沉淀成 SOP，覆盖从立项到复盘的 9 个检查点，"
+                "团队复用后单场筹备时间从 10 天压缩到 4 天。\n"
+                "- 对接 12 家外部渠道并建立效果台账，按周追踪各渠道的进量与成交转化，"
+                "停投 3 家低效渠道后年度渠道成本下降 15%。\n"
+                "- 牵头搭建活动数据看板，把参与人数、转化率与单客成本并入同一张表，"
+                "让季度复盘从「讲感受」变成「看数据」。"
             ),
             reference_file_name="市场运营工作小结.md",
             reference_content="# 季度活动复盘\n\n- 参与人数：12,400\n- 转化率：7.2%（环比 +18%）\n",
@@ -155,7 +162,12 @@ ins(
             role="市场部实习生",
             start_date="2022.06",
             end_date="2022.12",
-            description="- 负责社群日常维护与内容排期，月均产出 20 篇内容，粉丝净增 3000。",
+            description=(
+                "- 负责社群日常维护与内容排期，独立完成选题、撰写与发布，"
+                "月均产出 20 篇内容，半年内粉丝净增 3000。\n"
+                "- 建立内容选题库并按打开率与转发率排序，把高互动选题占比从 25% 提到 48%。\n"
+                "- 配合线下活动做预热与收尾，单场活动报名转化率较此前提升约 12%。"
+            ),
             reference_file_name="",
             reference_content="",
         ),
@@ -172,8 +184,30 @@ ins(
             start_date="2024.03",
             end_date="2024.06",
             tech_stack="活动策划,渠道对接,预算管理",
-            description="- 从 0 到 1 策划校园招聘会，到会企业 40 家、学生 1200 人。",
-            highlights="- 用分时段报名数据调度入场，把现场排队时间控制在 10 分钟以内。",
+            description="- 从 0 到 1 策划校园招聘会，主导场地、企业邀约与现场执行，到会企业 40 家、学生 1200 人。",
+            highlights=(
+                "- 用分时段报名数据调度入场节奏，把现场排队时间控制在 10 分钟以内。\n"
+                "- 设计企业侧的一页纸招募说明并在 3 天内完成 40 家邀约确认，"
+                "到会率 92%，高于往届平均水平。"
+            ),
+            reference_file_name="",
+            reference_content="",
+        ),
+        row(
+            profile_id=1,
+            name="会员拉新与留存实验",
+            role="项目成员",
+            start_date="2024.07",
+            end_date="2024.10",
+            tech_stack="用户增长,AB测试,数据分析",
+            description=(
+                "- 参与会员拉新实验的设计与执行，把新客权益拆成 3 组做 AB 测试，"
+                "最终选定的一组把首月留存率提升 9 个百分点。"
+            ),
+            highlights=(
+                "- 用 Excel 搭建实验数据表，自动汇总各组的进量、留存与单客成本，"
+                "把每次实验的分析时间从半天压到 1 小时。"
+            ),
             reference_file_name="",
             reference_content="",
         )
@@ -206,7 +240,7 @@ JOBS = [
         company="示例科技（上海）有限公司",
         location="上海·徐汇区",
         salary="15-25K·13薪",
-        job_type="全职",
+        job_type="社招",
         source="BOSS直聘",
         source_url="https://www.zhipin.com/job_detail/demo0001.html",
         posted_at="2026-09-18",
@@ -231,7 +265,7 @@ JOBS = [
         company="示例文化传媒有限公司",
         location="杭州·西湖区",
         salary="12-18K",
-        job_type="全职",
+        job_type="社招",
         source="BOSS直聘",
         source_url="https://www.zhipin.com/job_detail/demo0002.html",
         posted_at="2026-09-17",
@@ -247,7 +281,7 @@ JOBS = [
         company="示例日化有限公司",
         location="广州·天河区",
         salary="14-20K",
-        job_type="全职",
+        job_type="社招",
         source="招聘网站",
         source_url="",
         posted_at="2026-09-15",
@@ -263,7 +297,7 @@ JOBS = [
         company="示例网络科技有限公司",
         location="北京·海淀区",
         salary="20-30K",
-        job_type="全职",
+        job_type="社招",
         source="BOSS直聘",
         source_url="https://www.zhipin.com/job_detail/demo0004.html",
         posted_at="2026-09-19",
@@ -295,7 +329,7 @@ JOBS = [
         company="示例文创发展有限公司",
         location="成都·武侯区",
         salary="10-16K",
-        job_type="全职",
+        job_type="社招",
         source="手动录入",
         source_url="",
         posted_at="2026-09-10",
@@ -303,6 +337,114 @@ JOBS = [
         keywords=["线下活动", "供应商管理", "预算管理"],
         description="负责线下文创活动的策划、执行与现场统筹。",
         requirements="1. 2 年以上线下活动执行经验；\n2. 能接受项目期出差。",
+        additional_info="",
+        note="",
+    ),
+    dict(
+        title="社群运营专员",
+        company="示例教育科技有限公司",
+        location="深圳·南山区",
+        salary="13-19K",
+        job_type="社招",
+        source="BOSS直聘",
+        source_url="https://www.zhipin.com/job_detail/demo0007.html",
+        posted_at="2026-09-20",
+        favorite=True,
+        keywords=["社群运营", "用户留存", "活动策划"],
+        description=(
+            "1. 负责付费学员社群的日常运营与活跃度提升；\n"
+            "2. 设计并落地社群转化活动，对续费率负责；\n"
+            "3. 沉淀社群 SOP 并迭代话术库。"
+        ),
+        requirements=(
+            "1. 2 年以上社群或用户运营经验；\n"
+            "2. 有教育行业经验优先；\n"
+            "3. 能独立完成活动方案与复盘。"
+        ),
+        additional_info="六险一金、免费课程",
+        note="职责与我的活动策划经历比较对口",
+    ),
+    dict(
+        title="市场推广专员",
+        company="示例智能硬件有限公司",
+        location="苏州·工业园区",
+        salary="12-18K",
+        job_type="社招",
+        source="智联招聘",
+        source_url="https://www.zhipin.com/job_detail/demo0008.html",
+        posted_at="2026-09-19",
+        favorite=False,
+        keywords=["市场推广", "渠道拓展", "预算管理"],
+        description="负责线上线下的市场推广执行，维护投放渠道并跟踪转化。",
+        requirements=(
+            "1. 2 年以上市场推广经验；\n2. 有硬件或消费电子行业经验优先；\n3. 熟悉投放数据口径。"
+        ),
+        additional_info="",
+        note="",
+    ),
+    dict(
+        title="运营助理（实习）",
+        company="示例数据服务有限公司",
+        location="上海·静安区",
+        salary="180-220 元/天",
+        job_type="实习",
+        source="BOSS直聘",
+        source_url="https://www.zhipin.com/job_detail/demo0009.html",
+        posted_at="2026-09-18",
+        favorite=False,
+        keywords=["数据整理", "运营支持", "Excel"],
+        description="协助整理运营数据报表，跟进日常运营事项。",
+        requirements="1. 在校生，每周可到岗 3 天以上；\n2. 熟练使用 Excel；\n3. 细心、有条理。",
+        additional_info="",
+        note="",
+    ),
+    dict(
+        title="品牌内容运营",
+        company="示例食品有限公司",
+        location="武汉·江汉区",
+        salary="11-17K",
+        job_type="社招",
+        source="招聘网站",
+        source_url="",
+        posted_at="2026-09-16",
+        favorite=False,
+        keywords=["内容运营", "品牌传播", "文案"],
+        description="负责品牌账号的内容规划与产出，配合新品上市做传播。",
+        requirements="1. 1 年以上内容运营经验；\n2. 文字功底扎实；\n3. 有快消行业经验优先。",
+        additional_info="",
+        note="来源是群里转发的招聘信息",
+    ),
+    dict(
+        title="用户运营专员",
+        company="示例出行科技有限公司",
+        location="北京·朝阳区",
+        salary="16-24K",
+        job_type="社招",
+        source="BOSS直聘",
+        source_url="https://www.zhipin.com/job_detail/demo0011.html",
+        posted_at="2026-09-21",
+        favorite=False,
+        keywords=["用户运营", "数据分析", "会员体系"],
+        description="负责会员权益的设计与迭代，跟踪核心运营指标。",
+        requirements=(
+            "1. 2 年以上用户运营经验；\n2. 能独立完成数据分析并提出方案；\n3. 有会员体系经验优先。"
+        ),
+        additional_info="13 薪、餐补",
+        note="",
+    ),
+    dict(
+        title="活动执行专员",
+        company="示例会展服务有限公司",
+        location="南京·建邺区",
+        salary="9-14K",
+        job_type="社招",
+        source="手动录入",
+        source_url="",
+        posted_at="2026-09-14",
+        favorite=False,
+        keywords=["线下活动", "现场执行", "供应商管理"],
+        description="负责展会与线下活动的现场执行与供应商对接。",
+        requirements="1. 1 年以上活动执行经验；\n2. 能接受项目期出差与加班；\n3. 沟通协调能力强。",
         additional_info="",
         note="",
     ),
@@ -331,8 +473,11 @@ ins(
             note_images=[],
             favorite=j["favorite"],
             recognition_source="text",
-            created_at=NOW - timedelta(days=6 - i),
-            updated_at=NOW - timedelta(days=6 - i),
+            # 列表按 Job.created_at 倒序，所以用 `days=i` 让 JOBS[0]（市场运营专员）排在第一条。
+            # 这里**不能写 `days=常数 - i`**：岗位数一旦超过那个常数，i 大的条目会落到未来时间，
+            # 于是最后新增的岗位反而排在最前（2026-09-22 把岗位从 6 个加到 12 个时踩过）。
+            created_at=NOW - timedelta(days=i),
+            updated_at=NOW - timedelta(days=i),
         )
         for i, j in enumerate(JOBS)
     ],
@@ -351,7 +496,7 @@ ins(
             images=[],
             note="从招聘信息里复制的，还没核对",
             source="manual",
-            job_type="全职",
+            job_type="社招",
             location="上海",
             salary="13-18K",
             source_url="",
@@ -372,7 +517,7 @@ ins(
             images=[],
             note="招聘会现场拍的展板，待整理",
             source="manual",
-            job_type="全职",
+            job_type="社招",
             location="苏州",
             salary="8-12K",
             source_url="",
@@ -416,9 +561,11 @@ RESUMES = [
         tone="",
         enhancement_enabled=True,
         enhancement_level="strong",
-        template="modern",
-        format_name="compact",
-        format_config={},
+        # 首屏展示用的那份：technical 的实心色块标题层次最分明，强调色换成
+        # 应用的 colorPrimary（#16365c），让截图与界面本身是同一个调子。
+        template="technical",
+        format_name="standard",
+        format_config={"accent": "#16365c"},
         page_limit=1,
         font_scale="standard",
         custom_instruction="突出活动转化率与流程沉淀",
@@ -558,6 +705,75 @@ ins(
             created_at=NOW - timedelta(days=9),
             updated_at=NOW - timedelta(days=9),
         ),
+        row(
+            id=4,
+            title="单场活动筹备时间从 10 天压缩到 4 天",
+            category="实习/工作",
+            subject="示例科技有限公司 / 市场运营专员",
+            source_fact="SOP 上线前后各 3 场活动的筹备排期表对比。",
+            candidate_wording="把活动复盘模板沉淀成 SOP，团队复用后单场筹备时间从 10 天压缩到 4 天。",
+            sources=[],
+            responsibility_level="负责模块",
+            verification_status="已确认",
+            allowed_uses=["resume", "interview"],
+            interview_details={
+                "decisions": ["9 个检查点是怎么定下来的", "砍掉的 6 天具体来自哪几步"],
+                "difficulties": ["第一版 SOP 太细，执行的人不愿意填"],
+                "verification": ["活动排期表前后对比"],
+                "result": "连续 3 场活动都稳定在 4 到 5 天",
+            },
+            boundary="压缩的是内部筹备排期，不含外部供应商的交付周期。",
+            risk_notes=[],
+            last_verified="2026-09-18",
+            created_at=NOW - timedelta(days=11),
+            updated_at=NOW - timedelta(days=4),
+        ),
+        row(
+            id=5,
+            title="内容选题库把高互动选题占比提到 48%",
+            category="实习/工作",
+            subject="示例文化传播有限公司 / 市场部实习生",
+            source_fact="内容后台按打开率与转发率排序的月度统计。",
+            candidate_wording="建立内容选题库并按打开率与转发率排序，把高互动选题占比从 25% 提到 48%。",
+            sources=[],
+            responsibility_level="参与",
+            verification_status="已确认",
+            allowed_uses=["resume"],
+            interview_details={
+                "decisions": ["高互动的判定阈值怎么定"],
+                "difficulties": [],
+                "verification": ["内容后台月度统计截图"],
+                "result": None,
+            },
+            boundary="实习期主导的是选题库整理，选题决策由带教老师拍板。",
+            risk_notes=[],
+            last_verified="2026-09-18",
+            created_at=NOW - timedelta(days=11),
+            updated_at=NOW - timedelta(days=4),
+        ),
+        row(
+            id=6,
+            title="校园招聘会到会企业 40 家",
+            category="校园经历",
+            subject="示例大学学生会宣传部 / 副部长",
+            source_fact="招聘会签到表与现场照片，企业到会 40 家、学生 1200 人。",
+            candidate_wording="主导校园招聘会的场地与企业邀约，到会企业 40 家、学生 1200 人。",
+            sources=[],
+            responsibility_level="项目负责人",
+            verification_status="已确认",
+            allowed_uses=["resume", "interview"],
+            interview_details={
+                "decisions": ["40 家邀约名单是怎么筛的", "到会率 92% 靠什么保证"],
+                "difficulties": ["前两周只有 12 家确认，后面靠校友渠道补上"],
+                "verification": ["签到表", "现场照片"],
+                "result": "到会率 92%，高于往届平均水平",
+            },
+            boundary="场地与经费由学院提供，我负责的是企业邀约与现场调度。",
+            risk_notes=[],
+            last_verified="2026-09-15",
+            created_at=NOW - timedelta(days=8),
+            updated_at=NOW - timedelta(days=5),
+        ),
     ],
 )
 
@@ -599,6 +815,30 @@ ins(
             note="",
             created_at=NOW - timedelta(days=6),
             updated_at=NOW - timedelta(days=6),
+            deleted_at=None,
+        ),
+        row(
+            id=4,
+            title="校园招聘会复盘（一页纸）",
+            category="作品",
+            content="企业邀约路径、到会率与现场排队时间的复盘，用于回答「你怎么组织一次活动」。",
+            url="https://example.com/portfolio/campus-fair",
+            files=[],
+            note="讲到组织能力时可以直接拿出来",
+            created_at=NOW - timedelta(days=5),
+            updated_at=NOW - timedelta(days=5),
+            deleted_at=None,
+        ),
+        row(
+            id=5,
+            title="渠道效果台账模板",
+            category="作品",
+            content="按渠道记录进量、成交与单条线索成本，每周更新一次，用于判断该停哪些渠道。",
+            url="https://example.com/portfolio/channel-tracker",
+            files=[],
+            note="脱敏后可以带去面试",
+            created_at=NOW - timedelta(days=3),
+            updated_at=NOW - timedelta(days=3),
             deleted_at=None,
         ),
     ],
@@ -652,6 +892,55 @@ ins(
             updated_at=NOW - timedelta(days=4),
             deleted_at=None,
         ),
+        row(
+            id=4,
+            title="匹配度的五类结论怎么读",
+            category="求职策略",
+            tags=["匹配度", "改简历"],
+            content=(
+                "- **已匹配**：能找到证据，简历里也写清楚了，不用动。\n"
+                "- **表达缺口**：做过但简历没写，或者写得看不出结果——这是最该改的一类。\n"
+                "- **证据不足**：这条主张在资料里找不到出处，先去补证据，别急着写。\n"
+                "- **真实缺口**：确实没做过。要么补经历，要么接受这个岗位不合适。\n"
+                "- **待确认**：信息不够判断，先按原文再读一遍 JD。\n"
+            ),
+            source="",
+            created_at=NOW - timedelta(days=6),
+            updated_at=NOW - timedelta(days=6),
+            deleted_at=None,
+        ),
+        row(
+            id=5,
+            title="请人内推时怎么开口",
+            category="求职策略",
+            tags=["内推", "沟通"],
+            content=(
+                "一次说明白三件事，对方才好帮你转：\n\n"
+                "1. 岗位链接与你的匹配点（一两句，不要甩整份简历）；\n"
+                "2. 你希望的推进方式（帮投 / 帮问 / 给建议）；\n"
+                "3. 什么时候需要答复。\n\n"
+                "对方答应后当天把简历发过去，别让对方来催。\n"
+            ),
+            source="",
+            created_at=NOW - timedelta(days=2),
+            updated_at=NOW - timedelta(days=2),
+            deleted_at=None,
+        ),
+        row(
+            id=6,
+            title="面试复盘要记哪三件事",
+            category="面试问答",
+            tags=["复盘", "面试"],
+            content=(
+                "1. **被追问的位置**：哪个数字或哪句话被追问了两轮以上——那就是简历里最虚的地方。\n"
+                "2. **没答上来的题**：按题目类型归类，同类题攒到三道就去补知识而不是背答案。\n"
+                "3. **下一次要改的表述**：当场就能改的那一句，直接回填进事实台账的表述字段。\n"
+            ),
+            source="",
+            created_at=NOW - timedelta(days=1),
+            updated_at=NOW - timedelta(days=1),
+            deleted_at=None,
+        ),
     ],
 )
 
@@ -700,6 +989,28 @@ ins(
             interview_date="2026-09-19",
             created_at=NOW - timedelta(days=2),
             updated_at=NOW - timedelta(days=2),
+            deleted_at=None,
+        ),
+        row(
+            id=3,
+            title="示例日化 品牌营销专员 一面",
+            company="示例日化有限公司",
+            position="品牌营销专员",
+            job_id=3,
+            content="偏经历核对，问得很细，重点是预算规模和我的具体分工。",
+            questions=[
+                "你经手的活动预算大概什么量级？",
+                "媒介投放的效果你是怎么复盘的？",
+                "和供应商谈判时你争取到过什么条件？",
+                "为什么从甲方市场部想换到品牌方？",
+            ],
+            tags=["经历面", "预算"],
+            source="self",
+            difficulty="中级",
+            round_type="一面",
+            interview_date="2026-09-12",
+            created_at=NOW - timedelta(days=10),
+            updated_at=NOW - timedelta(days=9),
             deleted_at=None,
         ),
     ],
@@ -772,6 +1083,111 @@ ins(
             updated_at=NOW - timedelta(days=7),
             deleted_at=None,
         ),
+        row(
+            id=4,
+            company=JOBS[6]["company"],
+            title=JOBS[6]["title"],
+            company_key="示例教育",
+            title_key="社群运营专员",
+            status="assessment",
+            stage_note="已收到在线测评邀请",
+            applied_at="2026-09-12",
+            status_date="2026-09-20",
+            next_action="周四前做完测评",
+            next_action_date="2026-09-24",
+            note="",
+            evidence="9/20 收到测评邮件，48 小时有效",
+            job_id=7,
+            resume_id=1,
+            source="manual",
+            created_at=NOW - timedelta(days=10),
+            updated_at=NOW - timedelta(days=2),
+            deleted_at=None,
+        ),
+        row(
+            id=5,
+            company=JOBS[7]["company"],
+            title=JOBS[7]["title"],
+            company_key="示例智能硬件",
+            title_key="市场推广专员",
+            status="applied",
+            stage_note="简历已投，等回复",
+            applied_at="2026-09-20",
+            status_date="2026-09-20",
+            next_action="下周一没回复就问一下",
+            next_action_date="2026-09-28",
+            note="",
+            evidence="9/20 投递成功",
+            job_id=8,
+            resume_id=1,
+            source="manual",
+            created_at=NOW - timedelta(days=2),
+            updated_at=NOW - timedelta(days=2),
+            deleted_at=None,
+        ),
+        row(
+            id=6,
+            company=JOBS[10]["company"],
+            title=JOBS[10]["title"],
+            company_key="示例出行",
+            title_key="用户运营专员",
+            status="screening",
+            stage_note="HR 电话初筛通过",
+            applied_at="2026-09-21",
+            status_date="2026-09-22",
+            next_action="等业务方约面",
+            next_action_date="2026-09-25",
+            note="HR 说这周内给答复",
+            evidence="9/22 HR 电话沟通 10 分钟",
+            job_id=11,
+            resume_id=1,
+            source="manual",
+            created_at=NOW - timedelta(days=1),
+            updated_at=NOW,
+            deleted_at=None,
+        ),
+        row(
+            id=7,
+            company=JOBS[9]["company"],
+            title=JOBS[9]["title"],
+            company_key="示例食品",
+            title_key="品牌内容运营",
+            status="offer",
+            stage_note="已发意向，等确认薪资细节",
+            applied_at="2026-08-27",
+            status_date="2026-09-21",
+            next_action="周五前回复是否接受",
+            next_action_date="2026-09-26",
+            note="薪资比预期低一点，还在谈",
+            evidence="9/21 收到 offer 意向邮件",
+            job_id=10,
+            resume_id=3,
+            source="manual",
+            created_at=NOW - timedelta(days=25),
+            updated_at=NOW - timedelta(days=1),
+            deleted_at=None,
+        ),
+        row(
+            id=8,
+            company=JOBS[11]["company"],
+            title=JOBS[11]["title"],
+            company_key="示例会展",
+            title_key="活动执行专员",
+            status="rejected",
+            stage_note="要求常驻项目地，双方都不合适",
+            applied_at="2026-09-08",
+            status_date="2026-09-13",
+            next_action="",
+            next_action_date="",
+            note="",
+            evidence="9/13 电话沟通后确认不推进",
+            job_id=12,
+            resume_id=None,
+            source="manual",
+            created_at=NOW - timedelta(days=14),
+            updated_at=NOW - timedelta(days=9),
+            deleted_at=None,
+        ),
     ],
 )
 
@@ -830,6 +1246,9 @@ reminders = [
     ("用户增长运营 测评截止", 2, "assessment_deadline", 2, "测评链接有效期 48 小时"),
     ("给李示例回消息", 1, "hr_reply", 2, "确认内推进度"),
     ("准备案例题", 3, "other", 1, "复习留存下跌的排查顺序"),
+    # 故意留一条已过期的：首页提醒卡片按「逾期 / 24 小时 / 3 天」分色，四条里得各有一条才看得出区别。
+    ("回复示例日化 HR 的薪资问题", -1, "hr_reply", 7, "昨天就该回，别再拖"),
+    ("示例教育 测评提交", 2, "assessment_deadline", 4, "测评周四 24:00 截止"),
 ]
 ins(
     "reminder",
@@ -854,7 +1273,7 @@ ins(
 
 # ── 投递队列 + 批次历史 ─────────────────────────────────────────────────────
 queue_rows = []
-for i, jid in enumerate([1, 4, 5]):
+for i, jid in enumerate([1, 4, 5, 7]):
     job = JOBS[jid - 1]
     queue_rows.append(
         row(
