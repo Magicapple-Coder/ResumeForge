@@ -7,6 +7,9 @@ import {
 import { Button, Divider, Modal, Space, Steps, Typography } from "antd";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+// 走 import 让 Vite 按 `base` 重写前缀，别写死 "/resumeforge-icon.png"
+// （在线体验产物部署在 Pages 子路径下，绝对路径会 404）。理由同 App.tsx 侧栏图标。
+import brandIcon from "../assets/resumeforge-icon.png";
 import { GUIDE_STEPS } from "./userGuideSteps";
 
 /** 把文案里的 `**强调**` 渲染成粗体。
@@ -49,7 +52,7 @@ export default function UserGuideModal({ open, onClose, onNavigate }: UserGuideM
       open={open}
       title={
         <Space size={10}>
-          <img className="user-guide-brand-image" src="/resumeforge-icon.png" alt="" />
+          <img className="user-guide-brand-image" src={brandIcon} alt="" />
           <span>欢迎使用简历通</span>
         </Space>
       }

@@ -6,6 +6,24 @@
 
 ### Added
 
+- **官网「在线体验」：不装也能真实点一遍的只读演示版**。官网新增
+  [在线体验页](https://magicapple123.github.io/ResumeForge-official/demo.html)，页面里内嵌一个跑在浏览器里的实例，
+  用同一套前端代码渲染，数据来自预先录制的接口快照。访客可以逛遍全部页面、打开岗位/简历/投递记录的详情抽屉、
+  看 AI 输出长什么样，全程没有任何后端进程。
+
+  实现上**没有改一行业务代码**：`frontend/src/demo/demoFetch.ts` 在启动时替换 `window.fetch`，
+  命中录制快照就直接回放，未录到的 GET 返回 404（让页面走空态而不是网络错误），写操作返回 403 并附上
+  「下载完整版后所有操作都会真实生效」的说明。两个真实收口（`api/client.ts`、`api/stream.ts`）加上十几处
+  导出用的裸 `fetch` 因此被一次性接管。助手回复与简历生成走 **SSE 回放**，逐字吐出的观感与真实流式一致。
+
+  配套：`scripts/Build-Demo.ps1` 产出 `--mode demo` 的静态产物（`base: "./"`，适配 Pages 子路径），
+  构建后自动把快照与回放素材拷进 `dist/demo-data/`；`frontend/src/demo/demoBridge.ts` 提供
+  跨源 `postMessage` 通道，让官网的六步引导能驱动内嵌实例切页（官网与 Pages 不同域，拿不到 iframe DOM）。
+  **体验版不接入任何真实模型**——AI 输出全部是预录回放，页面上有明确的常驻提示。
+
+  发布形态、`demo.html` 与文档里的提示措辞均保持一致：界面是真的、数据是虚构的、AI 是回放、改动不生效，
+  并引导访客下载完整版。测试见 `frontend/src/demo/`（32 个用例，含路由白名单与 `MENU_ITEMS` 的双向断言）。
+
 ### Fixed
 
 ### Changed

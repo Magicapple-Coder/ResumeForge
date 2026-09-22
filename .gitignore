@@ -29,6 +29,9 @@ frontend/rf_build_*/
 .env
 .env.*
 !.env.example
+# 在线体验构建的模板：只含 `VITE_DEMO_MODE=1`，没有本机信息，需要进仓库
+# （`scripts/Build-Demo.ps1` 靠 `--mode demo` 读它）。
+!.env.demo
 backend/data/
 # 投递专用浏览器的 user-data-dir：含登录态（Cookie / 本地存储），体积可能很大。
 # 绝不进 Git（也不进数据库备份包——登录态由 Chromium 自己持久化，应用不读取）。

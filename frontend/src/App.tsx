@@ -24,6 +24,11 @@ import ExitAppButton from "./components/common/ExitAppButton";
 import TaskCompletionNotifier from "./components/TaskCompletionNotifier";
 import { APP_NAME, APP_NAME_EN, GITHUB_REPO } from "./config";
 import { consumeFirstVisitGuide } from "./utils/userGuide";
+// 侧栏品牌图标。走 import 而不是写死 "/resumeforge-icon.png"——Vite 会按 `base`
+// 重写成正确前缀（在线体验产物部署在 Pages 子路径下，写死绝对路径会 404）。
+// 特意用 src/assets/ 的副本而不是 public/ 下的同名文件：引用 public/ 里的资源不会
+// 经过 Vite 的 base 重写，等于没修。
+import brandIcon from "./assets/resumeforge-icon.png";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
@@ -91,6 +96,22 @@ function MainLayout() {
     if (consumeFirstVisitGuide()) setGuideOpen(true);
   }, []);
 
+  /**
+   * 在线体验模式：接收官网 iframe 发来的切页指令。
+   *
+   * 动态 import 是刻意的——静态引入会让 `src/demo/*` 进入主发行包的依赖图。
+   * 演示构建里这一段会真正跑起来；普通构建里 `import.meta.env.VITE_DEMO_MODE`
+   * 恒为 undefined，条件永假，打包器把整块摇掉。
+   */
+  useEffect(() => {
+    if (import.meta.env.VITE_DEMO_MODE !== "1") return;
+    let uninstall: (() => void) | undefined;
+    void import("./demo/demoBridge").then(({ installDemoBridge }) => {
+      uninstall = installDemoBridge(navigate);
+    });
+    return () => uninstall?.();
+  }, [navigate]);
+
   const navigateFromGuide = (path: string) => {
     navigate(path);
   };
@@ -103,7 +124,10 @@ function MainLayout() {
         <Sider className="app-sider" theme="light" width={200} breakpoint="lg" collapsedWidth={64}>
           <div className="app-brand">
             <span className="app-brand-mark">
-              <img className="app-brand-image" src="/resumeforge-icon.png" alt="" />
+              {/* 用 import 拿到带 base 前缀的 URL，不要写死 "/resumeforge-icon.png"：
+                  在线体验构建把产物部署在 GitHub Pages 的**子路径**（base: "./"）下，
+                  写死的绝对路径会指到域名根目录、图标 404。import 由 Vite 按 base 重写。 */}
+              <img className="app-brand-image" src={brandIcon} alt="" />
             </span>
             <span className="app-brand-copy">
               <span className="app-brand-name">{APP_NAME}</span>
