@@ -72,20 +72,27 @@ async def lifespan(_app: FastAPI):
     # 只有早期未版本化数据库需要兼容建表/补列；空库与后续升级均由
     # Alembic 独立管理，避免 create_all 提前创建结构而掩盖 revision。
     # 用属性访问而不是按值导入：切换数据集会重建 engine，按值引用会指向旧库。
+    # 每一步都留一行日志。启动阶段是最容易"静默卡住"的地方：进程活着、端口没人监听、
+    # 日志停在上一行——没有分段日志就只能靠猜（CI 的 macOS 作业上真发生过）。
+    startup_logger = logging.getLogger(__name__)
     bind = database.engine
+    startup_logger.info("启动自检：检查数据库版本")
     if is_unversioned_legacy_database(bind):
         Base.metadata.create_all(bind=bind)
         ensure_sqlite_columns(bind, SQLITE_REQUIRED_COLUMNS)
     run_database_migrations(bind)
     # 上次运行若中途退出，可能留下未应用的备份包与导出产物，它们不会再用到。
+    startup_logger.info("启动自检：清理临时目录")
     cleanup_temp_directories(bind)
     # 应用重启后，把仍停留在"进行中"的投递/采集任务标记为失败，避免出现幽灵进度。
+    startup_logger.info("启动自检：清理中断的投递/采集任务")
     with database.SessionLocal() as session:
         try:
             apply_service.fail_orphaned_tasks(session)
             official_service.fail_orphaned_runs(session)
         except Exception:  # noqa: BLE001 - 清理失败不应阻断启动
-            logging.getLogger(__name__).warning("清理中断的投递/采集任务失败", exc_info=True)
+            startup_logger.warning("清理中断的投递/采集任务失败", exc_info=True)
+    startup_logger.info("启动自检完成，开始接收请求")
     try:
         yield
     finally:
