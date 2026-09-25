@@ -33,6 +33,23 @@ function makeStatus(overrides: Partial<BrowserStatus> = {}): BrowserStatus {
   } as BrowserStatus;
 }
 
+/**
+ * 取到按钮并等到它真的可点。
+ *
+ * 这个组件在拉取浏览器状态期间把按钮置为 `loading`（AntD 的 loading 按钮不响应点击）。
+ * 本机时序快，`findByRole` 拿到时通常已就绪；CI 冷环境下会落在 loading 期间，
+ * 点击被吞掉 → 断言"应该调用 startBrowser"失败（实测就是这么红的）。
+ * 所以这里显式等到可用，而不是靠时序运气。
+ */
+async function readyButton(name: RegExp) {
+  const button = await screen.findByRole("button", { name });
+  // 注意等的是 `ant-btn-loading` 这个类，不是 `disabled` 属性：AntD 的 loading 按钮
+  // **并不会加上 disabled**（只在内部吞掉点击），所以 `toBeEnabled()` 永远为真、
+  // 起不到等待作用——这一步用错判据时，实测在 400ms 延迟下依然会红。
+  await waitFor(() => expect(button).not.toHaveClass("ant-btn-loading"));
+  return button;
+}
+
 function renderBar() {
   return render(
     <AntdApp>
@@ -71,7 +88,7 @@ describe("OfficialBrowserBar", () => {
     apiMocks.startBrowser.mockResolvedValue(makeStatus({ state: "running" }));
     renderBar();
 
-    fireEvent.click(await screen.findByRole("button", { name: /启动浏览器/ }));
+    fireEvent.click(await readyButton(/启动浏览器/));
 
     // **必须是 false**：这里是借浏览器当渲染引擎，不是要访问某个招聘网站。
     // 传 true（投递台那套默认）会让只想采某公司官网的用户，一点按钮就跳出一个招聘网站——
@@ -98,10 +115,10 @@ describe("OfficialBrowserBar", () => {
     apiMocks.restartBrowser.mockResolvedValue(makeStatus({ state: "running" }));
     renderBar();
 
-    fireEvent.click(await screen.findByRole("button", { name: /刷新浏览器/ }));
+    fireEvent.click(await readyButton(/刷新浏览器/));
     await waitFor(() => expect(apiMocks.refreshBrowser).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: /重启浏览器/ }));
+    fireEvent.click(await readyButton(/重启浏览器/));
     await waitFor(() => expect(apiMocks.restartBrowser).toHaveBeenCalledTimes(1));
   });
 
@@ -109,14 +126,8 @@ describe("OfficialBrowserBar", () => {
     apiMocks.startBrowser.mockRejectedValue(new Error("找不到 Chrome"));
     renderBar();
 
-    fireEvent.click(await screen.findByRole("button", { name: /启动浏览器/ }));
+    fireEvent.click(await readyButton(/启动浏览器/));
 
-    // AntD 的全局提示是异步挂载的：冷环境（CI 的 ubuntu runner）下默认 1 秒的等待
-    // 不够，实测每次都在这一步超时，而本机（热、内存里已有 AntD）一直通过。
-    // 这条断言要守的是"启动失败必须如实报出来"，不是"必须在 1 秒内报出来"，
-    // 所以给足 5 秒——不是把断言改松，是把它从"环境快慢"里解耦出来。
-    expect(
-      await screen.findByText(/找不到 Chrome/, undefined, { timeout: 5000 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/找不到 Chrome/)).toBeInTheDocument();
   });
 });
