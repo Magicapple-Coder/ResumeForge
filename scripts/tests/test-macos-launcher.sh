@@ -28,6 +28,10 @@ scripts/macos/lib/common.sh scripts/macos/lib/python.sh scripts/macos/lib/node.s
 RF_EXECUTABLE_SOURCES="start.command stop.command update.command
 scripts/macos/start.sh scripts/macos/stop.sh scripts/macos/update.sh"
 
+# 变量定界检查要多扫一份：守卫脚本**自己**也曾踩过同一个坑（它的失败信息里就有）。
+RF_QUOTING_SOURCES="$RF_SHELL_SOURCES
+scripts/tests/test-macos-launcher.sh"
+
 # 可选参数 1：临时目录的父目录。默认用 TMPDIR（macOS 上指向每个用户的私有目录），
 # 只在 TMPDIR 不可写的环境里才需要显式指定。
 rf_test_tmp_root=${1:-${TMPDIR:-/tmp}}
@@ -70,7 +74,7 @@ rf_expect_equal() {
     if [ "$actual" = "$expected" ]; then
         rf_check 0 "$message"
     else
-        rf_check 1 "$message（实际 '$actual'，期望 '$expected'）"
+        rf_check 1 "${message}（实际 '$actual'，期望 '$expected'）"
     fi
 }
 
@@ -117,6 +121,20 @@ for relative_path in $RF_SHELL_SOURCES; do
     fi
 done
 
+printf '\n== 变量插值定界（macOS 自带 bash 3.2 的坑）==\n'
+# macOS 自带的 /bin/bash 是 **3.2**：它会把变量名后紧跟的**多字节字符首字节**读进变量名。
+# 实测 CI 报过 "message<乱码>: unbound variable"——中文文案里插变量必须写成花括号形式。
+# 本机的 bash 5 与 PowerShell 都看不见这个问题，只有 CI 的 macOS 作业能暴露，所以钉在这里。
+# 判据按字节：C locale 下 [^ -~] 即 >=0x7F（非可打印 ASCII），不依赖 locale 的多字节处理。
+for relative_path in $RF_QUOTING_SOURCES; do
+    if LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' "$RF_TEST_ROOT/$relative_path" \
+        >"$rf_test_tmp/bare-var.txt" 2>/dev/null; then
+        rf_check 1 "$relative_path 变量后紧跟中文，要写成花括号定界：$(head -n 1 "$rf_test_tmp/bare-var.txt")"
+    else
+        rf_check 0 "$relative_path 变量插值都有定界"
+    fi
+done
+
 printf '\n== 自举常量（改版本必须同步改这里）==\n'
 # 让 libs 能自己算出默认的工具目录；正常使用时这几个变量由 start.sh 定义。
 RF_RUNTIME_DIR="$rf_test_tmp/runtime"
@@ -140,7 +158,7 @@ rf_expect_equal "$RF_NODE_AARCH64_SHA256" "8294b7aa9b03997481c06babf1e8b270c8593
 rf_expect_equal "$RF_NODE_X64_SHA256" "d1b5e999db158c62fe8f7267a4476b035d8bd93b1a605bac24a3f0dd166e3316" "Node.js x64 摘要正确"
 
 printf '\n== 下载候选 ==\n'
-official_python_url="https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.12.14+20260901-arm64-apple-darwin-install_only.tar.gz"
+official_python_url="https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.12.14+20260901-aarch64-apple-darwin-install_only.tar.gz"
 python_urls=$(rf_build_python_bootstrap_urls arm64)
 python_url_count=$(printf '%s\n' "$python_urls" | wc -l | tr -d ' ')
 rf_expect_equal "$(printf '%s\n' "$python_urls" | tail -n 1)" "$official_python_url" \
@@ -150,8 +168,12 @@ if [ "$python_urls" = "$official_python_url" ]; then
 else
     rf_check 0 "便携版 Python 先试加速站点，官方放最后"
 fi
-rf_expect_equal "$(printf '%s\n' "$python_urls" | grep -c 'arm64-apple-darwin')" "$python_url_count" \
-    "便携版 Python 的每个候选都指向 arm64 包"
+# 上游 python-build-standalone 用的是 aarch64（不是 arm64）。这条以前写的是 arm64，
+# 等于把"拼出来的资产名在上游不存在"当成了规范——CI 上三个源各 404 一次才发现。
+rf_expect_equal "$(printf '%s\n' "$python_urls" | grep -c 'aarch64-apple-darwin')" "$python_url_count" \
+    "便携版 Python 的每个候选都指向上游口径的 aarch64 包"
+rf_expect_equal "$(printf '%s\n' "$python_urls" | grep -c 'arm64-apple-darwin')" "0" \
+    "便携版 Python 的候选里没有上游不存在的 arm64 命名"
 rf_expect_equal "$(printf '%s\n' "$python_urls" | grep -c '^https://')" "$python_url_count" \
     "便携版 Python 的每个候选都用 https"
 

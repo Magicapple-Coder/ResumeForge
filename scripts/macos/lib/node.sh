@@ -148,7 +148,7 @@ rf_install_portable_node() {
 
     if [ ! -d "$staging/$archive_base" ]; then
         rm -rf "$staging"
-        die "下载到的 Node.js 压缩包里没有预期的目录 $archive_base。" \
+        die "下载到的 Node.js 压缩包里没有预期的目录 ${archive_base}。" \
             "请把这条报错发到项目的 GitHub Issues。"
     fi
 

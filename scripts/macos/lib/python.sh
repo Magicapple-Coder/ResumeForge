@@ -95,7 +95,7 @@ rf_find_system_python() {
         if [ -x "$candidate" ]; then
             reported=$(rf_python_reported_version "$candidate")
             if [ -n "$reported" ]; then
-                log_dim "    跳过 $candidate（版本 $reported，不在 $(rf_python_window) 内）"
+                log_dim "    跳过 ${candidate}（版本 ${reported}，不在 $(rf_python_window) 内）"
             fi
         fi
     done
@@ -105,7 +105,15 @@ rf_find_system_python() {
 # 便携版 CPython 下载地址表，一行一个（调用方按空白拆开即可）。
 rf_build_python_bootstrap_urls() {
     arch=$1
-    archive="cpython-${RF_PYTHON_BOOTSTRAP_VERSION}+${RF_PYTHON_BOOTSTRAP_TAG}-${arch}-apple-darwin-install_only.tar.gz"
+    # 架构名要换成**上游口径**：python-build-standalone 用的是 aarch64 / x86_64，
+    # 而本仓库内部的架构名（与 Node 发行包一致）是 arm64 / x64。少了这一步，
+    # 拼接出来的资产名在上游不存在——CI 上就是三个源各 404 一次然后整体失败。
+    case "$arch" in
+        arm64) upstream_arch=aarch64 ;;
+        x64) upstream_arch=x86_64 ;;
+        *) upstream_arch=$arch ;;
+    esac
+    archive="cpython-${RF_PYTHON_BOOTSTRAP_VERSION}+${RF_PYTHON_BOOTSTRAP_TAG}-${upstream_arch}-apple-darwin-install_only.tar.gz"
     upstream="astral-sh/python-build-standalone/releases/download/${RF_PYTHON_BOOTSTRAP_TAG}/${archive}"
 
     for base in $RF_PYTHON_MIRROR_BASES; do

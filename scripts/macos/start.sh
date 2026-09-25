@@ -94,7 +94,7 @@ rf_parse_arguments() {
         fi
     done
     if [ "$RF_BACKEND_PORT" -eq "$RF_FRONTEND_PORT" ]; then
-        rf_argument_error "后端端口与前端端口不能相同：两者都是 $RF_BACKEND_PORT。" \
+        rf_argument_error "后端端口与前端端口不能相同：两者都是 ${RF_BACKEND_PORT}。" \
             "用 --backend-port / --frontend-port 指定不同的端口。"
     fi
 }
@@ -225,7 +225,7 @@ rf_start_backend() {
         # 端口被占但健康检查不过：可能是我们自己上一次运行留下的、已经崩掉的后端
         # （进程还在，服务不响应）。记录能对上就自己收拾，否则明确说"这不是我的"。
         if process_record_match "$RF_BACKEND_RECORD" "$RF_BACKEND_COMMAND_PATTERN"; then
-            log_warn "上一次运行留下的简历通后端正占着端口 $RF_BACKEND_PORT，先停掉它再启动一个新的。"
+            log_warn "上一次运行留下的简历通后端正占着端口 ${RF_BACKEND_PORT}，先停掉它再启动一个新的。"
             stop_recorded_process "backend" "$RF_BACKEND_RECORD" "$RF_BACKEND_COMMAND_PATTERN"
             sleep 1
         else
@@ -309,7 +309,7 @@ rf_start_frontend() {
 
     if tcp_port_in_use "$RF_FRONTEND_PORT"; then
         if process_record_match "$RF_FRONTEND_RECORD" "$RF_FRONTEND_COMMAND_PATTERN"; then
-            log_warn "上一次运行留下的简历通前端正占着端口 $RF_FRONTEND_PORT，先停掉它再启动一个新的。"
+            log_warn "上一次运行留下的简历通前端正占着端口 ${RF_FRONTEND_PORT}，先停掉它再启动一个新的。"
             stop_recorded_process "frontend" "$RF_FRONTEND_RECORD" "$RF_FRONTEND_COMMAND_PATTERN"
             sleep 1
         else
