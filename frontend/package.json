@@ -1,16 +1,16 @@
 {
   "name": "resumeforge-frontend",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Magicapple-Coder/ResumeForge.git"
+    "url": "https://github.com/magicapple123/ResumeForge.git"
   },
   "bugs": {
-    "url": "https://github.com/Magicapple-Coder/ResumeForge/issues"
+    "url": "https://github.com/magicapple123/ResumeForge/issues"
   },
-  "homepage": "https://github.com/Magicapple-Coder/ResumeForge#readme",
+  "homepage": "https://github.com/magicapple123/ResumeForge#readme",
   "engines": {
     "node": ">=20.19.0"
   },

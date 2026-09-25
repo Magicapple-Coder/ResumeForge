@@ -170,22 +170,25 @@ export default function TrackerPage() {
         <div className="tracker-funnel">
           {FUNNEL_STATUSES.map((key) => {
             const value = counts[key] ?? 0;
+            const stageIndex = FUNNEL_STATUSES.indexOf(key);
+            const percentage = funnelMax > 0 ? Math.round((value / funnelMax) * 100) : 0;
             return (
               <Tooltip key={key} title={`${TRACK_STATUS_LABELS[key]}：${value} 条`}>
                 <button
                   type="button"
                   className={`tracker-funnel-step${status === key ? " is-selected" : ""}`}
+                  data-stage-index={stageIndex}
                   onClick={() => setStatus(status === key ? "" : key)}
                 >
+                  <span className="tracker-funnel-index" aria-hidden="true">
+                    {String(stageIndex + 1).padStart(2, "0")}
+                  </span>
                   <span className="tracker-funnel-label">{TRACK_STATUS_LABELS[key]}</span>
                   <span className="tracker-funnel-count">{value}</span>
-                  {/* 计数为 0 时不画条：留一个 2px 的小疙瘩看着像渲染坏了。 */}
-                  {value > 0 && (
-                    <span
-                      className="tracker-funnel-bar"
-                      style={{ width: `${Math.round((value / funnelMax) * 100)}%` }}
-                    />
-                  )}
+                  <span className="tracker-funnel-meter" aria-hidden="true">
+                    <span className="tracker-funnel-bar" style={{ width: `${percentage}%` }} />
+                  </span>
+                  <span className="tracker-funnel-percent">{percentage}%</span>
                 </button>
               </Tooltip>
             );

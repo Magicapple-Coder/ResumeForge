@@ -10,6 +10,7 @@ import { App } from "antd";
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskCompletionWatcher } from "../hooks/useTaskCompletionWatcher";
+import { playDoneSound } from "../utils/notifySound";
 
 const KIND_LABEL: Record<string, string> = {
   apply: "投递",
@@ -83,6 +84,9 @@ export default function TaskCompletionNotifier() {
       const payload = buildTaskNotification(detail);
       if (!payload) return;
       fireWebNotification(payload.message, payload.description);
+      // 与 AI 生成完成用同一段提示音：用户的要求是"完成就要有声"，
+      // 所以不能只有 AI 那条链路响、批次这条不响。
+      playDoneSound();
       notification[payload.type]({
         key: `task-finished-${detail.id}`,
         icon: <BellOutlined />,

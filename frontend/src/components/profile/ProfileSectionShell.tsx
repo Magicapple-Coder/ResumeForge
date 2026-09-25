@@ -68,7 +68,7 @@ export function SortableProfileSection({
       style={{ order }}
       data-profile-section-key={sectionKey}
     >
-      {editable && (
+      {editable && sectionKey !== "basic_info" && (
         <Tooltip title={`拖动或使用上下方向键调整“${SECTION_LABELS[sectionKey]}”顺序`}>
           <button
             type="button"

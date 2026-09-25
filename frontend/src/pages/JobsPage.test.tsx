@@ -2,7 +2,7 @@ import { App as AntdApp } from "antd";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Job } from "../types";
+import type { CandidateJobDetail, Job } from "../types";
 import JobsPage from "./JobsPage";
 
 const mocks = vi.hoisted(() => ({
@@ -54,15 +54,55 @@ function makeJob(overrides: Partial<Job> = {}): Job {
   return { ...BASE_JOB, ...overrides };
 }
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ["/jobs"]) {
   return render(
     <AntdApp>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <JobsPage />
       </MemoryRouter>
     </AntdApp>,
   );
 }
+
+// 备选岗位抽屉与「导入到岗位」都会调它；不挡掉的话 jsdom 里会真发 fetch。
+const candidateMocks = vi.hoisted(() => ({
+  listCandidateJobs: vi.fn(),
+  getCandidateJob: vi.fn(),
+  createCandidateJob: vi.fn(),
+  updateCandidateJob: vi.fn(),
+  deleteCandidateJob: vi.fn(),
+  importCandidateJobs: vi.fn(),
+  markCandidateJobImported: vi.fn(),
+}));
+
+vi.mock("../api/candidateJob", () => candidateMocks);
+
+function makeCandidate(overrides: Partial<CandidateJobDetail> = {}): CandidateJobDetail {
+  return {
+    id: 1,
+    title: "后端开发工程师",
+    company: "示例公司",
+    location: "",
+    salary: "",
+    raw_text: "",
+    images: [],
+    note: "",
+    source: "官网采集",
+    source_url: "",
+    collect_task_id: null,
+    status: "pending",
+    imported_job_id: null,
+    created_at: "2026-09-23T10:00:00",
+    updated_at: "2026-09-23T10:00:00",
+    description: "",
+    requirements: "",
+    job_type: "",
+    additional_info: "",
+    ...overrides,
+  };
+}
+
+const makeCandidateDetail = makeCandidate;
 
 describe("JobsPage", () => {
   // 本仓库没有全局 auto-cleanup（见 ApplyPage.test.tsx），必须显式清理，
@@ -73,6 +113,7 @@ describe("JobsPage", () => {
     mocks.jobs = [makeJob()];
     mocks.startBackfill.mockReset();
     mocks.startBackfill.mockResolvedValue({} as never);
+    for (const mock of Object.values(candidateMocks)) mock.mockReset();
   });
 
   it("shows the recruitment posted date instead of the local update timestamp", () => {
@@ -189,5 +230,97 @@ describe("JobsPage", () => {
     // 这一类确认也没用，所以不能出现"仍然加入"。
     expect(screen.queryByRole("button", { name: /仍然加入/ })).not.toBeInTheDocument();
     spy.mockRestore();
+  });
+});
+
+describe("从备选岗位导入", () => {
+  afterEach(cleanup);
+
+  it("用详情那份预填表单，而不是列表那一行", async () => {
+    // **这条守的是一个已经发生过的缺陷**：候选有两条来路，字段分布正好相反——手工粘贴的只有
+    // raw_text，而采集来的内容全在 description/requirements 里、raw_text 是空的。
+    // 而「导入到岗位」原先只预填 raw_text，于是采集来的候选打开的是一个**全空的表单**，
+    // 用户看到的就是"导入进来什么都没有"——数据其实一直都在。
+    //
+    // 列表接口也刻意不带 JD（最多 300 条 × 单条上限几万字符），所以要取详情那一条。
+    candidateMocks.listCandidateJobs.mockResolvedValue([
+      makeCandidate({ id: 9, title: "后端开发工程师", raw_text: "" }),
+    ]);
+    candidateMocks.getCandidateJob.mockResolvedValue(
+      makeCandidateDetail({
+        id: 9,
+        title: "后端开发工程师",
+        description: "负责服务端开发与维护，参与架构演进。",
+        requirements: "三年以上后端经验。",
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /备选岗位/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "导入到岗位" }));
+
+    await waitFor(() => expect(candidateMocks.getCandidateJob).toHaveBeenCalledWith(9));
+    // 表单里职位描述那一栏要有内容——这才叫"导入进来了"。
+    const description = await screen.findByLabelText("职位描述（JD）");
+    await waitFor(() => expect(description).toHaveValue("负责服务端开发与维护，参与架构演进。"));
+    expect(screen.getByLabelText("职位名称")).toHaveValue("后端开发工程师");
+  });
+
+  it("从采集记录跳转时只加载对应批次，并自动打开备选岗位", async () => {
+    candidateMocks.listCandidateJobs.mockResolvedValue([
+      makeCandidate({ id: 12, title: "官网后端工程师", collect_task_id: 8 }),
+    ]);
+    renderPage(["/jobs?collect_task_ids=8,9"]);
+
+    await waitFor(() =>
+      expect(candidateMocks.listCandidateJobs).toHaveBeenCalledWith({ collectTaskIds: [8, 9] }),
+    );
+    expect(await screen.findByText(/这里只显示选中采集记录的岗位/)).toBeInTheDocument();
+    expect(screen.getByText("官网后端工程师")).toBeInTheDocument();
+  });
+
+  it("点击备选岗位卡片会读取并展示完整详情", async () => {
+    const candidate = makeCandidate({ id: 21, title: "数据分析师" });
+    candidateMocks.listCandidateJobs.mockResolvedValue([candidate]);
+    candidateMocks.getCandidateJob.mockResolvedValue(
+      makeCandidateDetail({
+        id: 21,
+        title: "数据分析师",
+        description: "负责业务数据分析。",
+        requirements: "熟悉 SQL。",
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /备选岗位/ }));
+    fireEvent.click(await screen.findByText("数据分析师"));
+
+    await waitFor(() => expect(candidateMocks.getCandidateJob).toHaveBeenCalledWith(21));
+    expect(await screen.findByText("负责业务数据分析。")).toBeInTheDocument();
+    expect(screen.getByText("熟悉 SQL。")).toBeInTheDocument();
+  });
+
+  it("可以批量导入选中的备选岗位", async () => {
+    candidateMocks.listCandidateJobs.mockResolvedValue([
+      makeCandidate({ id: 31, title: "岗位一" }),
+      makeCandidate({ id: 32, title: "岗位二" }),
+    ]);
+    candidateMocks.importCandidateJobs.mockResolvedValue({
+      imported: 2,
+      duplicate: 0,
+      trashed: 0,
+      invalid: 0,
+      missing: 0,
+      results: [],
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /备选岗位/ }));
+    const checkboxes = await screen.findAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    fireEvent.click(screen.getByRole("button", { name: "批量导入" }));
+
+    await waitFor(() => expect(candidateMocks.importCandidateJobs).toHaveBeenCalledWith([31, 32]));
   });
 });

@@ -111,6 +111,17 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/**
+ * 打开左侧第一条会话。
+ *
+ * 进入助手页现在是**草稿态**（既不自动打开最近会话、也不建记录），所以"会话已经打开"
+ * 这件事必须由用例自己点出来——不能为了让测试少写一行而把产品行为改回自动选中。
+ */
+async function openFirstConversation() {
+  fireEvent.click(await screen.findByRole("button", { name: "会话一" }));
+  await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
+}
+
 function renderPage(entry = "/assistant") {
   return render(
     <MemoryRouter initialEntries={[entry]}>
@@ -196,26 +207,23 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("助手引导对话", () => {
-  it("opens an onboarding conversation the first time there is nothing else", async () => {
+describe("进入助手页 = 一段草稿对话", () => {
+  it("一条会话都没有时也不建记录，只显示可立即开写的空态", async () => {
     apiMocks.listAssistantConversations.mockResolvedValue([]);
     renderPage();
 
-    await waitFor(() =>
-      expect(apiMocks.createAssistantConversation).toHaveBeenCalledWith("", { welcome: true }),
-    );
+    // 引导提示就地渲染（AssistantEmptyState），不需要为它建一条数据库记录。
+    expect(await screen.findByText("可以这样问")).toBeInTheDocument();
+    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled();
   });
 
-  it("does not recreate it after the user has deleted every conversation", async () => {
-    // 第一次进来时已经引导过（标记落了盘），之后用户把会话全删了。
-    window.localStorage.setItem("resumeforge.assistant.welcome-shown", "1");
-    apiMocks.listAssistantConversations.mockResolvedValue([]);
-
+  it("已有会话时也不自动打开最近那条（进来就是新对话）", async () => {
     renderPage();
-    await waitFor(() => expect(apiMocks.listAssistantConversations).toHaveBeenCalled());
 
-    // 删掉的东西不该自己长回来：重建等于把用户删过的数据又造一份。
-    await waitFor(() => expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled());
+    expect(await screen.findByText("可以这样问")).toBeInTheDocument();
+    // 既没打开历史会话，也没新建记录。
+    expect(apiMocks.getAssistantConversation).not.toHaveBeenCalled();
+    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled();
   });
 
   it("treats a failed conversation list as unknown, not as empty", async () => {
@@ -291,12 +299,30 @@ describe("助手深链", () => {
 });
 
 describe("助手新对话入口", () => {
-  it("?new=1 时新建空对话，而不是恢复最近会话或引导对话", async () => {
+  it("?new=1 进入草稿：不建记录、不恢复最近会话", async () => {
     renderPage("/assistant?new=1");
 
-    await waitFor(() => expect(apiMocks.createAssistantConversation).toHaveBeenCalled());
-    // 新对话不带欢迎消息；也不能被「首次引导」逻辑抢走。
-    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalledWith("", { welcome: true });
+    expect(await screen.findByText("可以这样问")).toBeInTheDocument();
+    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled();
+    expect(apiMocks.getAssistantConversation).not.toHaveBeenCalled();
+  });
+
+  it("草稿里发出第一条消息时才创建对话记录", async () => {
+    apiMocks.createAssistantConversation.mockResolvedValue({ ...CONVERSATIONS[0], id: 99 });
+    renderPage("/assistant?new=1");
+    await screen.findByText("可以这样问");
+
+    // 还没发：一条记录都不该有。
+    expect(apiMocks.createAssistantConversation).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText(/输入求职、岗位/), {
+      target: { value: "帮我看看简历" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /发送/ }));
+
+    // 发了才建，并且消息发到刚建的那条会话上。
+    await waitFor(() => expect(apiMocks.createAssistantConversation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiMocks.sendAssistantMessage.mock.calls[0][0]).toBe(99));
   });
 });
 
@@ -343,10 +369,16 @@ describe("AssistantPage", () => {
     delayedList.resolve(CONVERSATIONS);
 
     expect(await screen.findByText("可以这样问")).toBeInTheDocument();
-    await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
+    // 进来是草稿：不会自动打开最近那条会话（那正是"进来先看到上次对话"的老行为）。
+    await waitFor(() => expect(apiMocks.listAssistantConversations).toHaveBeenCalled());
+    expect(apiMocks.getAssistantConversation).not.toHaveBeenCalled();
 
-    // 只挂载一次：先画引导、再被骨架屏顶掉、随后又画回来，会在这里留下 remove + add。
-    expect(stopWatching()).toEqual(["add"]);
+    // 不能出现"先画引导、再被骨架屏顶掉、随后又画回来"——那种闪烁会在这里留下 remove
+    // （甚至 remove + add）。草稿态下空态从第一帧就是最终态，所以"没有 remove"才是要钉住的性质；
+    // 首次挂载是否被观察器记到 add，取决于 React 首次提交与观察器启动的先后，不该写死。
+    const events = stopWatching();
+    expect(events.filter((kind) => kind === "remove")).toEqual([]);
+    expect(events.length).toBeLessThanOrEqual(1);
   });
 
   it("shows how many skills are shaping the reply", async () => {
@@ -407,6 +439,7 @@ describe("AssistantPage", () => {
     });
 
     renderPage();
+    await openFirstConversation();
     expect(await screen.findByText("已加载的回复")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "继续分析" },
@@ -425,6 +458,7 @@ describe("AssistantPage", () => {
     apiMocks.getAssistantConversation.mockImplementation(() => delayedDetail.promise);
 
     renderPage();
+    await openFirstConversation();
     await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
@@ -625,6 +659,7 @@ describe("AssistantPage", () => {
     );
 
     renderPage();
+    await openFirstConversation();
     expect(await screen.findByRole("heading", { name: "会话一" })).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "分析这份岗位" },
@@ -669,6 +704,7 @@ describe("AssistantPage", () => {
     );
 
     renderPage();
+    await openFirstConversation();
     await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "请给我建议" },
@@ -705,6 +741,7 @@ describe("AssistantPage", () => {
     );
 
     const view = renderPage();
+    await openFirstConversation();
     await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalledWith(1));
     fireEvent.change(screen.getByPlaceholderText("输入求职、岗位、简历或项目经历相关问题"), {
       target: { value: "保持连接" },
@@ -889,6 +926,7 @@ describe("消息多选删除", () => {
   it("deletes the checked messages in one request", async () => {
     apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
     renderPage();
+    await openFirstConversation();
     await screen.findByText("user 消息 11");
 
     fireEvent.click(screen.getByRole("button", { name: /多选/ }));
@@ -910,6 +948,7 @@ describe("消息多选删除", () => {
   it("cannot delete until something is checked", async () => {
     apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
     renderPage();
+    await openFirstConversation();
     await screen.findByText("user 消息 11");
 
     fireEvent.click(screen.getByRole("button", { name: /多选/ }));
@@ -921,6 +960,7 @@ describe("消息多选删除", () => {
 
   it("offers no multi-select entry for an empty conversation", async () => {
     renderPage();
+    await openFirstConversation();
     await waitFor(() => expect(apiMocks.getAssistantConversation).toHaveBeenCalled());
 
     // 一条消息都没有时"多选"无从选起，按钮不该出现。
@@ -930,6 +970,7 @@ describe("消息多选删除", () => {
   it("leaves multi-select when the user switches conversations", async () => {
     apiMocks.getAssistantConversation.mockResolvedValue(detailWithMessages());
     renderPage();
+    await openFirstConversation();
     await screen.findByText("user 消息 11");
 
     fireEvent.click(screen.getByRole("button", { name: /多选/ }));

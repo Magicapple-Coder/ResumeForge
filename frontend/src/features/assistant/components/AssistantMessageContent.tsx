@@ -251,6 +251,11 @@ const TOOL_LABELS: Record<string, string> = {
   update_job: "修改岗位",
   update_profile: "更新个人资料",
   add_profile_entry: "往资料里加一条经历",
+  // 求职进度
+  list_application_tracks: "查询求职进度",
+  get_application_track: "查看求职进度详情",
+  create_application_track: "新增求职进度",
+  update_application_track: "修改求职进度",
   // 资料箱
   list_materials: "查询资料箱",
   get_material: "查看资料详情",
@@ -287,6 +292,10 @@ const TOOL_LABELS: Record<string, string> = {
   // 提醒 / 内推 / 面经 / 题库 / 复盘 / 知识库 / 统计 / 分享包（知识审计补齐）
   list_reminders: "查询提醒",
   list_referrals: "查询内推",
+  // 官网采集与投递台（覆盖审计补齐：这两块此前助手完全不知道）
+  list_official_sites: "查询官网采集源",
+  get_official_run: "查看采集报告",
+  list_apply_queue: "查询投递队列",
   list_interview_experiences: "查询面经",
   list_question_banks: "查询题库历史",
   list_reviews: "查询复盘历史",

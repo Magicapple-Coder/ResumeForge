@@ -24,6 +24,7 @@ from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
+from .resume.resume_sections import resolved_section_order
 from .pdf_exporter import (
     _PX_TO_MM,
     _PX_TO_PT,
@@ -165,12 +166,131 @@ def _header(doc, resume: ResumeContent, *, accent: tuple[int, int, int], layout,
         _set_run_font(contact_run, size_pt=base * layout.contact_ratio * _PX_TO_PT, color=_MUTED_COLOR)
 
 
+def _section_summary(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if resume.summary.strip():
+        _section_title(doc, "个人总结", base=base, layout=layout, accent=accent)
+        paragraph = _paragraph(doc)
+        run = paragraph.add_run(resume.summary.strip())
+        _set_run_font(run, size_pt=base * _PX_TO_PT, color=_BODY_COLOR)
+
+
+def _section_education(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.education:
+        return
+    _section_title(doc, "教育经历", base=base, layout=layout, accent=accent)
+    for edu in resume.education:
+        _entry_head(
+            doc,
+            _join([edu.school, edu.major], " · "),
+            _join([edu.degree, f"{edu.start_date} - {edu.end_date}"], " · "),
+            base=base,
+            layout=layout,
+        )
+        if edu.gpa:
+            _meta_line(doc, f"绩点/排名：{edu.gpa}", base=base, layout=layout)
+        if edu.courses:
+            _meta_line(doc, f"核心课程：{'、'.join(edu.courses)}", base=base, layout=layout)
+        _bullets(doc, edu.achievements, base=base)
+
+
+def _section_experience(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.experience:
+        return
+    _section_title(doc, "实习/工作经历", base=base, layout=layout, accent=accent)
+    for exp in resume.experience:
+        _entry_head(
+            doc,
+            _join([exp.company, exp.role], " · "),
+            f"{exp.start_date} - {exp.end_date}",
+            base=base,
+            layout=layout,
+        )
+        _bullets(doc, exp.description, base=base)
+
+
+def _section_campus(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.campus_experience:
+        return
+    _section_title(doc, "校园经历", base=base, layout=layout, accent=accent)
+    for item in resume.campus_experience:
+        _entry_head(
+            doc,
+            _join([item.organization, item.role], " · "),
+            f"{item.start_date} - {item.end_date}",
+            base=base,
+            layout=layout,
+        )
+        _bullets(doc, item.description, base=base)
+
+
+def _section_projects(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.projects:
+        return
+    _section_title(doc, "项目经历", base=base, layout=layout, accent=accent)
+    for project in resume.projects:
+        _entry_head(
+            doc,
+            _join([project.name, project.role], " · "),
+            f"{project.start_date} - {project.end_date}",
+            base=base,
+            layout=layout,
+        )
+        if project.tech_stack:
+            _meta_line(doc, f"技术栈/工具：{'、'.join(project.tech_stack)}", base=base, layout=layout)
+        _bullets(doc, project.description, base=base)
+        _bullets(doc, project.highlights, base=base)
+
+
+def _section_skills(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.skills:
+        return
+    _section_title(doc, "专业技能", base=base, layout=layout, accent=accent)
+    labels = [
+        f"{skill.name}（{skill.level}）" if skill.level else skill.name for skill in resume.skills
+    ]
+    if labels:
+        paragraph = _paragraph(doc)
+        for index, label in enumerate(labels):
+            run = paragraph.add_run(("　" if index else "") + label)
+            _set_run_font(
+                run,
+                size_pt=base * layout.tag_font_ratio * _PX_TO_PT,
+                color=accent,
+            )
+
+
+def _section_awards(doc, resume: ResumeContent, *, base: float, layout, accent) -> None:
+    if not resume.awards:
+        return
+    _section_title(doc, "荣誉奖项", base=base, layout=layout, accent=accent)
+    _bullets(
+        doc,
+        [_join([award.name, award.date, award.description]) for award in resume.awards],
+        base=base,
+    )
+
+
+# 分区键 → 渲染函数。**刻意不用 if/elif 链**：链子里漏掉一个键的表现是"那个分区
+# 在 Word 里默默不出现"，而字典缺键会在渲染时直接 KeyError——同一个错误，早失败五分钟
+# 比晚失败一个版本好。键名与前端、HTML 模板共用 `resume_sections.py` 里的那一份。
+_SECTION_RENDERERS = {
+    "summary": _section_summary,
+    "education": _section_education,
+    "experience": _section_experience,
+    "campus_experience": _section_campus,
+    "projects": _section_projects,
+    "skills": _section_skills,
+    "awards": _section_awards,
+}
+
+
 def _build_document(
     resume: ResumeContent,
     *,
     accent: tuple[int, int, int],
     layout,
     include_photo: bool,
+    section_order: list[str],
 ) -> bytes:
     base = layout.scaled_base_px
     doc = Document()
@@ -184,90 +304,8 @@ def _build_document(
 
     _header(doc, resume, accent=accent, layout=layout, include_photo=include_photo)
 
-    if resume.summary.strip():
-        _section_title(doc, "个人总结", base=base, layout=layout, accent=accent)
-        paragraph = _paragraph(doc)
-        run = paragraph.add_run(resume.summary.strip())
-        _set_run_font(run, size_pt=base * _PX_TO_PT, color=_BODY_COLOR)
-
-    if resume.education:
-        _section_title(doc, "教育经历", base=base, layout=layout, accent=accent)
-        for edu in resume.education:
-            _entry_head(
-                doc,
-                _join([edu.school, edu.major], " · "),
-                _join([edu.degree, f"{edu.start_date} - {edu.end_date}"], " · "),
-                base=base,
-                layout=layout,
-            )
-            if edu.gpa:
-                _meta_line(doc, f"绩点/排名：{edu.gpa}", base=base, layout=layout)
-            if edu.courses:
-                _meta_line(doc, f"核心课程：{'、'.join(edu.courses)}", base=base, layout=layout)
-            _bullets(doc, edu.achievements, base=base)
-
-    if resume.experience:
-        _section_title(doc, "实习/工作经历", base=base, layout=layout, accent=accent)
-        for exp in resume.experience:
-            _entry_head(
-                doc,
-                _join([exp.company, exp.role], " · "),
-                f"{exp.start_date} - {exp.end_date}",
-                base=base,
-                layout=layout,
-            )
-            _bullets(doc, exp.description, base=base)
-
-    if resume.campus_experience:
-        _section_title(doc, "校园经历", base=base, layout=layout, accent=accent)
-        for item in resume.campus_experience:
-            _entry_head(
-                doc,
-                _join([item.organization, item.role], " · "),
-                f"{item.start_date} - {item.end_date}",
-                base=base,
-                layout=layout,
-            )
-            _bullets(doc, item.description, base=base)
-
-    if resume.projects:
-        _section_title(doc, "项目经历", base=base, layout=layout, accent=accent)
-        for project in resume.projects:
-            _entry_head(
-                doc,
-                _join([project.name, project.role], " · "),
-                f"{project.start_date} - {project.end_date}",
-                base=base,
-                layout=layout,
-            )
-            if project.tech_stack:
-                _meta_line(doc, f"技术栈/工具：{'、'.join(project.tech_stack)}", base=base, layout=layout)
-            _bullets(doc, project.description, base=base)
-            _bullets(doc, project.highlights, base=base)
-
-    if resume.skills:
-        _section_title(doc, "专业技能", base=base, layout=layout, accent=accent)
-        labels = [
-            f"{skill.name}（{skill.level}）" if skill.level else skill.name
-            for skill in resume.skills
-        ]
-        if labels:
-            paragraph = _paragraph(doc)
-            for index, label in enumerate(labels):
-                run = paragraph.add_run(("　" if index else "") + label)
-                _set_run_font(
-                    run,
-                    size_pt=base * layout.tag_font_ratio * _PX_TO_PT,
-                    color=accent,
-                )
-
-    if resume.awards:
-        _section_title(doc, "荣誉奖项", base=base, layout=layout, accent=accent)
-        _bullets(
-            doc,
-            [_join([award.name, award.date, award.description]) for award in resume.awards],
-            base=base,
-        )
+    for section_key in section_order:
+        _SECTION_RENDERERS[section_key](doc, resume, base=base, layout=layout, accent=accent)
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -314,7 +352,13 @@ def build_resume_docx(
         include_photo=include_photo,
     )
     final_layout = layout.with_fit_scale(fit_scale)
-    content = _build_document(resume, accent=accent, layout=final_layout, include_photo=include_photo)
+    content = _build_document(
+        resume,
+        accent=accent,
+        layout=final_layout,
+        include_photo=include_photo,
+        section_order=resolved_section_order(overrides),
+    )
     return ResumeDOCX(content=content, pages=pages, scale=fit_scale, overflow=overflow)
 
 

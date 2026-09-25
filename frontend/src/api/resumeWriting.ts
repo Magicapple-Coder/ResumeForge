@@ -61,3 +61,24 @@ export function diffResume(id: number, againstId: number): Promise<ResumeDiff> {
     body: JSON.stringify({ against_id: againstId }),
   });
 }
+
+/** 按「用户点中的那一栏」定向重写；返回的是**建议**，服务端不改简历。 */
+export function rewriteResumeField(
+  id: number,
+  path: string,
+  instruction: string,
+): Promise<{
+  path: string;
+  label: string;
+  context: string;
+  original: string;
+  result: string;
+  /** `lines` = 整段（若干部要点），`text` = 单段。 */
+  kind?: "text" | "lines";
+  lines?: string[];
+}> {
+  return request(`/resumes/${id}/writing/rewrite-field`, {
+    method: "POST",
+    body: JSON.stringify({ path, instruction }),
+  });
+}

@@ -18,7 +18,9 @@ interface Props {
   onSaved: () => void;
 }
 
-type ConfigValue = string | number | null;
+import type { ResumeFormatConfig } from "../../types/resumeFormat";
+
+type ConfigValue = string | number | string[] | null;
 
 export default function FormatTemplateEditorModal({
   open,
@@ -49,7 +51,7 @@ export default function FormatTemplateEditorModal({
       return;
     }
     // 只提交填过的项：空值代表"沿用样式模板自带的设置"。
-    const config: Record<string, string | number> = {};
+    const config: ResumeFormatConfig = {};
     Object.entries(values).forEach(([key, value]) => {
       if (value !== null && value !== undefined && value !== "") config[key] = value;
     });

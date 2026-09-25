@@ -6,6 +6,7 @@ import HorizontalBarChart, {
   HORIZONTAL_BAR_HEIGHT,
   HORIZONTAL_BAR_WIDTH,
 } from "./HorizontalBarChart";
+import { estimateTextWidth } from "./barLabelLayout";
 
 const ITEMS = [
   { key: "a", label: "甲", count: 4 },
@@ -27,6 +28,50 @@ function barXs(container: HTMLElement): number[] {
 }
 
 describe("HorizontalBarChart", () => {
+  it("长公司名不会被画布左边缘裁掉（标签区按最长标签变宽）", () => {
+    // 用户报的正是这条：「投递最多的公司」里公司名前面几个字符被遮住了。
+    // 原因是标签右端固定、向左排版，固定 96px 的标签区装不下八个汉字。
+    const long = { key: "a", label: "示例科技有限公司", count: 3 };
+    const { container } = render(
+      <HorizontalBarChart items={[long]} ariaLabel="投递最多的公司" align="start" />,
+    );
+
+    const label = container.querySelector("text")!;
+    const x = Number(label.getAttribute("x"));
+    // 估宽 ≈ 8 个汉字 × 13px；右端 x 减去文字宽度后必须仍在画布内（不能为负）。
+    expect(x - estimateTextWidth(long.label)).toBeGreaterThanOrEqual(0);
+    // 标签没被截断，显示的就是全名。
+    expect(label.textContent).toContain("示例科技有限公司");
+  });
+
+  it("长到放不下的名字被截断加省略号，完整名称留在 title 里", () => {
+    const huge = "示例国际控股集团有限责任公司上海分公司";
+    const { container } = render(
+      <HorizontalBarChart
+        items={[{ key: "a", label: huge, count: 1 }]}
+        ariaLabel="投递最多的公司"
+      />,
+    );
+
+    const label = container.querySelector("text")!;
+    // 只取直接文本节点：`textContent` 会把 <title> 里的全名也算进来，量出来的宽度就不对了。
+    const shown = Array.from(label.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent ?? "")
+      .join("");
+    expect(shown).toContain("…");
+    expect(label.querySelector("title")?.textContent).toBe(huge);
+    // 截断后仍不能越过左边缘。
+    expect(Number(label.getAttribute("x")) - estimateTextWidth(shown)).toBeGreaterThanOrEqual(0);
+  });
+
+  it("没被截断的标签不挂 title（完整显示的行不该多一个同文提示）", () => {
+    const { container } = render(<HorizontalBarChart items={ITEMS} ariaLabel="测试图" />);
+    for (const label of Array.from(container.querySelectorAll("text"))) {
+      expect(label.querySelector("title")).toBeNull();
+    }
+  });
+
   it("高度随条目数线性收窄，与其余图表同一套紧凑口径", () => {
     const { container } = render(<HorizontalBarChart items={ITEMS} ariaLabel="测试图" />);
     const svg = container.querySelector("svg")!;

@@ -75,6 +75,33 @@ def test_web_search_failure_degrades_without_claiming_sources(client, monkeypatc
     assert "请勿声称已获得联网资料" in captured["messages"][-1]["content"]
 
 
+def test_resume_forge_usage_question_skips_public_search(client, monkeypatch):
+    """简历通自身的使用问题应使用本地说明，不被同名网页带偏。"""
+    _configure_llm(client)
+    captured: dict = {}
+    _successful_provider(monkeypatch, captured, "请按本地使用说明操作。")
+
+    async def unexpected_search(_query: str, _config):
+        raise AssertionError("ResumeForge 使用问题不应调用公开搜索")
+
+    monkeypatch.setattr("app.api.assistant.aggregate_search", unexpected_search)
+    conversation = _create_conversation(client)
+    response = client.post(
+        f"/api/assistant/conversations/{conversation['id']}/messages",
+        json={"content": "简历通怎么在 macOS 上使用？", "web_search": True},
+    )
+
+    assert response.status_code == 200
+    events = _events(response)
+    sources_event = next(event for event in events if event["type"] == "sources")
+    assert sources_event["sources"] == []
+    assert sources_event["error"] == ""
+    assert "已跳过公开搜索" in captured["messages"][-1]["content"]
+
+    message = client.get(f"/api/assistant/conversations/{conversation['id']}").json()["messages"][0]
+    assert message["context"]["search_skipped"] == "local_resume_forge_question"
+
+
 def test_source_numbers_are_globally_unique_across_pre_search_and_tool_search(
     client, monkeypatch
 ):

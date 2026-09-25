@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from ..assistant.assistant_sources import SourceNumberer
+from ..assistant.assistant_web_search import is_local_resume_forge_question
 from ._types import ToolResult
 # ===== 联网搜索 =====
 
@@ -27,6 +28,14 @@ async def _tool_web_search(
     query = str(arguments.get("query") or "").strip()
     if not query:
         raise ValueError("需要提供搜索关键词")
+    if is_local_resume_forge_question(query):
+        return ToolResult(
+            text=(
+                "这是 ResumeForge（简历通）本身的使用问题。请依据系统提示中的本地能力地图、"
+                "平台启动说明和项目文档回答，不要为这个问题搜索公开网页。"
+            ),
+            summary="这是简历通本身的使用问题，未进行无关联网搜索",
+        )
     try:
         results = await aggregate_search(query, get_search_config(db))
     except AssistantSearchError as exc:

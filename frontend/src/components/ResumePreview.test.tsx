@@ -51,6 +51,64 @@ describe("ResumePreview", () => {
     expect(onEditTarget).toHaveBeenCalledWith("projects.0.description.1");
   });
 
+  it("shows which field the pointer is on, and rewrites that exact field on demand", () => {
+    const onEditTarget = vi.fn();
+    render(
+      <ResumePreview
+        html="<!doctype html><html><body></body></html>"
+        warnings={[]}
+        onEditTarget={onEditTarget}
+        describePath={(path) => `栏目「${path}」`}
+      />,
+    );
+
+    const iframe = getPreviewFrame();
+    if (!iframe.contentDocument) throw new Error("测试环境未创建 iframe document");
+    iframe.contentDocument.body.innerHTML =
+      '<span data-resume-path="projects.0.description.1">项目要点</span>';
+
+    fireEvent.click(screen.getByText("编辑"));
+    fireEvent.load(iframe);
+    const target = iframe.contentDocument.querySelector("[data-resume-path]");
+    if (!target) throw new Error("可编辑字段未渲染");
+
+    // 鼠标停在某一条要点上：工具栏要说清"现在指向的是哪一栏"。
+    fireEvent.mouseMove(target);
+    expect(screen.getByText(/栏目「projects\.0\.description\.1」/)).toBeInTheDocument();
+
+    // 一键让 AI 改"这一栏"——精确到刚才指的那一条。
+    fireEvent.click(screen.getByRole("button", { name: "让 AI 改这一栏" }));
+    expect(onEditTarget).toHaveBeenCalledWith("projects.0.description.1");
+  });
+
+  it("clears the hover hint when the pointer leaves the field", () => {
+    const onEditTarget = vi.fn();
+    render(
+      <ResumePreview
+        html="<!doctype html><html><body></body></html>"
+        warnings={[]}
+        onEditTarget={onEditTarget}
+      />,
+    );
+
+    const iframe = getPreviewFrame();
+    if (!iframe.contentDocument) throw new Error("测试环境未创建 iframe document");
+    iframe.contentDocument.body.innerHTML = '<span data-resume-path="summary">总结</span>';
+    fireEvent.click(screen.getByText("编辑"));
+    fireEvent.load(iframe);
+    const target = iframe.contentDocument.querySelector("[data-resume-path]");
+    if (!target) throw new Error("可编辑字段未渲染");
+
+    fireEvent.mouseMove(target);
+    // 提示由 DOM 直更（见 useFrameInteractions 的注释），断言显隐与内容而不是 React 文本节点。
+    const chip = document.querySelector(".resume-preview-hover-chip") as HTMLElement | null;
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent).toContain("summary");
+    expect(chip?.style.display).toBe("inline-flex");
+    fireEvent.mouseOut(target, { relatedTarget: iframe.contentDocument.body });
+    expect(chip?.style.display).toBe("none");
+  });
+
   it("exposes editable fields as keyboard controls", () => {
     const onEditTarget = vi.fn();
     render(

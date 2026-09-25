@@ -74,6 +74,20 @@ describe("JobTable 来源角标", () => {
     expect(screen.queryByText("手动")).not.toBeInTheDocument();
   });
 
+  it("官网采集历史来源也标「采集」", () => {
+    renderTable([makeJob({ recognition_source: "官网采集", source: "官网采集" })]);
+
+    expect(screen.getByText("采集")).toBeInTheDocument();
+    expect(screen.queryByText("手动")).not.toBeInTheDocument();
+  });
+
+  it("历史 active 状态显示为开放中，而不是把内部值直接露出来", () => {
+    renderTable([makeJob({ status: "active" })]);
+
+    expect(screen.getByText("开放中")).toBeInTheDocument();
+    expect(screen.queryByText("active")).not.toBeInTheDocument();
+  });
+
   it("手动添加的岗位标「手动」", () => {
     renderTable([makeJob({ recognition_source: "", source: "手动添加" })]);
 

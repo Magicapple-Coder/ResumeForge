@@ -32,6 +32,7 @@ import {
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteJobMatch, generateJobMatch, getJobMatch } from "../api/jobs";
+import { announceBackgroundFailure, announceBackgroundResult } from "../utils/backgroundTask";
 import {
   ADMISSION_META,
   MATCH_STATUS_META,
@@ -129,19 +130,31 @@ export default function JobMatchModal({ job, onClose }: Props) {
     if (job) void load();
   }, [job, load]);
 
+  // 用户在分析过程中关掉了弹窗：请求照跑，完成后用通知告诉他（见 utils/backgroundTask）。
+  const leftWhileAnalyzing = useRef(false);
+
   const analyze = async () => {
     if (!job) return;
     setAnalyzing(true);
     setError("");
+    leftWhileAnalyzing.current = false;
     try {
       await generateJobMatch(job.id, data != null && data.id > 0);
+      if (leftWhileAnalyzing.current) {
+        announceBackgroundResult("匹配度分析", "回到岗位详情再点「匹配度分析」即可看到结论。");
+        return;
+      }
       await load();
     } catch (analyzeError) {
-      setError(
-        analyzeError instanceof Error ? analyzeError.message : "生成匹配分析失败，请稍后重试",
-      );
+      const detail =
+        analyzeError instanceof Error ? analyzeError.message : "生成匹配分析失败，请稍后重试";
+      if (leftWhileAnalyzing.current) {
+        announceBackgroundFailure("匹配度分析", detail);
+        return;
+      }
+      setError(detail);
     } finally {
-      setAnalyzing(false);
+      if (!leftWhileAnalyzing.current) setAnalyzing(false);
     }
   };
 
@@ -197,6 +210,15 @@ export default function JobMatchModal({ job, onClose }: Props) {
           }
         />
       )}
+
+      {analyzing ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="分析期间可以关掉这个窗口去做别的，完成后会弹通知并响一声（只要页面没刷新）。"
+        />
+      ) : null}
 
       {loading && !data ? (
         <Skeleton active paragraph={{ rows: 8 }} />

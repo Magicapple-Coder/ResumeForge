@@ -41,14 +41,19 @@ RECOGNITION_SOURCES = (
     # 库里，读取路径上的 `JobOut` 会因为"来源不在白名单"而校验失败——那会让**整份岗位
     # 列表与首页统计**一起返回 500（真实故障就是这么发生的），而不是仅仅这一条读不出来。
     "岗位采集",
+    "官网采集",
 )
 
-# 采集 / 候选导入写进 ``Job.recognition_source`` 的两个取值。**必须出现在
+# 采集 / 候选导入 / 官网采集写进 ``Job.recognition_source`` 的三个取值。**必须出现在
 # ``RECOGNITION_SOURCES`` 里**（有测试钉住）。在这里定义常量是为了让"采集器"与"候选导入"
 # 共用同一个字面量，而不是各自抄一遍字符串——抄两遍的结果是其中一个改了另一个不知道，
 # 而症状正是上面那条 500。
 RECOGNITION_SOURCE_COLLECT = "岗位采集"
 RECOGNITION_SOURCE_CANDIDATE_IMPORT = "备选岗位导入"
+RECOGNITION_SOURCE_OFFICIAL = "官网采集"
+# 两条自动采集链路的历史值都要被视为“采集”。旧版本的官网采集曾把
+# `官网采集` 写进来源列，新的候选导入统一写 `岗位采集`；读取和筛选不能只认其中一个。
+RECOGNITION_SOURCE_AUTO = (RECOGNITION_SOURCE_COLLECT, RECOGNITION_SOURCE_OFFICIAL)
 
 # 一次粘贴的材料最多拆成多少份岗位草稿；再多就不是"顺手粘了几份"了。
 MAX_MULTI_JOBS = 12

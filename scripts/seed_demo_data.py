@@ -109,7 +109,19 @@ ins(
                 "擅长把一次性的活动经验沉淀成可复用的流程与台账，"
                 "习惯用数据解释结论而不是凭感觉拍板。"
             ),
-            section_order=["education", "experience", "projects", "campus", "skills", "awards"],
+            # 与前端 DEFAULT_SECTION_ORDER / 后端 PROFILE_SECTION_KEYS 同一套键名。
+            # 这里曾经写成 ["education", "experience", "projects", "campus", "skills", "awards"]
+            # ——education / experience / campus 都是**不存在的键**，规范化时会被整条丢掉，
+            # 于是 6 条里只剩 3 条生效，演示库的分区顺序看起来像"用户自己拖乱了"，
+            # 而且它会一直盖住默认顺序（存的顺序优先于默认顺序）。
+            section_order=[
+                "experiences",
+                "projects",
+                "skills",
+                "educations",
+                "awards",
+                "campus_experiences",
+            ],
             updated_at=NOW,
         )
     ],
@@ -234,6 +246,28 @@ ins(
 )
 
 # ── 岗位 ────────────────────────────────────────────────────────────────────
+# 岗位来源 → `recognition_source`（岗位广场职位列那个「采集 / 手动」角标读的就是它）。
+#
+# 这里踩过一次：整份演示数据把 `recognition_source` 一律写成 `"text"`，而这个值**不在**
+# 后端的白名单（`schemas/job.py` 的 `RECOGNITION_SOURCES`）里，前端于是把每一条都判成
+# 「手动添加」——演示站和官网截图上，明明是采集回来的岗位全挂着「手动」角标。
+# 正确做法是按 `source` 推导：来自招聘网站的算「岗位采集」，其余算「手动添加」。
+_COLLECTED_SOURCES = {"BOSS直聘", "智联招聘", "猎聘", "拉勾", "招聘网站"}
+
+
+def recognition_source_of(job: dict) -> str:
+    """**取值必须落在 `schemas/job.py` 的 `RECOGNITION_SOURCES` 里**。
+
+    这里连踩两次：先是一律写 `"text"`（英文旧值），后是写 `"手动添加"`——
+    两个都不在白名单里，而读取路径上的 `JobOut` 会因此校验失败，**整份岗位列表 500**。
+    （真实故障就是这么发生的，见 `tests/test_job_out_read_tolerance.py`。）
+    """
+    source = str(job.get("source") or "")
+    if source == "官网采集":
+        return "官网采集"
+    return "岗位采集" if source in _COLLECTED_SOURCES else "手动填写"
+
+
 JOBS = [
     dict(
         title="市场运营专员",
@@ -472,7 +506,7 @@ ins(
             note=j["note"],
             note_images=[],
             favorite=j["favorite"],
-            recognition_source="text",
+            recognition_source=recognition_source_of(j),
             # 列表按 Job.created_at 倒序，所以用 `days=i` 让 JOBS[0]（市场运营专员）排在第一条。
             # 这里**不能写 `days=常数 - i`**：岗位数一旦超过那个常数，i 大的条目会落到未来时间，
             # 于是最后新增的岗位反而排在最前（2026-09-22 把岗位从 6 个加到 12 个时踩过）。

@@ -1,25 +1,62 @@
-/* 简历预览按窗口缩放到完整可见，放大后由外层区域承载滚动。 */
-.resume-preview-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 30px;
-  margin-bottom: 4px;
+/* 「让 AI 按我的要求改这一栏」面板：从预览点某一栏进来时出现在编辑器最上方。
+   淡蓝底 + 左侧色条，与普通表单项区分开——它是一次性动作，不是又一个字段。 */
+.resume-field-rewrite {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-left: 3px solid #2f7be5;
+  border-radius: 0 10px 10px 0;
+  background: #f6f9fe;
 }
 
-.resume-preview-zoom-label {
-  min-width: 42px;
-  text-align: center;
+/* 「当前内容」预览。
+ *
+ * 这里以前是 `max-height: 72px; overflow-y: auto`——内容一长右边就竖着一根滚动条，
+ * 在一个以"改写一段文字"为主的小面板里显得很扎眼（用户反馈"不太好看"）。改成
+ * **收起 + 底部渐隐 + 「展开全文」**：默认只显示前几行，要看全的点一下展开，
+ * 既不出现滚动条，也不丢内容。 */
+.resume-field-rewrite-original {
+  display: block;
+  position: relative;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 收起时按"视觉行数"截断：个人总结是一条长文本，靠条数折叠挡不住它。
+   `pre-line` 让多条要点各占一行，`-webkit-line-clamp` 再把整块压到 N 行。 */
+.resume-field-rewrite-original.is-collapsed .resume-field-rewrite-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.resume-field-rewrite-text {
+  margin: 4px 0 0 !important;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.resume-field-rewrite-more {
+  height: auto !important;
+  padding: 0 !important;
   font-size: 12px;
 }
 
-/* 内容超出所选页数时，紧贴预览上方给出"约需几页 / 超出多少"的醒目提示。 */
-.resume-preview-overflow {
-  margin-bottom: 8px;
+/* 一段内容的每条要点各自成行：整段改写的结果必须一行一条，糊成一段就看不出条数了。 */
+.resume-field-rewrite-line {
+  display: block;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
-/* 溢出时的"近似分页"分隔线：叠加在横向多列流上，按 A4 宽度标记页边界。
-   用虚线 + 半透明标签，刻意不画成实线纸边——它就是估算，不是真实分页。 */
-.resume-preview-page-separator {
+.resume-field-rewrite-result {
+  padding: 10px 12px;
+  border: 1px dashed #b9d2f2;
+  border-radius: 8px;
+  background: #fff;
+}
+是真实分页。 */ .resume-preview-page-separator {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -51,12 +88,15 @@
 .resume-preview-viewport {
   display: block;
   width: 100%;
-  overflow: auto;
+  /* 横向放大只在预览内滚动；纵向空间由外层弹窗/页面承接，避免双滚动条。 */
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   background: #f5f7fa;
   cursor: grab;
   touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .resume-preview-viewport.is-panning {
@@ -71,7 +111,7 @@
 
 .resume-preview-scale-box {
   margin: 0 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .resume-iframe {
@@ -314,4 +354,97 @@
 
 .resume-diagnosis-floor {
   margin-top: 10px;
+}
+
+/* ── 板块顺序（预览工具条里的「顺序」弹层） ───────────────────────────── */
+/* 弹层里的每行是「序号 + 名称 + 上下移」，宽度固定是为了让 7 行的上下按钮
+   竖向对齐——用 auto 宽度时按钮会跟着名称长短左右跳，点起来很费劲。 */
+.resume-section-order-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resume-section-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 232px;
+}
+
+.resume-section-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.resume-section-order-row:hover {
+  background: #f4f7fb;
+}
+
+.resume-section-order-index {
+  flex: 0 0 18px;
+  text-align: center;
+  font-size: 12px;
+  color: #8a94a3;
+  font-variant-numeric: tabular-nums;
+}
+
+.resume-section-order-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+}
+
+.resume-section-order-hint {
+  margin: 10px 0 0 !important;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 「按住 Ctrl 滚滚轮可缩放」：与缩放百分比同一行、字号更小。
+   窄屏（预览区被压扁）时隐藏——那一行会被挤到换行，反而更乱。 */
+.resume-preview-zoom-hint {
+  margin-left: 2px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .resume-preview-zoom-hint {
+    display: none;
+  }
+}
+
+/* 「查看大图」弹窗：给预览一个尽量高的视口，页面才能以 1:1 显示。 */
+.resume-zoom-body {
+  min-height: 360px;
+}
+
+.resume-zoom-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* 预览工具栏里的「当前指向」提示：鼠标划过纸面字段时出现，说明现在指向哪一栏。 */
+.resume-preview-hover-chip {
+  display: inline-flex;
+  max-width: 46%;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 2px 10px;
+  border: 1px solid #b9d2f2;
+  border-radius: 999px;
+  background: #f6f9fe;
+  color: #33414f;
+  font-size: 12px;
+}
+
+.resume-preview-hover-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

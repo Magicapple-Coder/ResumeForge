@@ -414,3 +414,41 @@ def test_a_long_note_still_keeps_its_source_line():
     assert len(merged) <= MAX_JOB_NOTE_CHARS
     # 用户原文照旧保留在前面，只是被裁到给标注让位。
     assert merged.startswith("备")
+
+
+def test_candidate_detail_carries_the_jd_but_the_list_does_not(db_session, client):
+    """JD 只在**单条详情**里返回，列表不带。
+
+    候选有两条来路，字段分布正好相反：手工粘贴的只有 ``raw_text``，而采集来的内容全在
+    ``description`` / ``requirements`` 里。**从备选岗位导入正式岗位时要预填后者**——而列表
+    以前不带它们，"导入进来什么都没有"就是这么来的（前端那个类型还一直写着有）。
+
+    为什么列表不带：最多 300 条，而单条正文上限几万字符，塞进去会让"打开备选岗位"随采集量
+    线性变慢，而列表本身根本不显示 JD。
+    """
+    from app.models.material import CandidateJob
+
+    db_session.add(
+        CandidateJob(
+            title="后端开发工程师",
+            company="示例公司",
+            source_url="https://x.example/jobs/1",
+            description="负责服务端开发与维护。",
+            requirements="三年以上经验。",
+            job_type="社招",
+            additional_info="提供三餐。",
+            source="官网采集",
+        )
+    )
+    db_session.commit()
+
+    listed = client.get("/api/candidate-jobs").json()[0]
+    assert "description" not in listed, "列表不该带 JD——它会让这个接口随采集量线性变重"
+    assert "requirements" not in listed
+
+    detail = client.get(f"/api/candidate-jobs/{listed['id']}").json()
+    assert detail["description"] == "负责服务端开发与维护。"
+    assert detail["requirements"] == "三年以上经验。"
+    # 岗位类型也要带上：导入正式岗位时它是必填之外的一个真实字段（采集来的才有）。
+    assert detail["job_type"] == "社招"
+    assert detail["additional_info"] == "提供三餐。"

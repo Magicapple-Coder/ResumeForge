@@ -4,8 +4,7 @@
  * 所以走居中对齐而不是共享左基线。几何与封顶都在 :mod:`HorizontalBarChart` 里（公司排行
  * 用的是同一份），这里只负责"给每一阶段配一个颜色"和开启"相对第一阶段的百分比"。
  *
- * 配色统一：除第一阶段（已投递总量，作为基准）用中性灰外，其余阶段统一强调蓝——漏斗
- * 靠"居中递减的形状"表达信息，不必每段一个色。
+ * 每个阶段使用独立的语义色：漏斗的形状表达数量递减，颜色帮助用户快速定位阶段。
  *
  * 只负责画，漏斗的阶段顺序与口径由后端 ``/api/analytics/dashboard`` 下发（见
  * services/analytics.py）。
@@ -13,15 +12,13 @@
 import type { FunnelStage } from "../../types";
 import HorizontalBarChart from "./HorizontalBarChart";
 
-const FIRST_STAGE_FILL = "#8c8c8c";
-const DEFAULT_FILL = "#1677ff";
+const STAGE_COLORS = ["#8c8c8c", "#5b8ff9", "#61ddaa", "#f6bd16", "#7262fd", "#f08bb4"];
 
 interface Props {
   stages: FunnelStage[];
 }
 
 export default function FunnelChart({ stages }: Props) {
-  // 第一阶段是总量基准，用中性灰；其余阶段统一强调蓝，靠居中形状而非颜色区分。
   const firstKey = stages[0]?.status;
   return (
     <HorizontalBarChart
@@ -33,7 +30,12 @@ export default function FunnelChart({ stages }: Props) {
       ariaLabel="求职漏斗"
       align="center"
       showPercent
-      colorFor={(key) => (key === firstKey ? FIRST_STAGE_FILL : DEFAULT_FILL)}
+      colorFor={(key) => {
+        const index = stages.findIndex((stage) => stage.status === key);
+        return key === firstKey
+          ? STAGE_COLORS[0]
+          : STAGE_COLORS[Math.max(1, index) % STAGE_COLORS.length];
+      }}
     />
   );
 }

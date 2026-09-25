@@ -197,12 +197,24 @@ def browser_status(db: Session) -> BrowserStatusOut:
     return _browser_status_out(manager.status(), db)
 
 
-def start_browser(db: Session) -> BrowserStatusOut:
-    """启动投递专用浏览器（带上站点入口地址）并返回状态；启动失败转 ApplyConflict。"""
+def start_browser(db: Session, *, open_entry: bool = True) -> BrowserStatusOut:
+    """启动投递专用浏览器并返回状态；启动失败转 ApplyConflict。
+
+    ``open_entry`` 决定这次启动**要不要打开当前站点的入口页**，两种调用方的需要正好相反：
+
+    - 投递台要（默认）：它接下来要用户在里面扫码登录，只开一个空白窗口的话用户不知道该去哪。
+    - 官网采集不要：它借这个浏览器当**渲染引擎**，采集哪一页由采集自己导航；启动时顺手打开
+      站点入口页没有好处，反而会让"我只想采某个公司的官网"的用户，一点按钮就跳出一个
+      他这次根本用不到的招聘网站——他并没有要求访问那个站点。
+
+    **已经开着的时候这个参数不生效**（``manager.start`` 对运行中的实例直接返回状态，不会导航）：
+    这时浏览器里本来就有用户自己的标签页，不该被这次调用动到。
+    """
     manager = get_browser_manager(db)
     try:
-        # 带上站点入口地址：只开 about:blank 的话用户面对空白窗口无从登录。
-        status = manager.start(url=default_entry_url(db) or None)
+        # 不带入口时传 None，窗口停在 about:blank。
+        url = (default_entry_url(db) or None) if open_entry else None
+        status = manager.start(url=url)
     except BrowserError as exc:
         raise ApplyConflict(str(exc)) from exc
     return _browser_status_out(status, db)
@@ -222,6 +234,35 @@ def open_browser_url(db: Session) -> BrowserStatusOut:
     except (BrowserError, CdpError) as exc:
         raise ApplyConflict(str(exc)) from exc
     return _browser_status_out(manager.status(), db)
+
+
+def refresh_browser(db: Session) -> BrowserStatusOut:
+    """刷新专用浏览器当前标签页，不导航到招聘网站入口。"""
+    manager = get_browser_manager(db)
+    try:
+        client = manager.client()
+        client.send("Page.reload", {"ignoreCache": False})
+    except (BrowserError, CdpError) as exc:
+        raise ApplyConflict(str(exc)) from exc
+    return _browser_status_out(manager.status(), db)
+
+
+def restart_browser(db: Session) -> BrowserStatusOut:
+    """重启本次运行拥有的专用浏览器。不会猜 PID，也不会关闭外部浏览器。"""
+    manager = get_browser_manager(db)
+    status = manager.status()
+    if status.state == "running" and not status.owned:
+        raise ApplyConflict(
+            "这个浏览器窗口不是本次运行启动的，应用不会猜进程来重启它；请直接关闭窗口后再点启动。"
+        )
+    if status.state == "starting":
+        raise ApplyConflict("浏览器还在启动中，请稍候几秒再重启")
+    try:
+        if status.state == "running":
+            manager.stop()
+        return _browser_status_out(manager.start(url=None), db)
+    except BrowserError as exc:
+        raise ApplyConflict(str(exc)) from exc
 
 
 def stop_browser(db: Session) -> None:

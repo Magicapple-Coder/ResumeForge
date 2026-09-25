@@ -114,9 +114,15 @@ def browser_status(db: Session = Depends(get_db)):
 
 
 @router.post("/browser/start", response_model=BrowserStatusOut)
-def browser_start(db: Session = Depends(get_db)):
+def browser_start(open_entry: bool = True, db: Session = Depends(get_db)):
+    """启动专用浏览器。
+
+    ``open_entry=false`` 时**不打开任何站点页面**（停在空白页）。官网采集用它借浏览器
+    当渲染引擎，默认打开站点入口页会让"只想采某公司官网"的用户莫名其妙跳出一个招聘网站；
+    投递台保持默认，它要那个页面来登录。
+    """
     try:
-        return apply_service.start_browser(db)
+        return apply_service.start_browser(db, open_entry=open_entry)
     except apply_service.ApplyServiceError as exc:
         _raise(exc)
 
@@ -126,6 +132,22 @@ def browser_open(db: Session = Depends(get_db)):
     """在已启动的专用浏览器里重新打开招聘网站入口（标签页被关掉或跳走后使用）。"""
     try:
         return apply_service.open_browser_url(db)
+    except apply_service.ApplyServiceError as exc:
+        _raise(exc)
+
+
+@router.post("/browser/refresh", response_model=BrowserStatusOut)
+def browser_refresh(db: Session = Depends(get_db)):
+    try:
+        return apply_service.refresh_browser(db)
+    except apply_service.ApplyServiceError as exc:
+        _raise(exc)
+
+
+@router.post("/browser/restart", response_model=BrowserStatusOut)
+def browser_restart(db: Session = Depends(get_db)):
+    try:
+        return apply_service.restart_browser(db)
     except apply_service.ApplyServiceError as exc:
         _raise(exc)
 

@@ -14,6 +14,7 @@ export const JOB_RECOGNITION_SOURCES = [
   "备选岗位导入",
   "AI 助手录入",
   "岗位采集",
+  "官网采集",
 ] as const;
 
 export type JobRecognitionSource = "" | (typeof JOB_RECOGNITION_SOURCES)[number];
@@ -106,9 +107,17 @@ export interface CandidateJob {
    * 收窄会让后端多注册一个站点就把界面类型检查搞红。
    */
   source: string;
-  /** 采集带回来的 JD 两段（已在服务端按小标题切好）；手动粘贴的候选为空串。 */
-  description: string;
-  requirements: string;
+  /**
+   * 采集带回来的 JD 两段（已在服务端按小标题切好）。
+   *
+   * **只在 `getCandidateJob`（单条详情）里有值**——列表接口不带它们，理由是体积：列表最多
+   * 300 条而单条正文上限几万字符，塞进列表会让「打开备选岗位」随采集量线性变慢。
+   *
+   * 声明成可选是**在说实话**：它曾经是必填 `string`，而列表从来不给——类型在说谎，
+   * 直到有人真的去读它（从备选岗位导入时预填表单）才炸成"导入进来什么都没有"。
+   */
+  description?: string;
+  requirements?: string;
   /** 原始岗位链接（采集来的才有）：界面上用它显示「回原站看」。 */
   source_url: string;
   /** 产生这条候选的采集批次；为空表示不是采集来的。 */
@@ -117,6 +126,14 @@ export interface CandidateJob {
   imported_job_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** 单条候选的**完整**内容（`GET /candidate-jobs/{id}`）。要读 JD 就用它。 */
+export interface CandidateJobDetail extends CandidateJob {
+  description: string;
+  requirements: string;
+  job_type: string;
+  additional_info: string;
 }
 
 export type CandidateJobImportOutcomeKind =

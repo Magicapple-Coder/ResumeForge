@@ -16,7 +16,7 @@ from ..models.material import (
     CANDIDATE_JOB_STATUSES,
     CandidateJob,
 )
-from ..schemas.job import JobCreate
+from ..schemas.job import JobCreate, RECOGNITION_SOURCE_OFFICIAL
 from ..schemas.material import CandidateJobCreate, CandidateJobUpdate
 from .job.job_service import create_job_record, find_by_job_identity, find_job_by_identity
 from .trash import is_deleted
@@ -41,13 +41,16 @@ def list_candidate_jobs(
     status: str = "",
     keyword: str = "",
     collect_task_id: int | None = None,
+    collect_task_ids: list[int] | None = None,
     limit: int = MAX_CANDIDATE_LIST,
 ) -> list[CandidateJob]:
     """按状态/采集批次/关键词分页列出备选岗位。"""
     query = db.query(CandidateJob)
     if status in CANDIDATE_JOB_STATUSES:
         query = query.filter(CandidateJob.status == status)
-    if collect_task_id is not None:
+    if collect_task_ids:
+        query = query.filter(CandidateJob.collect_task_id.in_(collect_task_ids))
+    elif collect_task_id is not None:
         # 「本次采集结果」按批次过滤：采完立刻能看到"这次采到了什么"，而不必在累积的
         # 全部候选里翻找。
         query = query.filter(CandidateJob.collect_task_id == collect_task_id)
@@ -255,7 +258,7 @@ def import_candidates(db: Session, candidate_ids: list[int]) -> dict:
                 status=JOB_STATUS_OPEN,
                 recognition_source=(
                     RECOGNITION_SOURCE_COLLECT
-                    if candidate.collect_task_id
+                    if candidate.collect_task_id or candidate.source == RECOGNITION_SOURCE_OFFICIAL
                     else RECOGNITION_SOURCE_MANUAL
                 ),
             ),
@@ -359,7 +362,5 @@ __all__ = [
     "stage_candidate_job",
     "update_candidate_job",
 ]
-
-
 
 

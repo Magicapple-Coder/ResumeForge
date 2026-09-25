@@ -50,6 +50,8 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/prompts/resume_phrases.md", "简历话术生成器提示词"),
     ("app/prompts/resume_polish.md", "简历多风格润色提示词"),
     ("app/prompts/resume_quality_retry.md", "简历质量重试提示词"),
+    ("app/prompts/resume_rewrite_field.md", "按栏定向改写提示词"),
+    ("app/prompts/resume_template_import.md", "目标模板导入分析提示词"),
     ("app/prompts/resume_risk.md", "简历风险深挖提示词"),
     ("app/prompts/resume_star.md", "简历 STAR 改写提示词"),
     ("app/prompts/resume_suggestions.md", "简历改进建议提示词"),
@@ -59,6 +61,11 @@ _REQUIRED_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("app/templates/resume.html.j2", "经典简历模板"),
     ("app/templates/resume_modern.html.j2", "现代简历模板"),
     ("app/templates/resume_compact.html.j2", "精简简历模板"),
+    # `_resume_sections.j2` 里 `{% import "_resume_blocks.j2" %}`：少了它，任何一次
+    # 简历渲染都会在 Jinja 编译阶段失败（而且报错信息不会指出缺的是哪个文件）。
+    # 这个文件曾经只存在于工作区、没进版本库，于是按 HEAD 打包的发行版缺它——
+    # 打包脚本的必需文件清单先一步拦下了，这里补上是为了运行时也能给出明确诊断。
+    ("app/templates/_resume_blocks.j2", "简历正文区块宏（被 _resume_sections 引用）"),
     ("app/templates/_resume_sections.j2", "简历正文片段（三套模板共用）"),
     ("app/templates/_resume_fit_script.j2", "简历放不下时的测量脚本"),
     ("alembic.ini", "数据库迁移配置"),

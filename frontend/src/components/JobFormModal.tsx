@@ -43,6 +43,15 @@ interface Props {
   initial: Job | null;
   /** 从备选岗位导入时预填的招聘原文（只用于新增）。 */
   presetRawText?: string;
+  /**
+   * 从备选岗位导入时预填的**结构化字段**（只用于新增）。
+   *
+   * 与 ``presetRawText`` 并存而不是取而代之：手工粘贴的候选只有原文，**采集来的候选恰恰相反**
+   * ——它的内容在 ``description`` / ``requirements`` / ``location`` 这些列里，``raw_text`` 是空的。
+   * 只填原文那一条路的话，从备选岗位导入一条采集来的岗位会打开一个**全空的表单**，
+   * 用户看到的就是"导入进来什么都没有"。
+   */
+  presetJob?: Partial<JobPayload>;
   /** 从备选岗位导入时的来源标注；不填则按识别输入自动判定。 */
   presetSource?: JobRecognitionSource;
   onClose: () => void;
@@ -70,6 +79,7 @@ export default function JobFormModal({
   open,
   initial,
   presetRawText,
+  presetJob,
   presetSource,
   onClose,
   onSaved,
@@ -109,6 +119,16 @@ export default function JobFormModal({
       setNoteImages(initial.note_images ?? []);
     } else {
       form.resetFields();
+      // 先把结构化字段铺上，再放原文（见 ``presetJob`` 的说明）。
+      // **只写有值的那些**：把空串显式写进表单会让"这个字段是空的"与"这个字段没被填过"变得
+      // 无法区分，而后面按字段判断"要不要再识别一次"的路径依赖这个区别。
+      if (presetJob) {
+        form.setFieldsValue(
+          Object.fromEntries(
+            Object.entries(presetJob).filter(([, value]) => value !== "" && value != null),
+          ),
+        );
+      }
       setRawText(presetRawText ?? "");
       setParseWarnings([]);
       setRecognizedText("");
@@ -117,7 +137,7 @@ export default function JobFormModal({
       setNoteImages([]);
       clear();
     }
-  }, [open, initial, presetRawText, form, clear]);
+  }, [open, initial, presetRawText, presetJob, form, clear]);
 
   const addNoteImage = async (file: File) => {
     if (file.size > MAX_NOTE_IMAGE_BYTES) {

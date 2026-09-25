@@ -1,6 +1,7 @@
 /** 备选岗位接口：暂存招聘信息、编辑、按批次挑选后导入岗位广场。 */
 import type {
   CandidateJob,
+  CandidateJobDetail,
   CandidateJobImportResult,
   CandidateJobPayload,
   CandidateJobUpdatePayload,
@@ -13,14 +14,17 @@ export function listCandidateJobs(
     keyword?: string;
     /** 只看某一次采集采到的候选（「本次采集结果」）。 */
     collectTaskId?: number;
+    /** 查看多条采集记录合并后的候选岗位。 */
+    collectTaskIds?: number[];
     limit?: number;
   } = {},
 ): Promise<CandidateJob[]> {
-  const { collectTaskId, ...rest } = params;
+  const { collectTaskId, collectTaskIds, ...rest } = params;
   return request(
     `/candidate-jobs${buildQuery({
       ...rest,
       ...(collectTaskId ? { collect_task_id: collectTaskId } : {}),
+      ...(collectTaskIds?.length ? { collect_task_ids: collectTaskIds.join(",") } : {}),
     })}`,
   );
 }
@@ -29,7 +33,8 @@ export function createCandidateJob(payload: CandidateJobPayload): Promise<Candid
   return request("/candidate-jobs", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export function getCandidateJob(id: number): Promise<CandidateJob> {
+/** 取单条候选的**完整**内容（含 JD）。列表不带正文，要正文就用它。 */
+export function getCandidateJob(id: number): Promise<CandidateJobDetail> {
   return request(`/candidate-jobs/${id}`);
 }
 

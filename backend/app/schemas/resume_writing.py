@@ -124,3 +124,32 @@ class ResumeDiffOut(BaseModel):
     against_title: str = ""
     lines: list[DiffLine] = Field(default_factory=list)
     stats: DiffStats = DiffStats()
+
+
+class RewriteFieldRequest(BaseModel):
+    """按「用户点中的那一栏」定向重写。
+
+    ``path`` 与前端预览的 ``data-resume-path`` 同一套写法（``summary`` /
+    ``projects.0.description.1``）；``instruction`` 是用户自己对这一栏的要求。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=200)
+    instruction: str = Field(min_length=1, max_length=500)
+
+
+class RewriteFieldOut(BaseModel):
+    """改写建议。**不回写简历**——是否采用由用户在编辑器里确认。
+
+    ``kind`` 是这一栏的形状：``text`` 单段、``lines`` 整段（若干部要点）。
+    整段时 ``lines`` 给出逐条结果，``result`` 是它的换行拼接版（便于直接展示）。
+    """
+
+    path: str
+    label: str = ""
+    context: str = ""
+    original: str = ""
+    result: str = ""
+    kind: Literal["text", "lines"] = "text"
+    lines: list[str] = Field(default_factory=list)

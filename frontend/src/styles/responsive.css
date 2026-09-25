@@ -129,10 +129,6 @@
     display: none;
   }
 
-  .app-header-repo {
-    display: none;
-  }
-
   .app-nav-menu {
     padding-right: 8px;
     padding-left: 8px;
@@ -141,6 +137,12 @@
   .app-sider-footer {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  /* 折叠侧栏只有 64px：同一行放不下「指南 + 图标」，改回上下堆叠并各自居中。 */
+  /* 折叠侧栏只有 64px：「使用指南」只剩图标，整行居中（GitHub 入口在页头，不在这里）。 */
+  .ant-layout-sider-collapsed .app-sider-footer-row {
+    justify-content: center;
   }
 
   .ant-layout-sider-collapsed .app-guide-button {

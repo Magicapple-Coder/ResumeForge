@@ -24,12 +24,12 @@ MAX_PROFILE_DETAIL_CHARS = 200_000
 MAX_PROFILE_SECTION_ITEMS = 200
 PROFILE_SECTION_KEYS = (
     "basic_info",
-    "educations",
     "experiences",
-    "campus_experiences",
     "projects",
     "skills",
+    "educations",
     "awards",
+    "campus_experiences",
     "summary",
 )
 _MAX_ENCODED_PHOTO_CHARS = 4 * ((MAX_PROFILE_PHOTO_BYTES + 2) // 3)
@@ -209,9 +209,14 @@ class ProfileUpdate(BaseModel):
     @classmethod
     def section_order_must_be_supported(cls, value: list[str]) -> list[str]:
         supported = set(PROFILE_SECTION_KEYS)
-        normalized = list(dict.fromkeys(key for key in value if key in supported))
-        normalized.extend(key for key in PROFILE_SECTION_KEYS if key not in normalized)
-        return normalized
+        normalized = list(
+            dict.fromkeys(key for key in value if key in supported and key != "basic_info")
+        )
+        return [
+            "basic_info",
+            *normalized,
+            *(key for key in PROFILE_SECTION_KEYS if key != "basic_info" and key not in normalized),
+        ]
 
 
 class ProfileTextParseRequest(BaseModel):

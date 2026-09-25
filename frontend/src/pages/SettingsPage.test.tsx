@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "./SettingsPage";
 
 const apiMocks = vi.hoisted(() => ({
+  checkForUpdate: vi.fn(),
   activateDataset: vi.fn(),
   deleteDataset: vi.fn(),
   deleteLLMConfigRecord: vi.fn(),
@@ -12,6 +13,8 @@ const apiMocks = vi.hoisted(() => ({
   getLLMConfig: vi.fn(),
   getReminderPopupSetting: vi.fn(),
   getSearchConfig: vi.fn(),
+  getUpdateDownloadStatus: vi.fn(),
+  installDownloadedUpdate: vi.fn(),
   importDataset: vi.fn(),
   listDatasets: vi.fn(),
   listLLMConfigRecords: vi.fn(),
@@ -21,6 +24,7 @@ const apiMocks = vi.hoisted(() => ({
   saveLLMConfigRecord: vi.fn(),
   saveReminderPopupSetting: vi.fn(),
   saveSearchConfig: vi.fn(),
+  startUpdateDownload: vi.fn(),
   testLLM: vi.fn(),
 }));
 
@@ -94,6 +98,17 @@ beforeEach(() => {
   apiMocks.getLLMConfig.mockResolvedValue(llmConfig);
   apiMocks.getReminderPopupSetting.mockResolvedValue({ enabled: true });
   apiMocks.getSearchConfig.mockResolvedValue(searchConfig);
+  apiMocks.getUpdateDownloadStatus.mockResolvedValue({
+    state: "idle",
+    current_version: "0.11.0",
+    target_version: "",
+    progress: 0,
+    downloaded_bytes: 0,
+    total_bytes: null,
+    background: false,
+    installable: false,
+    message: "",
+  });
   apiMocks.listLLMConfigRecords.mockResolvedValue([]);
   apiMocks.listDatasets.mockResolvedValue([mainDataset]);
   apiMocks.revealLLMApiKey.mockResolvedValue({ api_key: "sk-revealed" });

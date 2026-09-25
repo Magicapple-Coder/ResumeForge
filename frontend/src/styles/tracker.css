@@ -15,69 +15,161 @@
 }
 
 .tracker-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 32px;
-  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.tracker-summary > .ant-statistic {
+  min-height: 82px;
+  padding: 14px 16px;
   background: var(--rf-surface, #fff);
   border: 1px solid var(--rf-border, #f0f0f0);
-  border-radius: 8px;
+  border-top: 3px solid #5b8ff9;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 56, 85, 0.06);
+}
+
+.tracker-summary > .ant-statistic:nth-child(2) {
+  border-top-color: #61ddaa;
+}
+
+.tracker-summary > .ant-statistic:nth-child(3) {
+  border-top-color: #f6bd16;
+}
+
+.tracker-summary > .ant-statistic:nth-child(4) {
+  border-top-color: #7262fd;
+}
+
+.tracker-summary > .ant-statistic:nth-child(5) {
+  border-top-color: #f08bb4;
 }
 
 /* 漏斗：每级一条，宽度按"占最大一级的比例"。用按钮而不是 div，
    因为点一下就是按这一级筛选——可点击的东西就该是按钮。 */
 .tracker-funnel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
-  background: var(--rf-surface, #fff);
-  border: 1px solid var(--rf-border, #f0f0f0);
-  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8fbff 0%, #fff 52%, #fbf8ff 100%);
+  border: 1px solid var(--rf-border, #e8edf3);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(31, 56, 85, 0.06);
 }
 
 .tracker-funnel-step {
-  display: flex;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "index label count"
+    "index meter percent";
+  gap: 4px 10px;
   align-items: center;
   width: 100%;
-  padding: 4px 6px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(31, 56, 85, 0.08);
+  border-radius: 12px;
   cursor: pointer;
   text-align: left;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .tracker-funnel-step:hover {
-  background: rgba(22, 119, 255, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(31, 56, 85, 0.1);
 }
 
 .tracker-funnel-step.is-selected {
-  background: rgba(22, 119, 255, 0.1);
-  border-color: rgba(22, 119, 255, 0.35);
+  border-color: var(--rf-stage-color, #5b8ff9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rf-stage-color, #5b8ff9) 18%, transparent);
+}
+
+.tracker-funnel-step[data-stage-index="0"] {
+  --rf-stage-color: #8c8c8c;
+}
+
+.tracker-funnel-step[data-stage-index="1"] {
+  --rf-stage-color: #5b8ff9;
+}
+
+.tracker-funnel-step[data-stage-index="2"] {
+  --rf-stage-color: #61ddaa;
+}
+
+.tracker-funnel-step[data-stage-index="3"] {
+  --rf-stage-color: #f6bd16;
+}
+
+.tracker-funnel-step[data-stage-index="4"] {
+  --rf-stage-color: #7262fd;
+}
+
+.tracker-funnel-step[data-stage-index="5"] {
+  --rf-stage-color: #f08bb4;
+}
+
+.tracker-funnel-index {
+  grid-area: index;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--rf-stage-color, #5b8ff9);
+  border-radius: 50%;
 }
 
 .tracker-funnel-label {
-  flex: 0 0 76px;
+  grid-area: label;
   color: rgba(0, 0, 0, 0.65);
   font-size: 13px;
+  font-weight: 600;
 }
 
 .tracker-funnel-count {
-  flex: 0 0 32px;
+  grid-area: count;
   font-variant-numeric: tabular-nums;
+  color: #1f3855;
+  font-size: 20px;
   font-weight: 600;
   text-align: right;
 }
 
+.tracker-funnel-meter {
+  grid-area: meter;
+  height: 8px;
+  overflow: hidden;
+  background: #edf1f5;
+  border-radius: 999px;
+}
+
 .tracker-funnel-bar {
-  height: 10px;
-  /* 只要画出来就至少看得见一小段；计数为 0 时根本不渲染这根条。 */
-  min-width: 4px;
-  background: linear-gradient(90deg, #91caff, #1677ff);
-  border-radius: 5px;
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--rf-stage-color, #5b8ff9) 55%, #fff),
+    var(--rf-stage-color, #5b8ff9)
+  );
+  border-radius: inherit;
   transition: width 0.25s ease;
+}
+
+.tracker-funnel-percent {
+  grid-area: percent;
+  color: #8c8c8c;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tracker-filters {
@@ -297,4 +389,10 @@
   margin: 0;
   padding: 0;
   border-radius: 50%;
+}
+
+@media (max-width: 900px) {
+  .tracker-summary {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
 }

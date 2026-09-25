@@ -58,34 +58,36 @@ export default function ProfileSectionStack({
     </SortableProfileSection>
   );
 
+  const sectionContent: Record<ProfileSectionKey, ReactNode> = {
+    basic_info: (
+      <ProfileBasicSection
+        photo={photo}
+        editing={editing}
+        saving={saving}
+        onPhotoSelect={onPhotoSelect}
+      />
+    ),
+    educations: <EducationSection editable={editing} />,
+    experiences: <ExperienceSection editable={editing} />,
+    campus_experiences: <CampusExperienceSection editable={editing} />,
+    projects: <ProjectSection editable={editing} />,
+    skills: <SkillSection editable={editing} />,
+    awards: <AwardSection editable={editing} />,
+    summary: (
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Form.Item name="summary" style={{ marginBottom: 0 }}>
+          <Input.TextArea
+            rows={4}
+            placeholder="几句话概括你的优势与特点，AI 会结合目标岗位进行润色"
+          />
+        </Form.Item>
+      </Card>
+    ),
+  };
+
   return (
     <div className={`profile-section-stack${sectionReorderMode ? " is-section-reordering" : ""}`}>
-      {section(
-        "basic_info",
-        <ProfileBasicSection
-          photo={photo}
-          editing={editing}
-          saving={saving}
-          onPhotoSelect={onPhotoSelect}
-        />,
-      )}
-      {section("educations", <EducationSection editable={editing} />)}
-      {section("experiences", <ExperienceSection editable={editing} />)}
-      {section("campus_experiences", <CampusExperienceSection editable={editing} />)}
-      {section("projects", <ProjectSection editable={editing} />)}
-      {section("skills", <SkillSection editable={editing} />)}
-      {section("awards", <AwardSection editable={editing} />)}
-      {section(
-        "summary",
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Form.Item name="summary" style={{ marginBottom: 0 }}>
-            <Input.TextArea
-              rows={4}
-              placeholder="几句话概括你的优势与特点，AI 会结合目标岗位进行润色"
-            />
-          </Form.Item>
-        </Card>,
-      )}
+      {sectionOrder.map((sectionKey) => section(sectionKey, sectionContent[sectionKey]))}
     </div>
   );
 }

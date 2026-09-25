@@ -1,13 +1,24 @@
 /** 简历版式控制：样式模板 / 格式模板 / 最大篇幅（页数）/ 字号，生成与预览弹窗共用。 */
 
-import { PictureOutlined, UndoOutlined } from "@ant-design/icons";
-import { Button, Segmented, Select, Slider, Space, Tooltip, Typography } from "antd";
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  PictureOutlined,
+  UndoOutlined,
+} from "@ant-design/icons";
+import { Button, Popover, Segmented, Select, Slider, Space, Tooltip, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { fetchResumeTemplates } from "../api/resumes";
 import { RESUME_PAGE_LIMITS, type ResumeLayout } from "../types";
 import type { ResumePreviewHandle } from "./ResumePreview";
 import TemplateGalleryModal from "./resume/TemplateGalleryModal";
+import {
+  DEFAULT_RESUME_SECTION_ORDER,
+  moveSection,
+  normalizeSectionOrder,
+  RESUME_SECTION_LABELS,
+} from "../utils/resumeSectionOrder";
 import {
   fontProbeCss,
   fontPxBounds,
@@ -86,6 +97,35 @@ export default function ResumeLayoutControls({
   const shownPxText = `${Number(shownPx.toFixed(1))}px`;
   const currentTemplate = templates.find((item) => item.name === layout.template);
   const defaultTierLabel = tierByName(tiers, catalog?.defaults.font_scale ?? "standard").label;
+
+  // 正文分区顺序：键与标签由后端下发（改默认值只改一处），归一化在前端做同样的事，
+  // 因为控件展示的是"完整排列"，而存储里可能只有用户动过的那几项。
+  const defaultSectionOrder = useMemo(
+    () => catalog?.default_section_order ?? DEFAULT_RESUME_SECTION_ORDER,
+    [catalog?.default_section_order],
+  );
+  const sectionOptions = useMemo(() => catalog?.section_options ?? [], [catalog?.section_options]);
+  const sectionOrder = useMemo(
+    () => normalizeSectionOrder(layout.format_config?.section_order, defaultSectionOrder),
+    [layout.format_config?.section_order, defaultSectionOrder],
+  );
+  const isCustomOrder = sectionOrder.join(",") !== defaultSectionOrder.join(",");
+
+  const handleSectionMove = (index: number, direction: -1 | 1) => {
+    const next = moveSection(sectionOrder, index, direction);
+    if (next === sectionOrder) return;
+    onChange({
+      ...layout,
+      format_config: { ...layout.format_config, section_order: next },
+    });
+  };
+
+  const handleSectionOrderReset = () => {
+    if (!isCustomOrder) return;
+    const nextFormatConfig = { ...layout.format_config };
+    delete nextFormatConfig.section_order;
+    onChange({ ...layout, format_config: nextFormatConfig });
+  };
 
   const handleFontChange = (px: number) => {
     setDraggingPx(px);
@@ -167,6 +207,72 @@ export default function ResumeLayoutControls({
         onSelect={(template) => onChange({ ...layout, template })}
         onClose={() => setGalleryOpen(false)}
       />
+      <Space size={6}>
+        {!compact && <Typography.Text type="secondary">板块</Typography.Text>}
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          arrow={false}
+          title={
+            <span className="resume-section-order-title">
+              调整板块顺序
+              {isCustomOrder && (
+                <Button size="small" type="link" onClick={handleSectionOrderReset}>
+                  恢复默认
+                </Button>
+              )}
+            </span>
+          }
+          content={
+            <div className="resume-section-order-list" role="list" aria-label="简历板块顺序">
+              {sectionOrder.map((key, index) => {
+                const label =
+                  sectionOptions.find((item) => item.key === key)?.label ??
+                  RESUME_SECTION_LABELS[key] ??
+                  key;
+                return (
+                  <div className="resume-section-order-row" role="listitem" key={key}>
+                    <span className="resume-section-order-index">{index + 1}</span>
+                    <span className="resume-section-order-label">{label}</span>
+                    <Space size={0}>
+                      <Tooltip title="上移">
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<ArrowUpOutlined />}
+                          aria-label={`把${label}上移`}
+                          disabled={index === 0}
+                          onClick={() => handleSectionMove(index, -1)}
+                        />
+                      </Tooltip>
+                      <Tooltip title="下移">
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<ArrowDownOutlined />}
+                          aria-label={`把${label}下移`}
+                          disabled={index === sectionOrder.length - 1}
+                          onClick={() => handleSectionMove(index, 1)}
+                        />
+                      </Tooltip>
+                    </Space>
+                  </div>
+                );
+              })}
+              <Typography.Paragraph type="secondary" className="resume-section-order-hint">
+                顺序对预览、PDF、Word
+                与文本导出同时生效；页眉（姓名、求职意向、联系方式）固定在最前。
+              </Typography.Paragraph>
+            </div>
+          }
+        >
+          <Tooltip title="调整个人总结、教育经历、项目经历等板块在简历里的先后顺序">
+            <Button size="small" disabled={disabled} aria-label="调整简历板块顺序">
+              顺序{isCustomOrder ? "·已调整" : ""}
+            </Button>
+          </Tooltip>
+        </Popover>
+      </Space>
       <Space size={6}>
         {!compact && <Typography.Text type="secondary">最大篇幅</Typography.Text>}
         <Tooltip title="简历内容最多排几页 A4；内容少时会自然留白，不会硬撑满">

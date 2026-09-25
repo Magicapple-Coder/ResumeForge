@@ -4,6 +4,7 @@
  * 加载 detail/html、错误与骨架屏，以及把「换版式 / 自动一页 / 保存编辑」这些会改
  * 数据与重渲染的动作准备好，交给共享组件渲染。
  */
+import type { ResumeFormatConfig } from "../types/resumeFormat";
 import { Alert, App, Modal, Skeleton } from "antd";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -136,7 +137,7 @@ export default function ResumeDetailModal({ recordId, onClose }: Props) {
   };
 
   /** 「自动一页」已由诊断卡写回配置，这里只需按新配置重渲染一次。 */
-  const applyFittedFormat = async (formatConfig: Record<string, number | string>) => {
+  const applyFittedFormat = async (formatConfig: ResumeFormatConfig) => {
     if (!detail) return;
     const next: ResumeLayout = { ...layout, format_config: formatConfig };
     setLayout(next);

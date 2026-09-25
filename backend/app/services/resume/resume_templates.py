@@ -11,6 +11,8 @@
 import re
 from pathlib import Path
 
+from .resume_sections import normalized_section_order
+
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 DEFAULT_TEMPLATE = "classic"
@@ -413,11 +415,21 @@ def validated_format_config(raw: dict | None) -> dict:
 
     只接受清单里的键，颜色必须是十六进制、数值必须落在范围内——这段内容会被拼进
     HTML 的 `<style>`，不校验就等于把 CSS 注入的口子交给前端。
+
+    `section_order` 是唯一一个**不是 CSS** 的键（它是正文分区的顺序，见
+    `resume_sections.py`）。它走同一条校验路，是因为它和版式的其余部分一样
+    按简历存在 `format_config` 里；渲染器各自从这里取，不必再开一个字段。
+    **只有调用方显式给了它才会出现在结果里**——否则"没设过顺序"与"设成了默认顺序"
+    就没法区分，而下游（如「自动一页」的候选版式对比）会因此看到一份多余的差异。
     """
     if not isinstance(raw, dict):
         return {}
     result: dict = {}
     for key, value in raw.items():
+        if str(key) == "section_order":
+            if isinstance(value, (list, tuple)) and value:
+                result["section_order"] = normalized_section_order(value)
+            continue
         field = _format_field(str(key))
         if field is None or value in (None, ""):
             continue

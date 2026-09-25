@@ -123,6 +123,24 @@ def no_real_search_network(monkeypatch):
 
     monkeypatch.setattr("app.services.sites.boss_filters.default_fetcher", no_filter_network)
 
+    def no_official_network():
+        # 官网采集的传输层工厂。**默认封掉的理由与上面那条完全相同**，而且这条是踩过的：
+        # 后台采集任务自己构造传输对象，接口层替换不到它——忘了注入的用例会**真的去请求
+        # 外部招聘站点**，在能联网的开发机上"碰巧通过"、在 CI 上挂到超时，表现为"采集一直
+        # 停在采集中"，排查时很难想到是测试真的在联网。
+        raise OSError("测试环境不访问真实站点：官网采集的传输层没有被替换")
+
+    monkeypatch.setattr(
+        "app.services.sites.official.service.default_http_factory", no_official_network
+    )
+
+    # 运行器单例跨用例存活会让"上一个用例的任务"影响下一个，每个用例换一个干净的。
+    from app.services.sites.official import runner as official_runner
+
+    monkeypatch.setattr(
+        "app.services.sites.official.runner._RUNNER", official_runner.OfficialRunner()
+    )
+
 
 @pytest.fixture(autouse=True)
 def clean_db():
@@ -142,6 +160,39 @@ def db_session():
     session = SessionLocal()
     yield session
     session.close()
+
+
+# 官网站点采集的用例会走真实的 SSRF 防护，而那道防护要解析域名。**刻意不是 autouse**：
+# 只有需要它的用例才取用，避免给两千多个既有用例换掉 DNS 行为。
+PUBLIC_IP_FOR_TESTS = "93.184.216.34"
+PRIVATE_IP_FOR_TESTS = "10.0.0.1"
+
+
+@pytest.fixture
+def fake_public_dns(monkeypatch):
+    """把域名解析固定下来：``*.internal.example`` 指向内网，其余指向公网。
+
+    替换 ``socket.getaddrinfo`` 而不是替换 ``is_public_http_url``——**防护本身必须在被测
+    路径上**，把防范函数打桩等于把要验的东西换成恒真式。
+
+    字面 IP **原样返回**（真实 ``getaddrinfo`` 就是这么做的）：若在这里也把它们换成公网地址，
+    "127.0.0.1 会被拒绝"这条断言会通过，但什么也没有证明。
+    """
+    import ipaddress
+    import socket
+
+    def _getaddrinfo(host, port, *args, **kwargs):  # noqa: ARG001
+        try:
+            ipaddress.ip_address(host)
+            address = host
+        except ValueError:
+            address = (
+                PRIVATE_IP_FOR_TESTS if str(host).endswith("internal.example")
+                else PUBLIC_IP_FOR_TESTS
+            )
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port or 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _getaddrinfo)
 
 
 @pytest.fixture

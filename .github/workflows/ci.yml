@@ -85,6 +85,122 @@ jobs:
           path: backend/coverage.xml
           if-no-files-found: error
 
+  macos-launcher-guards:
+    name: macOS launcher guards
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run the macOS launcher guard tests
+        # 这一份在真 Mac 上跑，用的就是 macOS 自带的 /bin/bash 3.2——
+        # 维护者没有 Mac，这是唯一能自动化验证 macOS 启动链的地方。
+        # 覆盖：换行/编码（CRLF 会让 shebang 变成 "bad interpreter"）、
+        # 可执行位、自举常量（版本号与 SHA-256）、版本窗口与进程记录等纯逻辑。
+        run: bash scripts/tests/test-macos-launcher.sh
+
+  macos-runtimes:
+    name: macOS portable runtimes
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Download and verify the pinned portable runtimes
+        # 真正下载一遍便携版 Python 与 Node，用仓库里钉死的 SHA-256 校验。
+        # 这一步专抓"摘要抄错一位"这类错误：那种错误在别处一律表现为
+        # "用户下载后启动失败"，而且每个人的网络环境都不一样，只有跑一次才知道。
+        run: |
+          set -euo pipefail
+          export RF_RUNTIME_DIR="$PWD/runtime"
+          mkdir -p "$RF_RUNTIME_DIR"
+          . scripts/macos/lib/common.sh
+          . scripts/macos/lib/python.sh
+          . scripts/macos/lib/node.sh
+          arch="$(detect_macos_arch)"
+          echo "架构：$arch"
+          rf_install_portable_python "$arch"
+          "$RF_PYTHON" -V
+          "$RF_PYTHON" -c "import sqlite3, ssl, ctypes, zlib; print('标准库自检通过')"
+          rf_install_portable_node "$arch"
+          "$RF_NODE_PATH" --version
+          "$RF_NPM_PATH" --version
+      - name: Verify the pinned digests for the other architecture too
+        # runner 是 arm64，所以只有 arm64 那两包会被真正安装与运行；另一份
+        # 架构的包只能下载 + 校验摘要，但**正是这一条最有价值**：两个架构的
+        # 摘要都是人工抄进仓库的常量，抄错一位在别处一律表现成"用户下载后
+        # 启动失败"，而 Intel Mac 用户不会出现在我们的测试矩阵里。
+        run: |
+          set -euo pipefail
+          export RF_RUNTIME_DIR="$PWD/runtime"
+          . scripts/macos/lib/common.sh
+          . scripts/macos/lib/python.sh
+          . scripts/macos/lib/node.sh
+          scratch="$(mktemp -d)"
+          for foreign_arch in arm64 x64; do
+            if [ "$foreign_arch" = "$(detect_macos_arch)" ]; then
+              continue
+            fi
+            echo "校验 $foreign_arch 的便携版 Python..."
+            # shellcheck disable=SC2086
+            download_verified "$scratch/python-$foreign_arch.tar.gz" \
+              "$(rf_python_bootstrap_sha256 "$foreign_arch")" \
+              "便携版 Python（$foreign_arch）" "$RF_PYTHON_BOOTSTRAP_APPROX_MB" \
+              $(rf_build_python_bootstrap_urls "$foreign_arch")
+            echo "校验 $foreign_arch 的便携版 Node.js..."
+            # shellcheck disable=SC2086
+            download_verified "$scratch/node-$foreign_arch.tar.gz" \
+              "$(rf_node_bootstrap_sha256 "$foreign_arch")" \
+              "便携版 Node.js（$foreign_arch）" "$RF_NODE_BOOTSTRAP_APPROX_MB" \
+              $(rf_build_node_bootstrap_urls "$foreign_arch")
+          done
+          rm -rf "$scratch"
+          echo "另一架构的摘要校验通过。"
+      - name: Reuse the already-installed runtimes instead of re-downloading
+        run: |
+          set -euo pipefail
+          export RF_RUNTIME_DIR="$PWD/runtime"
+          . scripts/macos/lib/common.sh
+          . scripts/macos/lib/python.sh
+          . scripts/macos/lib/node.sh
+          arch="$(detect_macos_arch)"
+          rf_install_portable_python "$arch"
+          rf_install_portable_node "$arch"
+          echo "第二次调用直接复用：$RF_PYTHON"
+
+  macos-end-to-end:
+    name: macOS end-to-end (clean checkout)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Start the app the way a Mac user does
+        # 维护者没有 Mac，这个作业就是"那台 Mac"：从干净检出开始，
+        # 走 start.sh 的完整链路（准备运行时 → 建 venv → 装依赖 →
+        # 启动 uvicorn 与 vite → 等健康检查），再用 stop.sh 收尾。
+        # 它比文档更可靠：文档只能描述，这里会真的跑。
+        run: |
+          set -euo pipefail
+          bash scripts/macos/start.sh --no-browser --backend-port 8123 --frontend-port 5199
+          curl -fsS http://127.0.0.1:8123/api/health
+          echo
+          curl -fsS http://127.0.0.1:5199/api/health
+          echo
+      - name: Stop the app
+        if: always()
+        run: bash scripts/macos/stop.sh
+      - name: Show the service logs when something failed
+        if: failure()
+        run: |
+          for log in runtime/backend.stderr.log runtime/frontend.stderr.log \
+                     runtime/backend.stdout.log runtime/frontend.stdout.log; do
+            if [ -f "$log" ]; then
+              echo "===== $log ====="
+              tail -n 60 "$log"
+            fi
+          done
+
   frontend:
     name: Frontend (Node 20)
     runs-on: ubuntu-latest

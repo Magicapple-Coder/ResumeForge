@@ -51,7 +51,6 @@ interface Props {
   attachmentReads: number;
   jobId: number | undefined;
   resumeId: number | undefined;
-  includeProfile: boolean;
   webSearch: boolean;
   reasoningEffort: ReasoningEffort;
   /** 全部技能（含停用的），用于在下拉里直接开关。 */
@@ -63,7 +62,6 @@ interface Props {
   onContentChange: (value: string) => void;
   onJobChange: (value: number | undefined) => void;
   onResumeChange: (value: number | undefined) => void;
-  onIncludeProfileChange: (value: boolean) => void;
   onWebSearchChange: (value: boolean) => void;
   onReasoningEffortChange: (value: ReasoningEffort) => void;
   onToggleSkill: (skill: AssistantSkill, enabled: boolean) => void;
@@ -84,7 +82,6 @@ export default function AssistantComposer({
   attachmentReads,
   jobId,
   resumeId,
-  includeProfile,
   webSearch,
   reasoningEffort,
   skills,
@@ -95,7 +92,6 @@ export default function AssistantComposer({
   onContentChange,
   onJobChange,
   onResumeChange,
-  onIncludeProfileChange,
   onWebSearchChange,
   onReasoningEffortChange,
   onToggleSkill,
@@ -157,7 +153,7 @@ export default function AssistantComposer({
             />
           </div>
         ) : null}
-        {(attachments.length > 0 || includeProfile) && (
+        {attachments.length > 0 && (
           <Alert type="info" showIcon message="已选择的附件或个人资料会发送给当前配置的模型服务" />
         )}
         {attachments.length > 0 && (
@@ -288,10 +284,6 @@ export default function AssistantComposer({
               </Tooltip>
             </Dropdown>
             <div className="assistant-context-toggles">
-              <label className="assistant-context-toggle">
-                <Switch size="small" checked={includeProfile} onChange={onIncludeProfileChange} />
-                <span>使用我的资料</span>
-              </label>
               <label className="assistant-context-toggle">
                 <Switch size="small" checked={webSearch} onChange={onWebSearchChange} />
                 <span>联网搜索</span>

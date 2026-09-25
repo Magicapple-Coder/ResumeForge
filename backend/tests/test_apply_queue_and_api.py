@@ -2,6 +2,8 @@
 
 执行批次用**假运行器**替换单例（不真起线程、不连浏览器），只验证路由与准入逻辑。
 """
+from types import SimpleNamespace
+
 import httpx
 import pytest
 
@@ -572,3 +574,62 @@ def test_match_analysis_local_fallback_and_lifecycle(client, db_session, fake_ru
 
 def test_match_analysis_missing_job_returns_404(client, fake_runner):
     assert client.post("/api/jobs/9999/match-analysis").status_code == 404
+
+
+# ===== 启动浏览器时要不要打开站点入口页 =====
+# 两种调用方的需要正好相反：投递台要那个页面（用户得在上面扫码登录），
+# 官网采集不要（它只是借这个浏览器当渲染引擎，采集哪一页由采集自己导航）。
+
+
+class _RecordingBrowser:
+    """记录 ``start`` 收到什么 url 的假管理器。"""
+
+    def __init__(self) -> None:
+        self.started_with = "没有调用过 start"
+
+    def start(self, url=None):
+        self.started_with = url
+        return self.status()
+
+    def status(self):
+        return SimpleNamespace(
+            state="running",
+            port=9333,
+            profile_dir="",
+            browser_path="",
+            browser_name="",
+            logged_in_hint="",
+            owned=True,
+        )
+
+
+def _fake_browser(monkeypatch) -> _RecordingBrowser:
+    manager = _RecordingBrowser()
+    monkeypatch.setattr(
+        "app.services.apply._site_browser.get_browser_manager", lambda _db: manager
+    )
+    return manager
+
+
+def test_browser_start_opens_the_site_entry_by_default(client, fake_runner, monkeypatch):
+    """不传参数时保持投递台原来的行为：打开站点入口页。"""
+    manager = _fake_browser(monkeypatch)
+
+    response = client.post("/api/apply/browser/start")
+
+    assert response.status_code == 200
+    assert manager.started_with == "https://www.zhipin.com/"
+
+
+def test_browser_start_can_skip_the_site_entry(client, fake_runner, monkeypatch):
+    """官网采集传 ``open_entry=false``：**不访问任何站点，停在空白页**。
+
+    不跳过的话，只想采某公司官网的用户一点按钮就跳出一个招聘网站——
+    而访问那个站点根本不是他这次的要求。
+    """
+    manager = _fake_browser(monkeypatch)
+
+    response = client.post("/api/apply/browser/start?open_entry=false")
+
+    assert response.status_code == 200
+    assert manager.started_with is None

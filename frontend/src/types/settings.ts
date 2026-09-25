@@ -111,7 +111,7 @@ export interface ReminderPopupSetting {
   enabled: boolean;
 }
 
-/** 更新检查结果：只对比版本，不执行任何自动更新。 */
+/** 更新检查结果与可安装包信息。 */
 export interface UpdateCheckResult {
   current_version: string;
   latest_version: string;
@@ -122,4 +122,22 @@ export interface UpdateCheckResult {
   notes: string;
   message: string;
   checked_at: string | null;
+  download_url: string;
+  download_size: number | null;
+  asset_name: string;
+  installable: boolean;
+}
+
+export type UpdateDownloadState = "idle" | "downloading" | "ready" | "installing" | "failed";
+
+export interface UpdateStatus {
+  state: UpdateDownloadState;
+  current_version: string;
+  target_version: string;
+  progress: number;
+  downloaded_bytes: number;
+  total_bytes: number | null;
+  background: boolean;
+  installable: boolean;
+  message: string;
 }

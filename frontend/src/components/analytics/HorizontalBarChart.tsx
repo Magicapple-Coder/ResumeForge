@@ -12,6 +12,8 @@
  * 只负责画。阶段顺序与计数口径由后端 ``/api/analytics/dashboard`` 下发。
  */
 
+import { BAR_LABEL_FONT_SIZE, BAR_LABEL_GAP, fitLabel, labelLayoutFor } from "./barLabelLayout";
+
 export interface HorizontalBarItem {
   key: string;
   label: string;
@@ -34,9 +36,8 @@ export const HORIZONTAL_BAR_WIDTH = 620;
 export const HORIZONTAL_BAR_HEIGHT = 22;
 export const HORIZONTAL_BAR_GAP = 12;
 export const TRACK_COLOR = "#f0f2f5";
-const LABEL_WIDTH = 96;
 const COUNT_WIDTH = 56;
-const DEFAULT_FILL = "#1677ff";
+const DEFAULT_COLORS = ["#5b8ff9", "#61ddaa", "#65789b", "#f6bd16", "#7262fd", "#78d3f8"];
 
 export default function HorizontalBarChart({
   items,
@@ -48,14 +49,17 @@ export default function HorizontalBarChart({
   const max = Math.max(1, ...items.map((item) => item.count));
   const firstCount = items[0]?.count ?? 0;
   const width = HORIZONTAL_BAR_WIDTH;
-  const chartWidth = width - LABEL_WIDTH - COUNT_WIDTH;
   const barHeight = HORIZONTAL_BAR_HEIGHT;
   const gap = HORIZONTAL_BAR_GAP;
   const height = items.length * (barHeight + gap) + 20;
+  // 标签区宽度按最长标签估宽（见 barLabelLayout.ts：标签右端固定、向左排版，
+  // 固定宽度会让长公司名伸出画布被裁）。总宽仍是 620，"不随窗口放大"那条约束不变。
+  const { labelWidth, labelTextWidth } = labelLayoutFor(items.map((item) => item.label));
+  const chartWidth = width - labelWidth - COUNT_WIDTH;
   // 轨道铺满整条可用宽度；彩色条按占比在其中填充（漏斗居中、排行贴左）。
-  const trackX = LABEL_WIDTH;
+  const trackX = labelWidth;
   // 计数标签统一落在轨道右侧，不再随条宽漂移。
-  const countX = LABEL_WIDTH + chartWidth + 8;
+  const countX = labelWidth + chartWidth + 8;
 
   return (
     <svg
@@ -72,20 +76,24 @@ export default function HorizontalBarChart({
         const y = 10 + index * (barHeight + gap);
         const ratio = item.count / max;
         const barWidth = Math.round(ratio * chartWidth);
-        const x = align === "start" ? LABEL_WIDTH : LABEL_WIDTH + (chartWidth - barWidth) / 2;
-        const fill = colorFor?.(item.key) ?? DEFAULT_FILL;
+        const x = align === "start" ? labelWidth : labelWidth + (chartWidth - barWidth) / 2;
+        const fill = colorFor?.(item.key) ?? DEFAULT_COLORS[index % DEFAULT_COLORS.length];
         const pct =
           showPercent && firstCount > 0 ? Math.round((item.count / firstCount) * 100) : null;
+        const shownLabel = fitLabel(item.label, labelTextWidth);
         return (
           <g key={item.key}>
             <text
-              x={LABEL_WIDTH - 10}
+              x={labelWidth - BAR_LABEL_GAP}
               y={y + barHeight / 2 + 4}
               textAnchor="end"
-              fontSize={13}
+              fontSize={BAR_LABEL_FONT_SIZE}
               fill="#555"
             >
-              {item.label}
+              {/* 只有真被截断的标签才挂 title：完整显示的行再给一个同文提示是噪音，
+                  而且会让"这一个标签叫什么"在无障碍树上出现两次。 */}
+              {shownLabel !== item.label && <title>{item.label}</title>}
+              {shownLabel}
             </text>
             {/* 全宽浅色轨道：即使计数为 0 也画出来，让"这一阶段没人"是看得见的事实，
                 而不是一条彩色细条或整行消失。 */}
@@ -108,6 +116,7 @@ export default function HorizontalBarChart({
                 rx={6}
                 fill={fill}
                 data-bar="true"
+                data-bar-index={index}
               />
             )}
             <text x={countX} y={y + barHeight / 2 + 4} fontSize={13} fill="#333" fontWeight={600}>

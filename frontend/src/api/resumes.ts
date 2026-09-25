@@ -1,4 +1,5 @@
 /** 简历相关接口：生成（SSE）、历史、渲染预览、导出下载。 */
+import type { ResumeFormatConfig } from "../types/resumeFormat";
 import type {
   ExportFormat,
   ExportRequest,
@@ -133,7 +134,7 @@ export async function previewResumeTemplate(payload: {
   template_name?: string;
   html?: string;
   format_name?: string;
-  format_config?: Record<string, string | number>;
+  format_config?: ResumeFormatConfig;
   page_limit?: number;
   font_scale?: ResumeFontScale;
   resume_id?: number;

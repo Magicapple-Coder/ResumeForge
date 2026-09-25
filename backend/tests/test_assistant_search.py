@@ -12,6 +12,7 @@ from app.services.assistant.assistant_web_search import (
     AssistantSearchError,
     build_search_query,
     filter_relevant_results,
+    is_local_resume_forge_question,
     parse_bing_rss,
     search_web,
 )
@@ -173,7 +174,7 @@ def test_chat_migration_builds_history_tables_and_cascades(tmp_path):
         with migration_engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0021_candidate_additional_info"
+                == "0024_official_discovery_history"
             )
 
         with Session(migration_engine) as session:
@@ -255,6 +256,20 @@ def test_build_search_query_leaves_a_normal_query_untouched():
 def test_build_search_query_keeps_the_original_when_everything_is_filler():
     """整句都是填充词时不能返回空串——空查询没有意义，退回原句。"""
     assert build_search_query("帮我一下") == "帮我一下"
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("简历通怎么在 macOS 上使用？", True),
+        ("ResumeForge 的简历预览按钮在哪里？", True),
+        ("帮我搜索上海 Java 岗位", False),
+        ("什么是简历通？", True),
+    ],
+)
+def test_local_resume_forge_question_detection_avoids_false_positive(question, expected):
+    """产品使用/说明问题跳过公开搜索，但普通外部求职查询仍正常联网。"""
+    assert is_local_resume_forge_question(question) is expected
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 /** 按需生成岗位需求总结和通用求职建议。 */
 import { BulbOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, List, Modal, Skeleton, Space, Tag, Typography } from "antd";
+import { announceBackgroundFailure, announceBackgroundResult } from "../utils/backgroundTask";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { generateJobAnalysis } from "../api/jobs";
 import type { Job, JobAnalysisPriority, JobAnalysisResult } from "../types";
@@ -34,21 +35,33 @@ export default function JobAnalysisModal({ job, onClose }: Props) {
     setHasAttempted(false);
   }, [job]);
 
+  // 用户在生成过程中关掉了弹窗：请求继续跑，但结果用统一通知告诉他（见 utils/backgroundTask）。
+  const leftWhileLoading = useRef(false);
+
   const load = useCallback(async () => {
     if (!job) return;
     const currentRequest = ++requestVersion.current;
     setHasAttempted(true);
     setLoading(true);
     setError("");
+    leftWhileLoading.current = false;
     try {
       const result = await generateJobAnalysis(job.id);
+      if (leftWhileLoading.current) {
+        announceBackgroundResult("岗位解读", "回到岗位详情再点「岗位需求解读」即可看到。");
+        return;
+      }
       if (currentRequest === requestVersion.current) setData(result);
     } catch (loadError) {
-      if (currentRequest === requestVersion.current) {
-        setError(loadError instanceof Error ? loadError.message : "生成岗位解读失败，请稍后重试");
+      const detail =
+        loadError instanceof Error ? loadError.message : "生成岗位解读失败，请稍后重试";
+      if (leftWhileLoading.current) {
+        announceBackgroundFailure("岗位解读", detail);
+        return;
       }
+      if (currentRequest === requestVersion.current) setError(detail);
     } finally {
-      if (currentRequest === requestVersion.current) setLoading(false);
+      if (!leftWhileLoading.current && currentRequest === requestVersion.current) setLoading(false);
     }
   }, [job]);
 
@@ -83,7 +96,27 @@ export default function JobAnalysisModal({ job, onClose }: Props) {
           </Button>
         </Space>
       ) : loading ? (
-        <Skeleton active paragraph={{ rows: 8 }} />
+        <div>
+          <Skeleton active paragraph={{ rows: 8 }} />
+          {/* 「后台继续」：请求不会因为关掉弹窗而中断，完成后会弹通知并响一声。
+              没有这个按钮时，用户只能干等——而他根本不知道能不能走开。 */}
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="生成期间可以关掉这个弹窗去做别的，完成后会提醒你（弹窗 + 提示音）。"
+          />
+          <div style={{ marginTop: 12, textAlign: "right" }}>
+            <Button
+              onClick={() => {
+                leftWhileLoading.current = true;
+                onClose();
+              }}
+            >
+              后台继续（关闭弹窗）
+            </Button>
+          </div>
+        </div>
       ) : data ? (
         <div className="job-analysis-content">
           <div className="job-analysis-summary">

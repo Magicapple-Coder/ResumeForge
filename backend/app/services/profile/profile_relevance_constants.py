@@ -199,10 +199,17 @@ class JobFocus:
 
 @dataclass(frozen=True)
 class ProfileSelection:
-    """候选资料及其诊断信息。``serialized`` 一定是完整合法 JSON。"""
+    """候选资料及其诊断信息。``serialized`` 一定是完整合法 JSON。
+
+    ``entry_names`` 记录**筛选之前**每一段经历类分区里都有谁（用条目的身份字段，
+    如项目名 / 公司名 / 学校名）。存在理由：预算压缩与岗位相关性筛选都发生在
+    ``data`` 上，等生成结束再想回答"我的项目怎么没写进简历"，``data`` 已经只剩
+    被留下来的那几个了——没有这份清单，就说不清是"没被选中"还是"模型没写"。
+    """
 
     data: dict[str, Any]
     serialized: str
     focus: JobFocus
     selected_counts: dict[str, int]
     omitted_counts: dict[str, int]
+    entry_names: dict[str, tuple[str, ...]]

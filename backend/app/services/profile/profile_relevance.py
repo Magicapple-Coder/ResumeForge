@@ -118,6 +118,35 @@ def build_targeted_profile_context(
     return _assemble_selection(full, selected, focus, max_chars)
 
 
+# 经历类分区 → 身份字段（判断"是不是同一条"）。键名与 resume_coverage.py 的比对表
+# 共用同一套分区名——那边是消费方，两边不能各叫一套。
+_IDENTITY_FIELDS: dict[str, str] = {
+    "educations": "school",
+    "experiences": "company",
+    "campus_experiences": "organization",
+    "projects": "name",
+    "awards": "name",
+}
+
+
+def collect_entry_names(full: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    """筛选前每段经历类分区里"都有谁"（按条目的身份字段）。
+
+    生成结束后，覆盖度检查用它回答"我的某段经历为什么没写进简历"：
+    没有这份清单，``data`` 里就只剩被留下来的条目，说不清是"没被选中"还是"模型没写"。
+    """
+    names: dict[str, tuple[str, ...]] = {}
+    for section, field in _IDENTITY_FIELDS.items():
+        values: list[str] = []
+        for item in full.get(section) or []:
+            if isinstance(item, dict):
+                value = str(item.get(field) or "").strip()
+                if value:
+                    values.append(value)
+        names[section] = tuple(values)
+    return names
+
+
 def _assemble_selection(
     full: dict[str, Any],
     selected: dict[str, Any],
@@ -140,6 +169,8 @@ def _assemble_selection(
         focus=focus,
         selected_counts=selected_counts,
         omitted_counts=omitted_counts,
+        # 筛选前的"都有谁"。生成结束后用它回答"我的某段经历为什么没写进简历"。
+        entry_names=collect_entry_names(full),
     )
 
 

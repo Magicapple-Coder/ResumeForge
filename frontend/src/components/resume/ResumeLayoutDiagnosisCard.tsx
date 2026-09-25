@@ -8,10 +8,11 @@
  * 每试一档只是往 iframe 里注入一段后端给的 CSS 再量一次，没有网络往返，所以可以
  * 试得比较细（页边距 → 区块间距 → 行高 → 字号，共十几档）。
  */
+import type { ResumeFormatConfig } from "../../types/resumeFormat";
 import { App, Alert, Button, Space, Spin, Tag, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { analyzeResumeLayout, updateResumeLayout } from "../../api/resumes";
-import type { ResumeFontScale, ResumeLayoutAnalysis, ResumeLayoutStatus } from "../../types";
+import type { ResumeLayout, ResumeLayoutAnalysis, ResumeLayoutStatus } from "../../types";
 import type { ResumePreviewHandle } from "../ResumePreview";
 import type { LayoutMeasure } from "../../utils/resumeLayoutMeasure";
 
@@ -37,15 +38,10 @@ interface Props {
    * **必须原样回传**：`PATCH /layout` 是整体替换，漏掉哪个字段就等于把它重置成默认值——
    * 只想着保存 format_config 而传空模板名，会把用户选好的样式模板和字号悄悄改掉。
    */
-  layout: {
-    template: string;
-    format_name: string;
-    page_limit: number;
-    font_scale: ResumeFontScale;
-  };
+  layout: ResumeLayout;
   disabled?: boolean;
   /** 保存了新方案之后让父组件重新渲染预览。 */
-  onApplied: (formatConfig: Record<string, number | string>) => void;
+  onApplied: (formatConfig: ResumeFormatConfig) => void;
   onAddPage: () => void;
 }
 
@@ -130,7 +126,9 @@ export default function ResumeLayoutDiagnosisCard({
           format_name: layout.format_name,
           page_limit: layout.page_limit,
           font_scale: layout.font_scale,
-          format_config: candidate.config,
+          // 候选版式只描述"怎么收紧"，把它叠在用户已有的版式覆盖之上——
+          // 否则「自动一页」会把用户自己调过的板块顺序等覆盖清掉。
+          format_config: { ...layout.format_config, ...candidate.config },
         });
         // 后端只回显它接受的部分；以它为准，别用本地算的值假装成功。
         onApplied(saved.format_config ?? {});

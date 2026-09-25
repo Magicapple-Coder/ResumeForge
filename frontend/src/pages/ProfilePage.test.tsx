@@ -86,7 +86,7 @@ describe("ProfilePage 通用简历", () => {
 
     // 「通用简历」不再沉在资料最底部：它要出现在资料分区（基本信息）之前。
     const general = document.getElementById("general-resume-section");
-    const basicSectionToggle = screen.getByRole("button", { name: "展开基本信息" });
+    const basicSectionToggle = screen.getByRole("button", { name: "收起基本信息" });
     expect(general).not.toBeNull();
     expect(
       (general as HTMLElement).compareDocumentPosition(basicSectionToggle) &
@@ -121,35 +121,35 @@ describe("ProfilePage 通用简历", () => {
 });
 
 describe("ProfilePage 分区折叠", () => {
-  it("默认折叠每个分区，点标题可展开", async () => {
+  it("默认展开每个分区，点标题可收起", async () => {
     renderPage();
     await screen.findByLabelText("通用简历名称");
 
-    // 默认折叠：标题按钮标成「展开」。
-    const basicToggle = screen.getByRole("button", { name: "展开基本信息" });
-    expect(basicToggle).toHaveAttribute("aria-expanded", "false");
+    // 默认全展开：这一页是"我的资料"，进来就是要看内容的（用户反馈过"应该默认展开"）。
+    const basicToggle = screen.getByRole("button", { name: "收起基本信息" });
+    expect(basicToggle).toHaveAttribute("aria-expanded", "true");
 
-    // 点标题展开后，按钮翻转成「收起」。
+    // 点标题收起后，按钮翻转成「展开」。
     fireEvent.click(basicToggle);
-    const collapsedToggle = screen.getByRole("button", { name: "收起基本信息" });
-    expect(collapsedToggle).toHaveAttribute("aria-expanded", "true");
+    const collapsedToggle = screen.getByRole("button", { name: "展开基本信息" });
+    expect(collapsedToggle).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("「全部展开」一键展开，再点「全部收起」一键收回", async () => {
+  it("「全部收起」一键收回，再点「全部展开」一键展开", async () => {
     renderPage();
     await screen.findByLabelText("通用简历名称");
 
     // 页头按钮带图标，可访问名是「图标名 + 文字」，用正则匹配文字部分即可。
-    const expandAll = screen.getByRole("button", { name: /全部展开/ });
-    fireEvent.click(expandAll);
-
-    // 全部展开后：每个分区标题都变成「收起」，页头按钮变成「全部收起」。
-    expect(screen.getByRole("button", { name: "收起基本信息" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "收起教育经历" })).toBeInTheDocument();
     const collapseAll = screen.getByRole("button", { name: /全部收起/ });
-
     fireEvent.click(collapseAll);
+
+    // 全部收起后：每个分区标题都变成「展开」，页头按钮变成「全部展开」。
     expect(screen.getByRole("button", { name: "展开基本信息" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /全部展开/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开教育经历" })).toBeInTheDocument();
+    const expandAll = screen.getByRole("button", { name: /全部展开/ });
+
+    fireEvent.click(expandAll);
+    expect(screen.getByRole("button", { name: "收起基本信息" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /全部收起/ })).toBeInTheDocument();
   });
 });

@@ -39,7 +39,7 @@ export function useProfileSectionReorder({ editing, saving, photoReading }: Opti
     event: ReactPointerEvent<HTMLButtonElement>,
     sectionKey: ProfileSectionKey,
   ) => {
-    if (!editing || saving || photoReading) return;
+    if (!editing || saving || photoReading || sectionKey === "basic_info") return;
     event.preventDefault();
     sectionPointerStart.current = { x: event.clientX, y: event.clientY };
     sectionDragActivated.current = false;
@@ -54,7 +54,7 @@ export function useProfileSectionReorder({ editing, saving, photoReading }: Opti
       const element = document.elementFromPoint(clientX, clientY);
       const section = element?.closest<HTMLElement>("[data-profile-section-key]");
       const key = section?.dataset.profileSectionKey;
-      return key && DEFAULT_SECTION_ORDER.includes(key as ProfileSectionKey)
+      return key && key !== "basic_info" && DEFAULT_SECTION_ORDER.includes(key as ProfileSectionKey)
         ? (key as ProfileSectionKey)
         : null;
     };
@@ -109,10 +109,17 @@ export function useProfileSectionReorder({ editing, saving, photoReading }: Opti
   };
 
   const moveSectionByOffset = (sectionKey: ProfileSectionKey, offset: -1 | 1) => {
+    if (sectionKey === "basic_info") return;
     setSectionOrder((current) => {
       const sourceIndex = current.indexOf(sectionKey);
       const targetIndex = sourceIndex + offset;
-      if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+      if (
+        sourceIndex < 0 ||
+        targetIndex <= 0 ||
+        targetIndex >= current.length ||
+        current[targetIndex] === "basic_info"
+      )
+        return current;
       const next = [...current];
       next.splice(sourceIndex, 1);
       next.splice(targetIndex, 0, sectionKey);

@@ -28,7 +28,15 @@ from app.services.sites.boss_apply import (
     classify_submit_state,
 )
 
+# **两档预算，别混用**：
+#
+# - ``FAST_WAIT``：给**期望超时**的用例。它们必须让预算真的到期才能产生失败，所以越小越快。
+# - ``READY_WAIT``：给**期望成功**的用例。就绪即刻返回，预算大小不影响耗时，它只是安全网——
+#   而 20ms 的安全网在并行负载下靠不住：本文件曾因 ``test_navigation_evaluate_errors_...``
+#   单独跑必过、``-n auto`` 下偶发失败，根因就是**用例成败取决于真实墙钟**（一次调度抖动
+#   就超过 20ms）。放宽到 2s 等于把"抛硬币"换成"不会误伤"，而不多用一毫秒。
 FAST_WAIT = ReadyWait(timeout=0.02, poll_interval=0.001)
+READY_WAIT = ReadyWait(timeout=2.0, poll_interval=0.001)
 
 JOB_URL = "https://www.zhipin.com/job_detail/new.html"
 CHAT_URL = "https://www.zhipin.com/web/geek/chat"
@@ -203,7 +211,7 @@ def test_open_apply_ignores_a_stale_previous_job_until_the_target_page_appears()
     )
     job = type("Job", (), {"source_url": target})()
 
-    BossAdapter(ready_wait=FAST_WAIT).open_apply(client, job)
+    BossAdapter(ready_wait=READY_WAIT).open_apply(client, job)
 
     assert sum("rf:apply-entry" in item for item in client.expressions) >= 2
 
@@ -214,7 +222,7 @@ def test_open_apply_ignores_a_stale_previous_job_until_the_target_page_appears()
 def test_fill_and_submit_trusted_clicks_navigates_fills_sends_and_confirms():
     client = MarkerClient(_responses())
 
-    outcome = BossAdapter(ready_wait=FAST_WAIT).fill_and_submit(client, {}, GREETING)
+    outcome = BossAdapter(ready_wait=READY_WAIT).fill_and_submit(client, {}, GREETING)
 
     assert outcome.success is True
     assert outcome.greeting_sent == GREETING
@@ -233,7 +241,7 @@ def test_fill_and_submit_trusted_clicks_navigates_fills_sends_and_confirms():
 
 def test_trusted_click_dispatches_a_full_mouse_press_release_sequence():
     client = MarkerClient(_responses())
-    BossAdapter(ready_wait=FAST_WAIT).fill_and_submit(client, {}, GREETING)
+    BossAdapter(ready_wait=READY_WAIT).fill_and_submit(client, {}, GREETING)
 
     entry_events = [
         (method, params) for method, params in client.sends
@@ -347,7 +355,7 @@ def test_navigation_evaluate_errors_are_retried_until_chat_ready():
             return super().evaluate(expression, timeout=timeout)
 
     client = NavigatingClient(_responses())
-    outcome = BossAdapter(ready_wait=FAST_WAIT).fill_and_submit(client, {}, GREETING)
+    outcome = BossAdapter(ready_wait=READY_WAIT).fill_and_submit(client, {}, GREETING)
 
     assert outcome.success is True
     assert client.pressed_points() == [(500.0, 200.0), (900.0, 700.0)]
@@ -427,7 +435,7 @@ def test_fill_and_submit_supports_startchat_dialog_form():
             ]
 
     client = DialogClient()
-    outcome = BossAdapter(ready_wait=FAST_WAIT).fill_and_submit(
+    outcome = BossAdapter(ready_wait=READY_WAIT).fill_and_submit(
         client, {}, GREETING
     )
 

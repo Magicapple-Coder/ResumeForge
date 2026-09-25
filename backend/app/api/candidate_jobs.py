@@ -10,6 +10,7 @@ from ..schemas.material import (
     CandidateJobBulkImportOut,
     CandidateJobBulkImportRequest,
     CandidateJobCreate,
+    CandidateJobDetailOut,
     CandidateJobImportRequest,
     CandidateJobOut,
     CandidateJobUpdate,
@@ -35,6 +36,7 @@ def read_candidate_jobs(
     status: str = Query(default=""),
     keyword: str = Query(default=""),
     collect_task_id: int | None = Query(default=None, ge=1),
+    collect_task_ids: str = Query(default=""),
     limit: int = Query(default=MAX_CANDIDATE_LIST, ge=1, le=MAX_CANDIDATE_LIST),
     db: Session = Depends(get_db),
 ):
@@ -44,8 +46,21 @@ def read_candidate_jobs(
     """
     if status and status not in CANDIDATE_JOB_STATUSES:
         raise HTTPException(status_code=422, detail="无效的备选岗位状态")
+    parsed_ids: list[int] = []
+    if collect_task_ids.strip():
+        try:
+            parsed_ids = [int(value) for value in collect_task_ids.split(",") if value.strip()]
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="采集批次编号无效") from exc
+        if any(value < 1 for value in parsed_ids):
+            raise HTTPException(status_code=422, detail="采集批次编号无效")
     return list_candidate_jobs(
-        db, status=status, keyword=keyword, collect_task_id=collect_task_id, limit=limit
+        db,
+        status=status,
+        keyword=keyword,
+        collect_task_id=collect_task_id,
+        collect_task_ids=list(dict.fromkeys(parsed_ids)),
+        limit=limit,
     )
 
 
@@ -66,7 +81,7 @@ def import_candidate_jobs(payload: CandidateJobBulkImportRequest, db: Session = 
     return import_candidates(db, payload.candidate_ids)
 
 
-@router.get("/{candidate_id}", response_model=CandidateJobOut)
+@router.get("/{candidate_id}", response_model=CandidateJobDetailOut)
 def read_candidate_job(candidate_id: int, db: Session = Depends(get_db)):
     candidate = candidate_or_none(db, candidate_id)
     if candidate is None:

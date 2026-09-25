@@ -18,7 +18,10 @@ from ..services.assistant.assistant_service import (
 )
 from ..services.assistant.assistant_sources import SourceNumberer
 from ..services.assistant_tools import execute_tool_async, tool_definitions
-from ..services.assistant.assistant_web_search import AssistantSearchError
+from ..services.assistant.assistant_web_search import (
+    AssistantSearchError,
+    is_local_resume_forge_question,
+)
 from ..services.llm.base import BaseLLMProvider, LLMError
 from .assistant_context import web_context
 
@@ -212,13 +215,22 @@ async def stream_message_events(
         if payload.web_search:
             yield format_sse({"type": "progress", "message": "正在联网搜索公开资料…"})
             query = payload.content or " ".join(item["name"] for item in attachments)
-            try:
-                sources = await search_web_fn(query)
-                metadata["sources"] = sources
-                model_context.append(web_context(sources, numberer))
-            except AssistantSearchError as exc:
-                metadata["search_error"] = str(exc)
-                model_context.append(f"[联网搜索状态]\n{exc}，请勿声称已获得联网资料。")
+            if is_local_resume_forge_question(query):
+                # 产品使用问题的权威信息就在本地能力地图/文档；公开搜索同名产品会把模型带偏。
+                model_context.append(
+                    "[联网搜索状态]\n"
+                    "这是 ResumeForge（简历通）本身的使用问题，已跳过公开搜索。"
+                    "请依据系统提示中的本地能力地图和平台说明回答，不要声称引用了外部来源。"
+                )
+                metadata["search_skipped"] = "local_resume_forge_question"
+            else:
+                try:
+                    sources = await search_web_fn(query)
+                    metadata["sources"] = sources
+                    model_context.append(web_context(sources, numberer))
+                except AssistantSearchError as exc:
+                    metadata["search_error"] = str(exc)
+                    model_context.append(f"[联网搜索状态]\n{exc}，请勿声称已获得联网资料。")
             update_message_context(user_message_id, metadata)
             yield format_sse(
                 {

@@ -158,3 +158,39 @@ def test_no_api_key_is_stored(demo_db: Path):
     llm = json.loads(settings["llm_config"])
     assert llm["api_key"] == ""
     assert llm["base_url"].startswith("https://")
+
+
+def test_job_recognition_source_is_in_the_backend_whitelist(demo_db: Path):
+    """演示岗位的来源值必须落在后端白名单里。
+
+    这条守卫来自一连串真实故障：演示数据先是一律写英文旧值 `"text"` / `"collect"`，
+    后来又被改成 `"手动添加"`——**三个都不在** `schemas/job.py` 的 `RECOGNITION_SOURCES` 里。
+    后果有两层：岗位广场的「采集 / 手动」角标把它们全判成手动（官网截图上是错的），
+    以及读取路径上 `JobOut` 校验失败会让**整份岗位列表 500**。
+    """
+    from app.schemas.job import RECOGNITION_SOURCES
+
+    values = {row[0] for row in _rows(demo_db, "select distinct recognition_source from job")}
+    unknown = sorted(value for value in values if value not in RECOGNITION_SOURCES)
+    assert not unknown, f"演示岗位用了白名单之外的来源值：{unknown}"
+    # 至少要有采集来的岗位：全是「手动填写」说明推导逻辑退化了（角标又会全歪）。
+    assert "岗位采集" in values, f"演示数据里没有采集来源的岗位：{values}"
+
+
+def test_section_order_uses_supported_keys(demo_db: Path):
+    """演示库里的分区顺序只能用真实存在的键。
+
+    这里曾经写成 ["education", "experience", "projects", "campus", "skills", "awards"]——
+    前三个是**不存在的键**（真实键名是 experiences / educations / campus_experiences），
+    规范化时会被整条丢弃，于是 6 条里只有 3 条生效。后果不是报错，而是**演示库的分区顺序
+    看起来像被人手动拖乱了**，而且存的顺序优先于默认顺序，它会一直盖住产品设计的那个顺序——
+    README 与官网的截图正是从这份数据来的，所以歪的是对外展示的那一面。
+    """
+    (raw,) = _rows(demo_db, "select section_order from user_profile")[0]
+    stored = json.loads(raw)
+
+    from app.schemas.profile import PROFILE_SECTION_KEYS
+
+    unknown = [key for key in stored if key not in PROFILE_SECTION_KEYS]
+    assert not unknown, f"section_order 里有不存在的键：{unknown}"
+    assert "basic_info" not in stored, "basic_info 固定在最前，不该写进存起来的顺序里"

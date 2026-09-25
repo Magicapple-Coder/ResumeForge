@@ -10,6 +10,7 @@ import type {
   ReminderPopupSetting,
   SearchConfig,
   UpdateCheckResult,
+  UpdateStatus,
 } from "../types";
 import { ApiError, extractError, getFilenameFromDisposition, request } from "./client";
 
@@ -39,6 +40,24 @@ export function listLLMModels(
 /** 检查是否有新版本（只对比版本号，不下载、不自动更新）。 */
 export function checkForUpdate(refresh = false): Promise<UpdateCheckResult> {
   return request(`/update/check${refresh ? "?refresh=true" : ""}`);
+}
+
+export function getUpdateDownloadStatus(): Promise<UpdateStatus> {
+  return request("/update/download-status");
+}
+
+export function startUpdateDownload(background = false): Promise<UpdateStatus> {
+  return request("/update/download", {
+    method: "POST",
+    body: JSON.stringify({ background }),
+  });
+}
+
+export function installDownloadedUpdate(restart = true): Promise<UpdateStatus> {
+  return request("/update/install", {
+    method: "POST",
+    body: JSON.stringify({ restart }),
+  });
 }
 
 export function revealLLMApiKey(): Promise<LLMApiKeyRevealResult> {

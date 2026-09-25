@@ -191,3 +191,84 @@ describe("ResumeLayoutControls · 无级字号滑块（C3）", () => {
     expect(setLiveProbe).toHaveBeenCalledWith("");
   });
 });
+
+describe("ResumeLayoutControls · 板块顺序", () => {
+  async function openOrderPanel() {
+    fireEvent.click(await screen.findByRole("button", { name: "调整简历板块顺序" }));
+    const list = await screen.findByRole("list", { name: "简历板块顺序" });
+    return list;
+  }
+
+  it("弹层里按当前顺序列出全部分区", async () => {
+    renderControls();
+    const list = await openOrderPanel();
+    const labels = Array.from(list.querySelectorAll(".resume-section-order-label")).map(
+      (node) => node.textContent,
+    );
+    expect(labels).toEqual([
+      "个人总结",
+      "教育经历",
+      "实习/工作经历",
+      "校园经历",
+      "项目经历",
+      "专业技能",
+      "荣誉奖项",
+    ]);
+  });
+
+  it("上移会以完整排列写入 format_config.section_order", async () => {
+    const onChange = renderControls();
+    await openOrderPanel();
+
+    // 把「项目经历」（默认第 5 位）上移一格。
+    fireEvent.click(screen.getByRole("button", { name: "把项目经历上移" }));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const nextLayout = onChange.mock.calls[0][0] as ResumeLayout;
+    expect(nextLayout.format_config?.section_order).toEqual([
+      "summary",
+      "education",
+      "experience",
+      "projects",
+      "campus_experience",
+      "skills",
+      "awards",
+    ]);
+    // 其余版式覆盖不被这次操作清掉。
+    expect(nextLayout.template).toBe("classic");
+  });
+
+  it("已调整时按钮会标出来，「恢复默认」清掉 section_order 但保留其它覆盖", async () => {
+    const onChange = renderControls({
+      layout: {
+        ...DEFAULT_LAYOUT,
+        format_config: {
+          accent: "#123456",
+          section_order: [
+            "projects",
+            "summary",
+            "education",
+            "experience",
+            "campus_experience",
+            "skills",
+            "awards",
+          ],
+        },
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "调整简历板块顺序" })).toHaveTextContent(
+      "顺序·已调整",
+    );
+
+    await openOrderPanel();
+    // 精确匹配：工具条上还有一个「恢复默认字号」按钮，用正则会撞车。
+    fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const nextLayout = onChange.mock.calls[0][0] as ResumeLayout;
+    expect(nextLayout.format_config).not.toHaveProperty("section_order");
+    // accent 是用户自己的覆盖，不动它。
+    expect(nextLayout.format_config).toMatchObject({ accent: "#123456" });
+  });
+});

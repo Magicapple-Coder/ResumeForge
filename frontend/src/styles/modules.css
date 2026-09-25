@@ -646,21 +646,59 @@
   box-shadow: 0 0 0 2px rgba(22, 54, 92, 0.12);
 }
 
+/* 缩略图容器：宽度随卡片（栅格自适应），高度固定为"缩放后的一页 A4"。
+   为什么必须固定高度：iframe 的逻辑尺寸是 794×1123，`transform: scale()` **不影响布局**，
+   它的布局盒仍然是 794px 宽——放在窄卡片里就会溢出裁掉，而且缩放后的页面贴在左边，
+   卡片右侧留一条空白（用户看到的就是"没居中 + 右边有空"）。 */
 .template-gallery-preview {
   position: relative;
-  height: 260px;
+  height: 405px; /* 1123 × 0.36 ≈ 404.3，取整避免露出一条底边 */
   background: #f5f6f8;
   overflow: hidden;
 }
 
-/* A4 页面按缩放后的大小渲染：iframe 逻辑宽度是 794px，这里用 transform 缩到卡片宽度。 */
+/* A4 页面按缩放后的大小渲染并**水平居中**：
+   `left: 50%` 把 794px 的布局盒推到容器中线，再用半页宽的负 margin 把"缩放后可见区"
+   （794 × 0.36 = 286px）拉回正中间。 */
 .template-gallery-frame {
+  position: absolute;
+  top: 0;
+  left: 50%;
   width: 794px;
   height: 1123px;
+  margin-left: -143px; /* 286 / 2 */
   border: 0;
   transform: scale(0.36);
   transform-origin: top left;
   pointer-events: none;
+}
+
+/* 缩略图整块可点（iframe 本身 pointer-events: none，点击由这层接收）。 */
+.template-gallery-preview {
+  cursor: zoom-in;
+}
+
+.template-gallery-preview:focus-visible {
+  outline: 2px solid #2f7be5;
+  outline-offset: 2px;
+}
+
+/* 「查看大图」里的整页预览：1:1 A4，比缩略图清楚得多；滚动条在这里是必要的。 */
+.template-gallery-zoom-frame {
+  display: block;
+  width: 794px;
+  height: 1123px;
+  margin: 0 auto;
+  border: 0;
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(15 23 42 / 12%);
+}
+
+.template-gallery-zoom-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
 }
 
 .template-gallery-loading,
@@ -986,6 +1024,80 @@
 /* 求职统计页：缩小字号让一屏装下更多指标，避免四张卡 + 两张图被撑得太高。 */
 .analytics-page .ant-statistic-title {
   font-size: 13px;
+}
+
+.analytics-page .analytics-metric-row .ant-card {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(31, 56, 85, 0.07);
+}
+
+.analytics-page .analytics-metric-row .ant-card::before {
+  display: block;
+  height: 4px;
+  margin: -24px -24px 18px;
+  content: "";
+  background: #5b8ff9;
+}
+
+.analytics-page .analytics-metric-row .ant-col:nth-child(2) .ant-card::before {
+  background: #61ddaa;
+}
+
+.analytics-page .analytics-metric-row .ant-col:nth-child(3) .ant-card::before {
+  background: #f6bd16;
+}
+
+.analytics-page .analytics-metric-row .ant-col:nth-child(4) .ant-card::before {
+  background: #7262fd;
+}
+
+.analytics-page .analytics-section {
+  overflow: hidden;
+  border: 1px solid #e3e9f1;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(31, 56, 85, 0.06);
+}
+
+/* 区块之间拉开一点：之前 16px 的间距配上浅阴影，两块卡看起来像连在一起，
+   用户反馈"各个图的界限不太分明"里有一半是块与块之间没分开。 */
+.analytics-page .analytics-section + .analytics-section {
+  margin-top: 20px !important;
+}
+
+.analytics-page .analytics-section .ant-card-head {
+  background: linear-gradient(90deg, #fbfdff, #fff);
+  border-bottom: 1px solid #edf1f6;
+}
+
+/* 区块里的一张图 = 一个浅色面板 + 一行小标题。
+   面板边框给出"图到这里为止"，小标题给出"这张图叫什么"——两者都不可省。 */
+.analytics-page .analytics-chart-block {
+  height: 100%;
+  padding: 12px 14px 10px;
+  background: #fbfcfe;
+  border: 1px solid #edf1f6;
+  border-radius: 10px;
+}
+
+.analytics-page .analytics-chart-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.analytics-page .analytics-chart-block-title {
+  font-size: 13px;
+  color: #33414f;
+}
+
+.analytics-page .analytics-chart-block-hint {
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .analytics-page .ant-statistic-content {

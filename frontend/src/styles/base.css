@@ -169,8 +169,16 @@ body {
   border-top: 1px solid #eef0f3;
 }
 
+/* 「使用指南」占满页脚宽度。留成行容器是为了折叠态（64px 宽）能整行居中。 */
+.app-sider-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .app-guide-button {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 40px;
   justify-content: flex-start;
   color: #5f6b7a;
@@ -178,6 +186,48 @@ body {
 }
 
 .app-guide-button:hover {
+  color: #16365c !important;
+  background: #f3f7fb !important;
+}
+
+/* 开源仓库入口：页头右上角、退出按钮左边的**纯图标**按钮。
+   含义由悬浮提示与 aria-label 承担；尺寸与页头 64px 高对齐，不与标题抢注意力。 */
+.app-repo-button {
+  flex: 0 0 auto;
+  width: 36px !important;
+  min-width: 36px;
+  height: 36px !important;
+  padding: 0;
+  color: #8a94a3;
+}
+
+.app-repo-button .anticon {
+  /* 用户反馈过小：17px 在 1440 宽屏上几乎看不出是 GitHub。20px 与「退出」的字号同档，
+     仍是纯图标、不抢标题的位置。 */
+  font-size: 20px;
+}
+
+.app-repo-button:hover {
+  color: #16365c !important;
+  background: #f3f7fb !important;
+}
+
+/* 「检查更新」：页脚最右侧的纯图标按钮，与「使用指南」同一行。
+   检查中图标会自转（SyncOutlined spin），所以宽度固定，避免转动时把整行挤动。 */
+.app-update-button {
+  flex: 0 0 auto;
+  width: 32px !important;
+  min-width: 32px;
+  height: 32px !important;
+  padding: 0;
+  color: #8a94a3;
+}
+
+.app-update-button .anticon {
+  font-size: 16px;
+}
+
+.app-update-button:hover {
   color: #16365c !important;
   background: #f3f7fb !important;
 }
@@ -355,16 +405,109 @@ body {
   white-space: nowrap;
 }
 
-/* 标题靠左，仓库链接与退出按钮一起靠右。 */
+/* 标题靠左，右侧依次是「数据集 + 头像 │ GitHub + 退出」。 */
 .app-header-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.app-header-repo {
+/* 页头右侧的「当前数据集 + 头像」：只读展示，尺寸与页头 64px 高对齐。 */
+.app-header-context {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-dataset-chip {
+  display: inline-flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #e3e9f1;
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: #4a5768;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.app-dataset-chip:hover {
+  border-color: #c9d8ea;
+  background: #eef4fb;
+  color: #16365c;
+}
+
+.app-dataset-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-user-avatar {
+  flex: 0 0 auto;
+  border: 1px solid #e3e9f1;
+  background: #eef2f7;
+  color: #7b8798;
+}
+
+/* 页头的「后台任务」入口：只在真有任务在跑时渲染，所以它出现即意味着"有活在干"。 */
+.background-tasks-button {
+  flex: 0 0 auto;
+  height: 32px !important;
+  padding: 0 8px;
+  color: #16365c;
+  font-size: 12px;
+}
+
+.background-tasks-panel {
+  width: 320px;
+}
+
+.background-task-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.background-task-row:last-of-type {
+  border-bottom: 0;
+}
+
+.background-task-spin {
+  margin-top: 3px;
+  color: #2f7be5;
+}
+
+.background-task-label,
+.background-task-progress {
+  display: block;
+  font-size: 13px;
+}
+
+.background-task-progress {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.background-tasks-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+/* 「上下文」与「全局动作」之间的一根细线：四个元素排一行时，靠它分组才不糊成一片。 */
+.app-header-divider {
+  width: 1px;
+  height: 22px;
+  background: #e7ebf0;
 }
 
 .app-content {

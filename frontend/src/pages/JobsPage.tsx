@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import { App, Button, Input, Popconfirm, Select, Space, Typography } from "antd";
 import type { TableRowSelection } from "antd/es/table/interface";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { markCandidateJobImported } from "../api/candidateJob";
 import { addToQueue, QueueConflictError, startBackfill } from "../api/apply";
@@ -29,15 +29,16 @@ import JobDetailDrawer from "../components/JobDetailDrawer";
 import JobFormModal from "../components/JobFormModal";
 import JobMatchModal from "../components/JobMatchModal";
 import ManualResumeModal from "../components/ManualResumeModal";
-import CandidateJobsDrawer from "../components/jobs/CandidateJobsDrawer";
+import { candidateImportSource } from "../utils/jobSource";
+import CandidateJobsDrawer, { candidateToJobPayload } from "../components/jobs/CandidateJobsDrawer";
 import JobTable from "../components/jobs/JobTable";
 import { useApi } from "../hooks/useApi";
-import type { CandidateJob, Job } from "../types";
+import type { CandidateJobDetail, Job } from "../types";
 
 const JOB_TYPE_OPTIONS = ["校招", "实习", "社招", "其他"].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = ["开放中", "已截止", "已投递"].map((value) => ({ value, label: value }));
 // 与后端 `source_kind` 查询参数一一对应；标签用「自动采集 / 手动添加」是因为这是用户能
-// 一眼理解的二分，而不是把 recognition_source 的原始值「岗位采集」直接搬上来。
+// 一眼理解的二分，而不是把 recognition_source 的原始值直接搬上来。
 const SOURCE_KIND_OPTIONS = [
   { value: "collected", label: "自动采集" },
   { value: "manual", label: "手动添加" },
@@ -72,10 +73,24 @@ export default function JobsPage() {
   const [backfilling, setBackfilling] = useState(false);
   // 备选岗位：抽屉里暂存未核对的招聘信息，导入时走正式岗位表单。
   const [candidatesOpen, setCandidatesOpen] = useState(false);
-  const [importCandidate, setImportCandidate] = useState<CandidateJob | null>(null);
+  // 导入用**详情**那一份：列表不带 JD，用它预填表单会得到一个没有职位描述的空表单。
+  const [importCandidate, setImportCandidate] = useState<CandidateJobDetail | null>(null);
   const [importedCandidateId, setImportedCandidateId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const linkedJobId = Number(searchParams.get("job_id")) || null;
+  const collectTaskIdsKey = searchParams.get("collect_task_ids") ?? "";
+  const collectTaskIds = useMemo(
+    () => [
+      ...new Set(
+        collectTaskIdsKey
+          .split(",")
+          .map(Number)
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    ],
+    [collectTaskIdsKey],
+  );
+  const [openedCollectTaskIdsKey, setOpenedCollectTaskIdsKey] = useState("");
   const [openedLinkedJobId, setOpenedLinkedJobId] = useState<number | null>(null);
 
   const {
@@ -99,6 +114,12 @@ export default function JobsPage() {
   useEffect(() => {
     if (error) message.error(error);
   }, [error, message]);
+
+  useEffect(() => {
+    if (!collectTaskIdsKey || openedCollectTaskIdsKey === collectTaskIdsKey) return;
+    setCandidatesOpen(true);
+    setOpenedCollectTaskIdsKey(collectTaskIdsKey);
+  }, [collectTaskIdsKey, openedCollectTaskIdsKey]);
 
   // 只有"职位描述为空"的岗位才值得补详情（补详情要逐个打开页面，很慢），按钮据此出现/消失，
   // 而不是常驻一个点了没反应的按钮。当前只统计这一页已加载的岗位：补的就这一页里空的那些。
@@ -491,7 +512,11 @@ export default function JobsPage() {
         initial={editingJob}
         // 从备选岗位导入时，把原文预填进表单并标注来源。
         presetRawText={importCandidate?.raw_text ?? ""}
-        presetSource={importCandidate ? "备选岗位导入" : undefined}
+        // 采集来的候选没有 raw_text，内容在结构化字段里——只给原文那一路会让表单整个空着。
+        presetJob={importCandidate ? candidateToJobPayload(importCandidate) : undefined}
+        // 来源要**继承候选自己的来路**：写死「备选岗位导入」会让采集回来的岗位在列表里
+        // 挂上「手动」角标（用户明明是从官网采集 / 投递台导入的）。
+        presetSource={importCandidate ? candidateImportSource(importCandidate) : undefined}
         onClose={() => {
           setFormOpen(false);
           setEditingJob(null);
@@ -511,6 +536,7 @@ export default function JobsPage() {
       <CandidateJobsDrawer
         open={candidatesOpen}
         importedCandidateId={importedCandidateId}
+        collectTaskIds={collectTaskIds}
         onClose={() => setCandidatesOpen(false)}
         onImport={(candidate) => {
           setImportCandidate(candidate);

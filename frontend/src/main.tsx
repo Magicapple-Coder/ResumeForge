@@ -1,4 +1,5 @@
 import { App as AntdApp, ConfigProvider } from "antd";
+import NotifyHostBridge from "./components/NotifyHostBridge";
 import zhCN from "antd/locale/zh_CN";
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -42,6 +43,9 @@ async function start() {
       >
         {/* AntdApp 提供上下文版 message/modal，兼容主题 */}
         <AntdApp>
+          {/* 把 AntD 的通知/弹窗实例交给 utils/taskNotify：生成完成后"弹窗 + 提示声"这件事
+              需要一个能在任何模块里调用的出口，而 useApp() 只能在组件里用。 */}
+          <NotifyHostBridge />
           <AppErrorBoundary>
             <BrowserRouter>
               <App />

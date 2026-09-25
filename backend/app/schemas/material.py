@@ -166,6 +166,23 @@ class CandidateJobOut(BaseModel):
     updated_at: datetime
 
 
+class CandidateJobDetailOut(CandidateJobOut):
+    """单条候选的**完整**内容（`GET /candidate-jobs/{id}`）。
+
+    **JD 这几项刻意不进列表响应**：列表最多 300 条，而候选的正文单条上限是几万字符——
+    把它们塞进列表会让"打开备选岗位"这个动作随着采集量线性变慢，而列表本身根本不显示 JD。
+    要用正文的地方只有一个：从备选岗位导入到岗位广场（那一页要预填职位描述与任职要求）。
+
+    这也解释了前端那个类型缺口：``CandidateJob`` 上一直写着有 ``description``，
+    而列表接口从未返回过它——类型在说谎，直到有人真的去读它才暴露。
+    """
+
+    description: str = ""
+    requirements: str = ""
+    job_type: str = ""
+    additional_info: str = ""
+
+
 class CandidateJobImportRequest(BaseModel):
     """把备选岗位标记为已导入；真正创建岗位仍走正式的岗位保存接口。"""
 

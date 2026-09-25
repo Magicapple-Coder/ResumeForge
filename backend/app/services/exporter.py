@@ -14,6 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from jinja2.sandbox import SandboxedEnvironment
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
+from .resume.resume_sections import DEFAULT_SECTION_ORDER, resolved_section_order
 from .resume.resume_templates import (
     DEFAULT_FONT_SCALE,
     DEFAULT_TEMPLATE,
@@ -63,7 +64,11 @@ def _join_bullets(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
 
 
-def export_markdown(resume: ResumeContent) -> str:
+def export_markdown(
+    resume: ResumeContent,
+    *,
+    section_order: list[str] | None = None,
+) -> str:
     """导出不包含照片的 Markdown 文本。
 
     照片是**唯一**的例外（内嵌 data URL，放进文本导出没有意义）。除此之外，凡是预览里会
@@ -86,65 +91,87 @@ def export_markdown(resume: ResumeContent) -> str:
     if contacts:
         lines.append(f"{contacts}\n")
 
-    if resume.summary:
-        lines.append("## 个人总结\n")
-        lines.append(f"{resume.summary}\n")
+    def write_summary() -> None:
+        if resume.summary:
+            lines.append("## 个人总结\n")
+            lines.append(f"{resume.summary}\n")
 
-    if resume.education:
-        lines.append("## 教育经历\n")
-        for edu in resume.education:
+    def write_education() -> None:
+        if resume.education:
+            lines.append("## 教育经历\n")
+            for edu in resume.education:
+                lines.append(
+                    f"### {edu.school} · {edu.major} · {edu.degree}（{edu.start_date} - {edu.end_date}）\n"
+                )
+                if edu.gpa:
+                    lines.append(f"- 绩点/排名：{edu.gpa}")
+                if edu.courses:
+                    lines.append(f"- 核心课程：{'、'.join(edu.courses)}")
+                lines.append(_join_bullets(edu.achievements))
+                lines.append("")
+
+    def write_experience() -> None:
+        if resume.experience:
+            lines.append("## 实习/工作经历\n")
+            for exp in resume.experience:
+                lines.append(f"### {exp.company} · {exp.role}（{exp.start_date} - {exp.end_date}）\n")
+                lines.append(_join_bullets(exp.description))
+                lines.append("")
+
+    def write_campus_experience() -> None:
+        if resume.campus_experience:
+            lines.append("## 校园经历\n")
+            for item in resume.campus_experience:
+                lines.append(
+                    f"### {item.organization} · {item.role}（{item.start_date} - {item.end_date}）\n"
+                )
+                lines.append(_join_bullets(item.description))
+                lines.append("")
+
+    def write_projects() -> None:
+        if resume.projects:
+            lines.append("## 项目经历\n")
+            for project in resume.projects:
+                lines.append(
+                    f"### {project.name} · {project.role}（{project.start_date} - {project.end_date}）\n"
+                )
+                if project.tech_stack:
+                    lines.append(f"**技术栈/工具**：{'、'.join(project.tech_stack)}")
+                lines.append(_join_bullets(project.description))
+                lines.append(_join_bullets(project.highlights))
+                lines.append("")
+
+    def write_skills() -> None:
+        if resume.skills:
+            lines.append("## 专业技能\n")
+            lines.append(_join_bullets(f"{skill.name}（{skill.level}）" if skill.level else skill.name for skill in resume.skills))
+            lines.append("")
+
+    def write_awards() -> None:
+        if resume.awards:
+            lines.append("## 荣誉奖项\n")
             lines.append(
-                f"### {edu.school} · {edu.major} · {edu.degree}（{edu.start_date} - {edu.end_date}）\n"
+                _join_bullets(
+                    f"{award.name} · {award.date}" + (f" · {award.description}" if award.description else "")
+                    for award in resume.awards
+                )
             )
-            if edu.gpa:
-                lines.append(f"- 绩点/排名：{edu.gpa}")
-            if edu.courses:
-                lines.append(f"- 核心课程：{'、'.join(edu.courses)}")
-            lines.append(_join_bullets(edu.achievements))
             lines.append("")
 
-    if resume.experience:
-        lines.append("## 实习/工作经历\n")
-        for exp in resume.experience:
-            lines.append(f"### {exp.company} · {exp.role}（{exp.start_date} - {exp.end_date}）\n")
-            lines.append(_join_bullets(exp.description))
-            lines.append("")
+    writers = {
+        "summary": write_summary,
+        "education": write_education,
+        "experience": write_experience,
+        "campus_experience": write_campus_experience,
+        "projects": write_projects,
+        "skills": write_skills,
+        "awards": write_awards,
+    }
 
-    if resume.campus_experience:
-        lines.append("## 校园经历\n")
-        for item in resume.campus_experience:
-            lines.append(
-                f"### {item.organization} · {item.role}（{item.start_date} - {item.end_date}）\n"
-            )
-            lines.append(_join_bullets(item.description))
-            lines.append("")
-
-    if resume.projects:
-        lines.append("## 项目经历\n")
-        for project in resume.projects:
-            lines.append(
-                f"### {project.name} · {project.role}（{project.start_date} - {project.end_date}）\n"
-            )
-            if project.tech_stack:
-                lines.append(f"**技术栈/工具**：{'、'.join(project.tech_stack)}")
-            lines.append(_join_bullets(project.description))
-            lines.append(_join_bullets(project.highlights))
-            lines.append("")
-
-    if resume.skills:
-        lines.append("## 专业技能\n")
-        lines.append(_join_bullets(f"{skill.name}（{skill.level}）" if skill.level else skill.name for skill in resume.skills))
-        lines.append("")
-
-    if resume.awards:
-        lines.append("## 荣誉奖项\n")
-        lines.append(
-            _join_bullets(
-                f"{award.name} · {award.date}" + (f" · {award.description}" if award.description else "")
-                for award in resume.awards
-            )
-        )
-        lines.append("")
+    # 分区顺序与预览 / PDF / Word 共用同一份定义（见 services/resume/resume_sections.py）。
+    # Markdown 与 txt 都从这里出，所以两者的顺序天然一致。
+    for section_key in section_order or DEFAULT_SECTION_ORDER:
+        writers[section_key]()
 
     return "\n".join(lines).strip() + "\n"
 
@@ -191,6 +218,8 @@ def render_html(
         "csp_nonce": csp_nonce,
         "page_limit": normalize_page_limit(page_limit),
         "base_px": base_px,
+        # 正文分区顺序（页眉不参与）。模板里有页码、A4 适配脚本等同样读这个上下文。
+        "resume_section_order": resolved_section_order(overrides),
     }
 
     if template_html:

@@ -1,5 +1,12 @@
-{# 简历正文的共享片段：三个模板只在样式上不同，结构完全一致。
-   每处文本都带 data-resume-path，供前端「点击纸面字段定位编辑」使用。 #}
+{# 简历正文的共享片段：六个模板只在样式上不同，结构完全一致。
+   每处文本都带 data-resume-path，供前端「点击纸面字段定位编辑」使用。
+
+   分区顺序由 `resume_section_order` 决定（见 services/resume/resume_sections.py）：
+   它永远是七个键的一个完整排列，渲染器不必处理"某个键不在列表里"的情况。
+   页眉（姓名 / 求职意向 / 联系方式 / 照片）不参与排序，固定在最前。
+
+   默认顺序与重排前的写死顺序完全一致，所以没有动过顺序的简历，输出与以前一字不差。 #}
+{% import "_resume_blocks.j2" as blocks %}
 <div class="header">
   <div class="header-main">
     <div class="name"><span data-resume-path="name">{{ resume.name }}</span>{% if resume.gender %} <span data-resume-path="gender" class="name-extra">{{ resume.gender }}</span>{% endif %}</div>
@@ -14,97 +21,13 @@
   {% if resume.photo %}<img class="profile-photo" src="{{ resume.photo }}" alt="个人照片" />{% endif %}
 </div>
 
-{% if resume.summary %}
-<div class="section">
-  <div class="section-title">个人总结</div>
-  <p class="summary-text" data-resume-path="summary">{{ resume.summary }}</p>
-</div>
-{% endif %}
-
-{% if resume.education %}
-<div class="section">
-  <div class="section-title">教育经历</div>
-  {% for edu in resume.education %}
-  {% set edu_index = loop.index0 %}
-  <div class="entry">
-    <div class="entry-head">
-      <span class="title"><span data-resume-path="education.{{ edu_index }}.school">{{ edu.school }}</span>{% if edu.major %} · <span data-resume-path="education.{{ edu_index }}.major">{{ edu.major }}</span>{% endif %}</span>
-      <span class="meta">{% if edu.degree %}<span data-resume-path="education.{{ edu_index }}.degree">{{ edu.degree }}</span> · {% endif %}<span data-resume-path="education.{{ edu_index }}.start_date">{{ edu.start_date }}</span> - <span data-resume-path="education.{{ edu_index }}.end_date">{{ edu.end_date }}</span></span>
-    </div>
-    {% if edu.gpa %}<div class="sub">绩点/排名：<span data-resume-path="education.{{ edu_index }}.gpa">{{ edu.gpa }}</span></div>{% endif %}
-    {% if edu.courses %}<div class="sub">核心课程：{% for item in edu.courses %}<span data-resume-path="education.{{ edu_index }}.courses.{{ loop.index0 }}">{{ item }}</span>{% if not loop.last %}、{% endif %}{% endfor %}</div>{% endif %}
-    {% if edu.achievements %}<ul>{% for item in edu.achievements %}<li data-resume-path="education.{{ edu_index }}.achievements.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if resume.experience %}
-<div class="section">
-  <div class="section-title">实习/工作经历</div>
-  {% for exp in resume.experience %}
-  {% set exp_index = loop.index0 %}
-  <div class="entry">
-    <div class="entry-head">
-      <span class="title"><span data-resume-path="experience.{{ exp_index }}.company">{{ exp.company }}</span>{% if exp.role %} · <span data-resume-path="experience.{{ exp_index }}.role">{{ exp.role }}</span>{% endif %}</span>
-      <span class="meta"><span data-resume-path="experience.{{ exp_index }}.start_date">{{ exp.start_date }}</span> - <span data-resume-path="experience.{{ exp_index }}.end_date">{{ exp.end_date }}</span></span>
-    </div>
-    {% if exp.description %}<ul>{% for item in exp.description %}<li data-resume-path="experience.{{ exp_index }}.description.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if resume.campus_experience %}
-<div class="section">
-  <div class="section-title">校园经历</div>
-  {% for item in resume.campus_experience %}
-  {% set campus_index = loop.index0 %}
-  <div class="entry">
-    <div class="entry-head">
-      <span class="title"><span data-resume-path="campus_experience.{{ campus_index }}.organization">{{ item.organization }}</span>{% if item.role %} · <span data-resume-path="campus_experience.{{ campus_index }}.role">{{ item.role }}</span>{% endif %}</span>
-      <span class="meta"><span data-resume-path="campus_experience.{{ campus_index }}.start_date">{{ item.start_date }}</span> - <span data-resume-path="campus_experience.{{ campus_index }}.end_date">{{ item.end_date }}</span></span>
-    </div>
-    {% if item.description %}<ul>{% for detail in item.description %}<li data-resume-path="campus_experience.{{ campus_index }}.description.{{ loop.index0 }}">{{ detail }}</li>{% endfor %}</ul>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if resume.projects %}
-<div class="section">
-  <div class="section-title">项目经历</div>
-  {% for project in resume.projects %}
-  {% set project_index = loop.index0 %}
-  <div class="entry">
-    <div class="entry-head">
-      <span class="title" data-resume-path="projects.{{ project_index }}.name">{{ project.name }}</span>
-      <span class="meta">{% if project.role %}<span data-resume-path="projects.{{ project_index }}.role">{{ project.role }}</span> · {% endif %}<span data-resume-path="projects.{{ project_index }}.start_date">{{ project.start_date }}</span> - <span data-resume-path="projects.{{ project_index }}.end_date">{{ project.end_date }}</span></span>
-    </div>
-    {% if project.tech_stack %}<div class="sub">技术栈/工具：{% for item in project.tech_stack %}<span data-resume-path="projects.{{ project_index }}.tech_stack.{{ loop.index0 }}">{{ item }}</span>{% if not loop.last %}、{% endif %}{% endfor %}</div>{% endif %}
-    {% if project.description %}<ul>{% for item in project.description %}<li data-resume-path="projects.{{ project_index }}.description.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
-    {% if project.highlights %}<ul>{% for item in project.highlights %}<li data-resume-path="projects.{{ project_index }}.highlights.{{ loop.index0 }}">{{ item }}</li>{% endfor %}</ul>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if resume.skills %}
-<div class="section">
-  <div class="section-title">专业技能</div>
-  <ul class="skill-list">
-    {% for skill in resume.skills %}<li><span data-resume-path="skills.{{ loop.index0 }}.name">{{ skill.name }}</span>{% if skill.level %}（<span data-resume-path="skills.{{ loop.index0 }}.level">{{ skill.level }}</span>）{% endif %}</li>{% endfor %}
-  </ul>
-</div>
-{% endif %}
-
-{% if resume.awards %}
-<div class="section">
-  <div class="section-title">荣誉奖项</div>
-  <ul>
-    {% for award in resume.awards %}
-    <li><span data-resume-path="awards.{{ loop.index0 }}.name">{{ award.name }}</span>{% if award.date %} · <span data-resume-path="awards.{{ loop.index0 }}.date">{{ award.date }}</span>{% endif %}{% if award.description %} · <span data-resume-path="awards.{{ loop.index0 }}.description">{{ award.description }}</span>{% endif %}</li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
+{% for section_key in resume_section_order -%}
+{%- if section_key == "summary" %}{{ blocks.summary_block(resume) }}
+{%- elif section_key == "education" %}{{ blocks.education_block(resume) }}
+{%- elif section_key == "experience" %}{{ blocks.experience_block(resume) }}
+{%- elif section_key == "campus_experience" %}{{ blocks.campus_block(resume) }}
+{%- elif section_key == "projects" %}{{ blocks.projects_block(resume) }}
+{%- elif section_key == "skills" %}{{ blocks.skills_block(resume) }}
+{%- elif section_key == "awards" %}{{ blocks.awards_block(resume) }}
+{%- endif %}
+{% endfor -%}

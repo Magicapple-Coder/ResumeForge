@@ -6,6 +6,7 @@ import inspect
 from sqlalchemy.orm import Session
 
 from ...models.job import JOB_STATUSES
+from ...models.tracker import STATUSES
 from ..assistant.assistant_sources import SourceNumberer
 from ..resume.resume_templates import FONT_SCALES, RESUME_TEMPLATES
 from ._shared import (
@@ -69,7 +70,18 @@ from .report_tools import (
     _tool_update_knowledge,
     _tool_update_resume_layout,
 )
+from .official_tools import (
+    _tool_get_official_run,
+    _tool_list_apply_queue,
+    _tool_list_official_sites,
+)
 from .search_tools import _tool_web_search
+from .tracker_tools import (
+    _tool_create_application_track,
+    _tool_get_application_track,
+    _tool_list_application_tracks,
+    _tool_update_application_track,
+)
 _TOOLS: tuple[Tool, ...] = (
     Tool(
         name="read_skill_knowledge",
@@ -226,6 +238,92 @@ _TOOLS: tuple[Tool, ...] = (
             "required": [],
         },
         handler=_tool_update_profile,
+        writes=True,
+    ),
+    Tool(
+        name="list_application_tracks",
+        description=(
+            "列出求职进度记录，可按状态或公司/岗位/备注关键词筛选。用户问投递到哪一步、"
+            "哪些岗位还在推进或哪些记录没有下一步时先调用。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": list(STATUSES),
+                    "description": "可选，当前进度状态",
+                },
+                "keyword": {"type": "string", "description": "可选，公司/岗位/备注关键词"},
+                "limit": {"type": "integer", "description": "可选，最多返回多少条，默认 20"},
+            },
+            "required": [],
+        },
+        handler=_tool_list_application_tracks,
+    ),
+    Tool(
+        name="get_application_track",
+        description="按 id 读取一条求职进度的完整内容。",
+        parameters={
+            "type": "object",
+            "properties": {"track_id": {"type": "integer", "description": "求职进度 id"}},
+            "required": ["track_id"],
+        },
+        handler=_tool_get_application_track,
+    ),
+    Tool(
+        name="create_application_track",
+        description=(
+            "新增一条求职进度。只在用户明确要求记录投递/筛选/面试/Offer 等进展时调用；"
+            "公司、岗位和状态必填。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "company": {"type": "string", "description": "公司名称，必填"},
+                "title": {"type": "string", "description": "岗位名称，必填"},
+                "status": {"type": "string", "enum": list(STATUSES)},
+                "stage_note": {"type": "string", "description": "阶段补充，如二面/HR 面"},
+                "applied_at": {"type": "string", "description": "投递日期 YYYY-MM-DD"},
+                "status_date": {"type": "string", "description": "当前状态日期 YYYY-MM-DD"},
+                "next_action": {"type": "string"},
+                "next_action_date": {"type": "string", "description": "下一步日期 YYYY-MM-DD"},
+                "note": {"type": "string"},
+                "evidence": {"type": "string", "description": "依据原文摘录"},
+                "job_id": {"type": "integer"},
+                "resume_id": {"type": "integer"},
+            },
+            "required": ["company", "title"],
+        },
+        handler=_tool_create_application_track,
+        writes=True,
+    ),
+    Tool(
+        name="update_application_track",
+        description=(
+            "修改已有求职进度（先用 get_application_track 或 list_application_tracks 确认 id）。"
+            "删除不通过工具执行，用户要删除时请引导去求职进度页或回收站。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "track_id": {"type": "integer", "description": "求职进度 id，必填"},
+                "company": {"type": "string"},
+                "title": {"type": "string"},
+                "status": {"type": "string", "enum": list(STATUSES)},
+                "stage_note": {"type": "string"},
+                "applied_at": {"type": "string"},
+                "status_date": {"type": "string"},
+                "next_action": {"type": "string"},
+                "next_action_date": {"type": "string"},
+                "note": {"type": "string"},
+                "evidence": {"type": "string"},
+                "job_id": {"type": "integer"},
+                "resume_id": {"type": "integer"},
+            },
+            "required": ["track_id"],
+        },
+        handler=_tool_update_application_track,
         writes=True,
     ),
     Tool(
@@ -787,6 +885,56 @@ _TOOLS: tuple[Tool, ...] = (
             "required": [],
         },
         handler=_tool_list_reminders,
+    ),
+    Tool(
+        name="list_official_sites",
+        description=(
+            "列出「官网采集」里已经添加的公司，以及每家公司**最近一次采集**的结论"
+            "（三态：已确认为全量 / 已确认不全 / 无法确认）与账目。"
+            "用户问「我给哪些公司配了采集」「上次那家抓到多少」「有没有抓全」时用它。"
+            "它只读；发起采集必须由用户在页面上点击。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "可选，公司名关键词"},
+                "limit": {"type": "integer", "description": "可选，最多返回多少条，默认 20"},
+            },
+            "required": [],
+        },
+        handler=_tool_list_official_sites,
+    ),
+    Tool(
+        name="get_official_run",
+        description=(
+            "查看某一次官网采集的**完整报告**：账目（翻了几页、取回多少、写入多少、缺多少正文）、"
+            "三态结论与它对账时的依据原文。想知道「为什么这次结论是无法确认」时用它"
+            "（run_id 从 list_official_sites 的结果里取）。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "integer", "description": "采集记录 id"},
+            },
+            "required": ["run_id"],
+        },
+        handler=_tool_get_official_run,
+    ),
+    Tool(
+        name="list_apply_queue",
+        description=(
+            "查看「投递台」的队列状态：每个待投递/已投递/失败的岗位、对应简历、"
+            "是否支持自动投递以及最近一次匹配结论。用户问「队列里还有什么」「那家公司投出去了吗」时用它。"
+            "**助手不代为发起投递**——那一步必须由用户在投递台上点击确认。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "可选，最多返回多少条，默认 20"},
+            },
+            "required": [],
+        },
+        handler=_tool_list_apply_queue,
     ),
     Tool(
         name="list_referrals",

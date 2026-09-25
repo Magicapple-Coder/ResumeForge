@@ -62,13 +62,30 @@ export function getBrowserStatus(): Promise<BrowserStatus> {
   return request("/apply/browser/status");
 }
 
-export function startBrowser(): Promise<BrowserStatus> {
-  return request("/apply/browser/start", { method: "POST" });
+/**
+ * 启动专用浏览器。
+ *
+ * `openEntry` 决定这次启动要不要打开站点入口页，两种调用方的需要正好相反：
+ * 投递台要（默认，用户得在那个页面上登录），官网采集不要——它只是借这个浏览器
+ * 当渲染引擎，采集哪一页由采集自己导航。
+ */
+export function startBrowser(openEntry = true): Promise<BrowserStatus> {
+  return request(`/apply/browser/start${buildQuery({ open_entry: openEntry })}`, {
+    method: "POST",
+  });
 }
 
 /** 在已启动的专用浏览器里重新打开招聘网站入口（标签页被关掉或跳走后使用）。 */
 export function openBrowserSite(): Promise<BrowserStatus> {
   return request("/apply/browser/open", { method: "POST" });
+}
+
+export function refreshBrowser(): Promise<BrowserStatus> {
+  return request("/apply/browser/refresh", { method: "POST" });
+}
+
+export function restartBrowser(): Promise<BrowserStatus> {
+  return request("/apply/browser/restart", { method: "POST" });
 }
 
 export function stopBrowser(): Promise<void> {

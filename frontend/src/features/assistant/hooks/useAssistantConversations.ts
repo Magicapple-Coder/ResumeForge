@@ -20,6 +20,8 @@ import type { AssistantConversationDetail, AssistantConversationBrief } from "..
 interface Options {
   message: ReturnType<typeof App.useApp>["message"];
   /** 为真时进入「新对话」模式：不自动恢复最近会话（由页面负责新建空会话）。 */
+  /** 是否以"新对话"进入（`?new=1`）。会话钩子不再用它——草稿状态由页面侧决定；
+   *  保留参数是为了不打断调用方签名，也留下"这个入口存在"的痕迹。 */
   startNew?: boolean;
 }
 
@@ -28,7 +30,7 @@ export type ConversationPatch = Partial<
   Pick<AssistantConversationBrief, "pinned" | "favorite" | "archived" | "group_name">
 >;
 
-export function useAssistantConversations({ message, startNew = false }: Options) {
+export function useAssistantConversations({ message }: Options) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AssistantConversationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -56,6 +58,17 @@ export function useAssistantConversations({ message, startNew = false }: Options
     setActiveId(conversationId);
   }, []);
 
+  /**
+   * 进入"草稿"对话：界面上是一段可以马上写的空对话，**数据库里什么都不建**。
+   *
+   * 记录由第一次发送时懒创建（见 `useAssistantStream.send`）。这样"点进来看看、
+   * 什么都没写就退出"不会留下一堆空对话——用户明确要求过这一点。
+   */
+  const startDraft = useCallback(() => {
+    selectConversation(null);
+    setDetail(null);
+  }, [selectConversation]);
+
   const loadDetail = useCallback(
     async (conversationId: number) => {
       const requestId = ++detailRequestRef.current;
@@ -79,11 +92,10 @@ export function useAssistantConversations({ message, startNew = false }: Options
     if (conversationsError) message.error(conversationsError);
   }, [conversationsError, message]);
 
-  useEffect(() => {
-    if (startNew) return; // 新对话模式不自动恢复最近会话，避免先闪一下旧会话再切走。
-    if (activeId || !conversations?.length) return;
-    selectConversation(conversations[0].id);
-  }, [activeId, conversations, selectConversation, startNew]);
+  // 进入助手页**不再自动打开最近那条会话**：用户要的是"点进来就是一段可以马上写的新对话"，
+  // 记录由第一次发送时懒创建（见 useAssistantStream.send）。历史会话仍在左侧列表里，
+  // 点一下就切过去；?conversation= 深链也照旧能直接定位。
+  // （以前这里会自动选中 conversations[0]，于是每次进来先看到上次的对话。）
 
   useEffect(() => {
     if (!activeId) {
@@ -214,6 +226,7 @@ export function useAssistantConversations({ message, startNew = false }: Options
   );
 
   return {
+    startDraft,
     activeId,
     activeIdRef,
     detail,

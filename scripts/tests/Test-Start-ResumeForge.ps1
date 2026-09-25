@@ -146,6 +146,34 @@ foreach ($source in $launcherSources) {
         -Message "$($source.Name) looks like a BOM-only file."
 }
 
+# Shell scripts obey the opposite rule from PowerShell files: they must be plain
+# LF and must not carry a BOM. A single CR makes the kernel read the interpreter
+# as "/bin/bash\r", so macOS answers "bad interpreter" and the launcher never
+# runs -- while looking completely fine on Windows. That asymmetry is why this
+# check exists next to the BOM one: the machine most likely to introduce CRLF is
+# the one where nothing breaks.
+$shellScriptPaths = @(
+    Get-ChildItem -LiteralPath $ProjectRoot -Filter "*.command" -File
+    Get-ChildItem -LiteralPath (Join-Path $ProjectRoot "scripts") -Filter "*.sh" -File -Recurse
+)
+Assert-LauncherTest `
+    -Condition ($shellScriptPaths.Count -ge 4) `
+    -Message "Expected to find the macOS entry points and shell libraries (found $($shellScriptPaths.Count))."
+foreach ($shellScript in $shellScriptPaths) {
+    $shellBytes = [IO.File]::ReadAllBytes($shellScript.FullName)
+    $hasCarriageReturn = $false
+    foreach ($shellByte in $shellBytes) {
+        if ($shellByte -eq 0x0D) { $hasCarriageReturn = $true; break }
+    }
+    Assert-LauncherTest `
+        -Condition (-not $hasCarriageReturn) `
+        -Message "$($shellScript.Name) contains a CR byte. Shell scripts must be pure LF: on macOS a CRLF shebang fails with 'bad interpreter', and Windows cannot see the difference."
+    $hasShellBom = $shellBytes.Length -ge 3 -and $shellBytes[0] -eq 0xEF -and $shellBytes[1] -eq 0xBB -and $shellBytes[2] -eq 0xBF
+    Assert-LauncherTest `
+        -Condition (-not $hasShellBom) `
+        -Message "$($shellScript.Name) starts with a UTF-8 BOM. A BOM before the shebang breaks execution on macOS and Linux; shell scripts must stay BOM-less."
+}
+
 # start.cmd must forward its arguments; the launcher's own port-conflict message
 # tells the user to pass -BackendPort, which is impossible without this.
 $startCmdContent = Get-Content -LiteralPath (Join-Path $ProjectRoot "start.cmd") -Raw

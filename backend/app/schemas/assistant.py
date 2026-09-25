@@ -38,7 +38,9 @@ class AssistantMessageCreate(BaseModel):
     content: str = Field(default="", max_length=MAX_ASSISTANT_MESSAGE_CHARS)
     job_id: int | None = Field(default=None, ge=1)
     resume_id: int | None = Field(default=None, ge=1)
-    include_profile: bool = False
+    # 保留字段是为了兼容旧版客户端，但现在助手默认读取本地完整个人资料，前端不再提供
+    # 关闭开关。无论旧客户端传 false 还是新客户端省略，都在校验后归一为 True。
+    include_profile: bool = True
     web_search: bool = False
     # 有思考模式的大模型可以在这里调整推理强度；不支持该参数的服务商会被忽略。
     reasoning_effort: ReasoningEffort = ""
@@ -49,6 +51,7 @@ class AssistantMessageCreate(BaseModel):
     @model_validator(mode="after")
     def require_content_or_attachment(self):
         self.content = self.content.strip()
+        self.include_profile = True
         if not self.content and not self.attachments:
             raise ValueError("请输入问题或添加附件")
         return self

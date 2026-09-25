@@ -71,7 +71,8 @@ def load_local_context(
     metadata: dict[str, Any] = {
         "job_id": payload.job_id,
         "resume_id": payload.resume_id,
-        "include_profile": payload.include_profile,
+        # 助手现在默认使用本地资料；保留元数据字段只是为了让旧会话仍能解释，值统一为 true。
+        "include_profile": True,
         "web_search": payload.web_search,
         "sources": [],
     }
@@ -97,8 +98,9 @@ def load_local_context(
         if resume is None:
             raise ValueError("选择的简历不存在或已被删除")
         blocks.append(resume_context(resume))
-    if payload.include_profile:
-        blocks.append(profile_context(db))
+    # 个人资料是助手的默认本地上下文，不再由前端开关控制。这样用户直接问“按我的资料…”
+    # 时不会因为忘记勾选而得到一份脱离真实资料的回答。
+    blocks.append(profile_context(db))
     return blocks, metadata
 
 

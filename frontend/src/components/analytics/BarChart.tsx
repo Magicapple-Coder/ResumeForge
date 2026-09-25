@@ -19,6 +19,8 @@ interface Props {
   ariaLabel: string;
 }
 
+const BAR_COLORS = ["#5b8ff9", "#61ddaa", "#65789b", "#f6bd16", "#7262fd", "#78d3f8"];
+
 export default function BarChart({ points, ariaLabel }: Props) {
   const max = Math.max(1, ...points.map((point) => point.count));
   const width = 620;
@@ -41,13 +43,29 @@ export default function BarChart({ points, ariaLabel }: Props) {
       // 月份标签和柱宽都被成倍撑开。maxWidth 把倍率封顶在 1:1，宽屏不再放大。
       style={{ maxWidth: width, display: "block", margin: "0 auto" }}
     >
+      <line
+        x1={padding.left}
+        x2={width - padding.right}
+        y1={padding.top + chartHeight}
+        y2={padding.top + chartHeight}
+        stroke="#d9e2ec"
+        strokeWidth="1"
+      />
       {points.map((point, index) => {
         const barHeight = Math.round((point.count / max) * chartHeight);
         const x = padding.left + index * slot + (slot - barWidth) / 2;
         const y = padding.top + chartHeight - barHeight;
         return (
           <g key={point.key ?? point.label}>
-            <rect x={x} y={y} width={barWidth} height={barHeight} rx={4} fill="#1677ff" />
+            <rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barHeight}
+              rx={index % 2 === 0 ? 8 : 3}
+              fill={BAR_COLORS[index % BAR_COLORS.length]}
+              data-bar-index={index}
+            />
             {/* 计数为 0 时不画数字：留一个孤零零的「0」看着像渲染坏了。 */}
             {point.count > 0 && (
               <text x={x + barWidth / 2} y={y - 6} textAnchor="middle" fontSize={12} fill="#333">

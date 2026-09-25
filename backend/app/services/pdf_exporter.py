@@ -37,6 +37,7 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
 from ..schemas.resume import MAX_RESUME_PAGES, ResumeContent
+from .resume.resume_sections import resolved_section_order
 
 logger = logging.getLogger(__name__)
 
@@ -886,12 +887,22 @@ def _register_fonts(pdf: FPDF, regular: str, bold: str) -> None:
         raise ResumePDFError(f"加载中文字体失败（{Path(regular).name}）：{exc}") from exc
 
 
-def _draw_resume(pdf: _ResumePDF, resume: ResumeContent, *, include_photo: bool = True) -> None:
+def _draw_resume(
+    pdf: _ResumePDF,
+    resume: ResumeContent,
+    *,
+    include_photo: bool = True,
+    format_config: dict | None = None,
+) -> None:
     """把结构化简历画进 ``pdf``。测量与最终渲染共用这一段，保证"量的"就是"画的"。
 
     ``include_photo=False`` 时**连页头也不给照片预留空间**（不只是不画图）：导出选项里
     关掉照片意味着这一版内容就没有照片，字号自适应与页数判定都要按"无照片"来量，否则
     会量出一个实际不存在的照片高度。
+
+    ``format_config`` 里可能带 ``section_order``（分区顺序）。**分页会受顺序影响**
+    （`ensure_space` 不切断条目，于是某个分区被推到下一页时留白多少与顺序有关），
+    所以测量路径也要用同一份配置，否则"量的"与"画的"又分家了。
     """
     layout = pdf.layout
     base = layout.scaled_base_px
@@ -1044,89 +1055,117 @@ def _draw_resume(pdf: _ResumePDF, resume: ResumeContent, *, include_photo: bool 
             new_y=YPos.NEXT,
         )
 
-    if resume.summary.strip():
-        section("个人总结")
-        body(resume.summary.strip())
+    def draw_summary() -> None:
+        if resume.summary.strip():
+            section("个人总结")
+            body(resume.summary.strip())
 
-    if resume.education:
-        section("教育经历")
-        for index, edu in enumerate(resume.education):
-            # 同一分区内条目之间的留白 = 模板 `.entry { margin-bottom }`（此前 PDF 没有）。
-            if index:
-                pdf.ln(layout.gap_mm(layout.entry_gap))
-            pdf.entry_head(
-                _join([edu.school, edu.major], " · "),
-                _join([edu.degree, f"{edu.start_date} - {edu.end_date}"], " · "),
+
+    def draw_education() -> None:
+        if resume.education:
+            section("教育经历")
+            for index, edu in enumerate(resume.education):
+                # 同一分区内条目之间的留白 = 模板 `.entry { margin-bottom }`（此前 PDF 没有）。
+                if index:
+                    pdf.ln(layout.gap_mm(layout.entry_gap))
+                pdf.entry_head(
+                    _join([edu.school, edu.major], " · "),
+                    _join([edu.degree, f"{edu.start_date} - {edu.end_date}"], " · "),
+                    base,
+                )
+                if edu.gpa:
+                    pdf.meta_line(f"绩点/排名：{edu.gpa}", base)
+                if edu.courses:
+                    pdf.meta_line(f"核心课程：{'、'.join(edu.courses)}", base)
+                pdf.bullets(edu.achievements, base)
+
+
+    def draw_experience() -> None:
+        if resume.experience:
+            section("实习/工作经历")
+            for index, exp in enumerate(resume.experience):
+                if index:
+                    pdf.ln(layout.gap_mm(layout.entry_gap))
+                pdf.entry_head(
+                    _join([exp.company, exp.role], " · "),
+                    f"{exp.start_date} - {exp.end_date}",
+                    base,
+                )
+                pdf.bullets(exp.description, base)
+
+
+    def draw_campus() -> None:
+        if resume.campus_experience:
+            section("校园经历")
+            for index, item in enumerate(resume.campus_experience):
+                if index:
+                    pdf.ln(layout.gap_mm(layout.entry_gap))
+                pdf.entry_head(
+                    _join([item.organization, item.role], " · "),
+                    f"{item.start_date} - {item.end_date}",
+                    base,
+                )
+                pdf.bullets(item.description, base)
+
+
+    def draw_projects() -> None:
+        if resume.projects:
+            section("项目经历")
+            for index, project in enumerate(resume.projects):
+                if index:
+                    pdf.ln(layout.gap_mm(layout.entry_gap))
+                # 项目名在左、`角色 · 时间` 在右——与预览 `_resume_sections.j2` 一致
+                # （此前把角色并进了左边：`name · role`，看起来与预览不是一回事）。
+                pdf.entry_head(
+                    project.name,
+                    _join([project.role, f"{project.start_date} - {project.end_date}"], " · "),
+                    base,
+                )
+                if project.tech_stack:
+                    pdf.meta_line(f"技术栈/工具：{'、'.join(project.tech_stack)}", base)
+                pdf.bullets(project.description, base)
+                pdf.bullets(project.highlights, base)
+
+
+    def draw_skills() -> None:
+        if resume.skills:
+            section("专业技能")
+            # 标签文案与预览一致：`技能名（等级）`。用标签绘制而不是「、」连接的一行文本——
+            # 后者在预览里是带底色的小框，导出后却看不出任何标签形状。
+            pdf.skill_tags(
+                [
+                    f"{skill.name}（{skill.level}）" if skill.level else skill.name
+                    for skill in resume.skills
+                ],
                 base,
             )
-            if edu.gpa:
-                pdf.meta_line(f"绩点/排名：{edu.gpa}", base)
-            if edu.courses:
-                pdf.meta_line(f"核心课程：{'、'.join(edu.courses)}", base)
-            pdf.bullets(edu.achievements, base)
 
-    if resume.experience:
-        section("实习/工作经历")
-        for index, exp in enumerate(resume.experience):
-            if index:
-                pdf.ln(layout.gap_mm(layout.entry_gap))
-            pdf.entry_head(
-                _join([exp.company, exp.role], " · "),
-                f"{exp.start_date} - {exp.end_date}",
+
+    def draw_awards() -> None:
+        if resume.awards:
+            section("荣誉奖项")
+            pdf.bullets(
+                [
+                    _join([award.name, award.date, award.description])
+                    for award in resume.awards
+                ],
                 base,
             )
-            pdf.bullets(exp.description, base)
 
-    if resume.campus_experience:
-        section("校园经历")
-        for index, item in enumerate(resume.campus_experience):
-            if index:
-                pdf.ln(layout.gap_mm(layout.entry_gap))
-            pdf.entry_head(
-                _join([item.organization, item.role], " · "),
-                f"{item.start_date} - {item.end_date}",
-                base,
-            )
-            pdf.bullets(item.description, base)
-
-    if resume.projects:
-        section("项目经历")
-        for index, project in enumerate(resume.projects):
-            if index:
-                pdf.ln(layout.gap_mm(layout.entry_gap))
-            # 项目名在左、`角色 · 时间` 在右——与预览 `_resume_sections.j2` 一致
-            # （此前把角色并进了左边：`name · role`，看起来与预览不是一回事）。
-            pdf.entry_head(
-                project.name,
-                _join([project.role, f"{project.start_date} - {project.end_date}"], " · "),
-                base,
-            )
-            if project.tech_stack:
-                pdf.meta_line(f"技术栈/工具：{'、'.join(project.tech_stack)}", base)
-            pdf.bullets(project.description, base)
-            pdf.bullets(project.highlights, base)
-
-    if resume.skills:
-        section("专业技能")
-        # 标签文案与预览一致：`技能名（等级）`。用标签绘制而不是「、」连接的一行文本——
-        # 后者在预览里是带底色的小框，导出后却看不出任何标签形状。
-        pdf.skill_tags(
-            [
-                f"{skill.name}（{skill.level}）" if skill.level else skill.name
-                for skill in resume.skills
-            ],
-            base,
-        )
-
-    if resume.awards:
-        section("荣誉奖项")
-        pdf.bullets(
-            [
-                _join([award.name, award.date, award.description])
-                for award in resume.awards
-            ],
-            base,
-        )
+    # 分区顺序由版式配置里的 section_order 决定（见 services/resume/resume_sections.py）。
+    # 用字典而不是 if/elif 链：漏一个键时字典会直接 KeyError，而 if 链的表现是
+    # "那个分区在 PDF 里默默消失"——同一个错误，早失败比晚失败好。
+    drawers = {
+        "summary": draw_summary,
+        "education": draw_education,
+        "experience": draw_experience,
+        "campus_experience": draw_campus,
+        "projects": draw_projects,
+        "skills": draw_skills,
+        "awards": draw_awards,
+    }
+    for section_key in resolved_section_order(format_config):
+        drawers[section_key]()
 
 
 def measure_content_height(
@@ -1138,6 +1177,7 @@ def measure_content_height(
     bold: str | None = None,
     include_photo: bool = True,
     line: tuple[int, int, int] | None = None,
+    format_config: dict | None = None,
 ) -> float:
     """量出这份简历在给定版式下的内容高度（mm）。
 
@@ -1155,7 +1195,7 @@ def measure_content_height(
     pdf = _ResumePDF(accent, layout, line=line or (217, 222, 231), measuring=True)
     _register_fonts(pdf, regular, bold)
     pdf.add_page()
-    _draw_resume(pdf, resume, include_photo=include_photo)
+    _draw_resume(pdf, resume, include_photo=include_photo, format_config=format_config)
     return pdf.get_y() - layout.margin_top
 
 
@@ -1168,6 +1208,7 @@ def rendered_page_count(
     bold: str | None = None,
     include_photo: bool = True,
     line: tuple[int, int, int] | None = None,
+    format_config: dict | None = None,
 ) -> int:
     """真实渲染这份简历，返回它实际排出来的页数。
 
@@ -1184,7 +1225,7 @@ def rendered_page_count(
     pdf = _ResumePDF(accent, layout, line=line or (217, 222, 231))
     _register_fonts(pdf, regular, bold)
     pdf.add_page()
-    _draw_resume(pdf, resume, include_photo=include_photo)
+    _draw_resume(pdf, resume, include_photo=include_photo, format_config=format_config)
     return pdf.pages_count
 
 
@@ -1281,6 +1322,7 @@ def build_resume_pdf(
             bold=bold,
             include_photo=include_photo,
             line=line,
+            format_config=overrides,
         )
 
     def height_at(value: float) -> float:
@@ -1292,6 +1334,7 @@ def build_resume_pdf(
             bold=bold,
             include_photo=include_photo,
             line=line,
+            format_config=overrides,
         )
 
     fit_scale, overflow = decide_fit_scale(
@@ -1302,7 +1345,7 @@ def build_resume_pdf(
     pdf = _ResumePDF(accent, final_layout, line=line)
     _register_fonts(pdf, regular, bold)
     pdf.add_page()
-    _draw_resume(pdf, resume, include_photo=include_photo)
+    _draw_resume(pdf, resume, include_photo=include_photo, format_config=overrides)
 
     pages = pdf.pages_count
     # 硬要求：**标志不许说谎**——最终真的多出页就必须标 overflow。决策层已按页数判定，

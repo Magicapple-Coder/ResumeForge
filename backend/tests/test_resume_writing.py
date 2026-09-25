@@ -181,6 +181,51 @@ def test_polish_and_translate_endpoints_return_result(client, db_session, monkey
     assert translate_response.json() == {"result": "处理结果"}
 
 
+def test_rewrite_field_endpoint_returns_a_suggestion_without_touching_the_resume(
+    client, db_session, monkeypatch
+):
+    """接口只返回建议；简历内容不能被改写动过（用户还要在编辑器里点保存）。"""
+    record = _resume_record(db_session)
+    before = dict(record.content or {})
+    provider = WritingProvider({"text": "改写后的总结"})
+    monkeypatch.setattr("app.api.resume_writing.get_llm_config", lambda _db: provider.config)
+    monkeypatch.setattr("app.api.resume_writing.create_provider", lambda _config: provider)
+
+    response = client.post(
+        f"/api/resumes/{record.id}/writing/rewrite-field",
+        json={"path": "summary", "instruction": "再短一点"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "改写后的总结"
+    assert body["path"] == "summary"
+    assert body["label"] == "个人总结"
+    db_session.refresh(record)
+    assert dict(record.content or {}) == before
+
+
+def test_rewrite_field_endpoint_rejects_a_path_that_points_nowhere(client, db_session):
+    """指不到那一栏就 400 明说，不做"猜一个最接近的"——那可能改到别的字段。"""
+    record = _resume_record(db_session)
+    response = client.post(
+        f"/api/resumes/{record.id}/writing/rewrite-field",
+        json={"path": "projects.9.description.0", "instruction": "再短一点"},
+    )
+    assert response.status_code == 400
+    assert "项目经历" in response.json()["detail"] or "没有第" in response.json()["detail"]
+
+
+def test_rewrite_field_endpoint_requires_a_model(client, db_session):
+    record = _resume_record(db_session)
+    response = client.post(
+        f"/api/resumes/{record.id}/writing/rewrite-field",
+        json={"path": "summary", "instruction": "再短一点"},
+    )
+    assert response.status_code == 400
+    assert "配置大模型" in response.json()["detail"]
+
+
 def test_writing_endpoint_404s_for_missing_resume(client):
     response = client.post("/api/resumes/9999/writing/star", json={"text": "负责后端服务开发"})
     assert response.status_code == 404

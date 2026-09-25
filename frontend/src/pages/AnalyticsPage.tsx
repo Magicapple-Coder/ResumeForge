@@ -17,6 +17,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getAnalyticsDashboard } from "../api/analytics";
 import BarChart from "../components/analytics/BarChart";
+import ChartBlock from "../components/analytics/ChartBlock";
 import DataGapNotice from "../components/analytics/DataGapNotice";
 import FunnelChart from "../components/analytics/FunnelChart";
 import HorizontalBarChart from "../components/analytics/HorizontalBarChart";
@@ -155,7 +156,7 @@ function AnalyticsBody({ data, mainFunnel, trendMonths, onTrendMonthsChange }: B
 
   return (
     <>
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} className="analytics-metric-row">
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             framed
@@ -197,7 +198,9 @@ function AnalyticsBody({ data, mainFunnel, trendMonths, onTrendMonthsChange }: B
       >
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={14}>
-            <FunnelChart stages={mainFunnel} />
+            <ChartBlock title="求职漏斗" hint="每个阶段的人数，分母是有效投递">
+              <FunnelChart stages={mainFunnel} />
+            </ChartBlock>
           </Col>
           <Col xs={24} xl={10}>
             <Row gutter={[16, 16]}>
@@ -251,18 +254,22 @@ function AnalyticsBody({ data, mainFunnel, trendMonths, onTrendMonthsChange }: B
         />
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={12}>
-            {hasAppliedDates ? (
-              <BarChart points={data.trend} ariaLabel="投递趋势" />
-            ) : (
-              <Empty description="还没有填过投递日期的记录" />
-            )}
+            <ChartBlock title="投递趋势" hint="按投递日期">
+              {hasAppliedDates ? (
+                <BarChart points={data.trend} ariaLabel="投递趋势" />
+              ) : (
+                <Empty description="还没有填过投递日期的记录" />
+              )}
+            </ChartBlock>
           </Col>
           <Col xs={24} xl={12}>
-            {hasAppliedDates ? (
-              <BarChart points={data.weekday} ariaLabel="周内投递分布" />
-            ) : (
-              <Empty description="还没有填过投递日期的记录" />
-            )}
+            <ChartBlock title="周内投递分布" hint="按投递日期">
+              {hasAppliedDates ? (
+                <BarChart points={data.weekday} ariaLabel="周内投递分布" />
+              ) : (
+                <Empty description="还没有填过投递日期的记录" />
+              )}
+            </ChartBlock>
           </Col>
         </Row>
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
@@ -321,43 +328,42 @@ function AnalyticsBody({ data, mainFunnel, trendMonths, onTrendMonthsChange }: B
         {/* 中部左右两栏：左内推状态分布，右投递最多的公司（前 5，缺口诚实说明）。 */}
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} xl={12}>
-            <Typography.Title level={5} style={{ marginTop: 0 }}>
-              内推状态分布
-            </Typography.Title>
-            {data.referral_status.some((item) => item.count > 0) ? (
-              <HorizontalBarChart
-                ariaLabel="内推状态分布"
-                align="start"
-                items={data.referral_status.map((item) => ({
-                  key: item.key,
-                  label: REFERRAL_STATUS_LABELS[item.key as ReferralStatus] ?? item.key,
-                  count: item.count,
-                }))}
-              />
-            ) : (
-              <Empty description="还没有内推记录" />
-            )}
+            <ChartBlock title="内推状态分布" hint="按当前内推状态">
+              {data.referral_status.some((item) => item.count > 0) ? (
+                <HorizontalBarChart
+                  ariaLabel="内推状态分布"
+                  align="start"
+                  items={data.referral_status.map((item) => ({
+                    key: item.key,
+                    label: REFERRAL_STATUS_LABELS[item.key as ReferralStatus] ?? item.key,
+                    count: item.count,
+                  }))}
+                />
+              ) : (
+                <Empty description="还没有内推记录" />
+              )}
+            </ChartBlock>
           </Col>
           <Col xs={24} xl={12}>
-            <Typography.Title level={5} style={{ marginTop: 0 }}>
-              投递最多的公司
-            </Typography.Title>
-            <TopCompaniesBlock data={data} />
+            <ChartBlock title="投递最多的公司" hint="前 5 名">
+              <TopCompaniesBlock data={data} />
+            </ChartBlock>
           </Col>
         </Row>
 
         {/* 底部：三种记录来源的迷你 tile。 */}
         <div style={{ marginTop: 16 }}>
-          <Typography.Title level={5}>记录来源</Typography.Title>
-          <Row gutter={[16, 16]}>
-            {data.record_sources.map((item) => (
-              <Col xs={8} key={item.key}>
-                <div className="analytics-source-tile">
-                  <StatCard title={item.label} value={item.count} />
-                </div>
-              </Col>
-            ))}
-          </Row>
+          <ChartBlock title="记录来源" hint="录入方式，不是投递渠道">
+            <Row gutter={[16, 16]}>
+              {data.record_sources.map((item) => (
+                <Col xs={8} key={item.key}>
+                  <div className="analytics-source-tile">
+                    <StatCard title={item.label} value={item.count} />
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </ChartBlock>
         </div>
       </SectionCard>
 

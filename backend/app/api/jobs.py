@@ -11,7 +11,8 @@ from ..services import trash
 from ..models.job import JOB_STATUSES, Job
 from ..schemas.common import Page
 from ..schemas.job import (
-    RECOGNITION_SOURCE_COLLECT,
+    RECOGNITION_SOURCE_AUTO,
+    RECOGNITION_SOURCE_OFFICIAL,
     JobBatchDeleteResult,
     JobBatchRequest,
     JobBatchStatusRequest,
@@ -80,9 +81,9 @@ def list_jobs(
     job_type: str = Query(default=""),
     status: str = Query(default=""),
     favorite: bool | None = Query(default=None),
-    # 按录入方式粗筛：collected=投递台自动采集，manual=其余（手动填写/粘贴/截图/文档/助手等）。
-    # 这是界面上「手动添加 / 自动采集」二分筛的稳定口径：采集写入的是固定的 recognition_source
-    # 值（RECOGNITION_SOURCE_COLLECT），而手动录入的 recognition_source 五花八门，用「等于」反而不稳。
+    # 按录入方式粗筛：collected=任一自动采集链路，manual=其余（手动填写/粘贴/截图/文档/助手等）。
+    # 兼容历史库里的两种来源值，也兼容旧官网导入把 `官网采集` 写进 source、但没有写入
+    # recognition_source 的记录。
     source_kind: str = Query(default=""),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -107,9 +108,19 @@ def list_jobs(
     if favorite is not None:
         query = query.filter(Job.favorite == favorite)
     if source_kind == "collected":
-        query = query.filter(Job.recognition_source == RECOGNITION_SOURCE_COLLECT)
+        query = query.filter(
+            or_(
+                Job.recognition_source.in_(RECOGNITION_SOURCE_AUTO),
+                Job.source == RECOGNITION_SOURCE_OFFICIAL,
+            )
+        )
     elif source_kind == "manual":
-        query = query.filter(Job.recognition_source != RECOGNITION_SOURCE_COLLECT)
+        query = query.filter(
+            or_(
+                Job.recognition_source.is_(None),
+                ~Job.recognition_source.in_(RECOGNITION_SOURCE_AUTO),
+            )
+        ).filter(Job.source != RECOGNITION_SOURCE_OFFICIAL)
     total = query.count()
     jobs = query.order_by(Job.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return Page(items=[_to_out(job) for job in jobs], total=total)

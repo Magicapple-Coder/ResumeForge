@@ -25,6 +25,11 @@ from ..profile.profile_relevance import (
     split_lines,
 )
 from .resume_consistency import check_consistency
+from .resume_coverage import (
+    all_entry_names,
+    confirmed_claims_about,
+    find_unwritten_items,
+)
 from .resume_content import _LIST_FIELDS
 from .resume_content import coerce_resume, extract_json
 from .resume_grounding import (
@@ -343,6 +348,20 @@ class ResumeGenerator:
             enhance=options.enhance,
             enhancement_level=options.enhancement_level,
         )
+        # 覆盖度检查放在**所有**修复/回填之后：它比对的必须是用户最终看到的那份内容，
+        # 否则"资料里有 X、简历里没有 X"可能只是中间状态的假象。
+        coverage = find_unwritten_items(resume, selection.entry_names, selection.data)
+        if coverage:
+            # 已确认的台账主张会让提醒更有分量：用户为这条经历做过"可以对外说"的确认，
+            # 它却没进候选资料，这是最需要被点破的一种情况。
+            confirmed_names = confirmed_claims_about(all_entry_names(selection.entry_names), baseline)
+            suffix = (
+                f" 台账里已确认与 {'、'.join(confirmed_names)} 相关的事实，"
+                "它们同样没有进入候选资料。"
+                if confirmed_names
+                else ""
+            )
+            warnings.extend(f"{message}{suffix}" for message in coverage)
         yield {"type": "done", "resume": resume.model_dump(), "warnings": warnings}
 
     def _parse(self, raw: str) -> ResumeContent | None:

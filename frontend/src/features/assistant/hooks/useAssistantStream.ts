@@ -23,7 +23,6 @@ interface Options {
   mountedRef: MutableRefObject<boolean>;
   jobId: number | undefined;
   resumeId: number | undefined;
-  includeProfile: boolean;
   webSearch: boolean;
   reasoningEffort: ReasoningEffort;
   /** 当前引用的消息 id；发送时随请求带上，之后清空。 */
@@ -42,7 +41,6 @@ export function useAssistantStream({
   mountedRef,
   jobId,
   resumeId,
-  includeProfile,
   webSearch,
   reasoningEffort,
   quotedMessageId,
@@ -114,7 +112,8 @@ export function useAssistantStream({
             content: trimmedText,
             job_id: jobId,
             resume_id: resumeId,
-            include_profile: includeProfile,
+            // 后端保留这个字段只是兼容旧客户端；助手现在始终读取本地个人资料。
+            include_profile: true,
             web_search: webSearch,
             reasoning_effort: reasoningEffort,
             quoted_message_id: quotedMessageId,
@@ -178,7 +177,6 @@ export function useAssistantStream({
       clearAttachments,
       clearQuote,
       createConversation,
-      includeProfile,
       jobId,
       loadDetail,
       mountedRef,

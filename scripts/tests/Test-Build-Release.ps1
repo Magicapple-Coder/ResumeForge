@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = "Stop"
@@ -140,6 +140,7 @@ try {
     & $BuildScriptPath -OutputDirectory $RuntimeDirectory
 
     $archive = Get-ChildItem -LiteralPath $RuntimeDirectory -Filter "ResumeForge-*.zip" -File |
+        Sort-Object Name |
         Select-Object -First 1
     Assert-ReleaseTest -Condition ($null -ne $archive) -Message "The build script produced no archive."
 
@@ -203,6 +204,45 @@ try {
         Assert-ReleaseTest `
             -Condition (-not ($startCmdText -match "(?<!\r)\n")) `
             -Message "start.cmd inside the archive must use CRLF line endings."
+
+        # macOS entry points. The rule is the exact opposite of .cmd's and just as
+        # fatal: a CR before the newline makes the kernel read the interpreter as
+        # "/bin/bash\r", so macOS answers "bad interpreter" and the release is
+        # unusable on a Mac -- while looking perfectly fine on Windows.
+        foreach ($macShellPath in @(
+                "start.command",
+                "stop.command",
+                "update.command",
+                "scripts/macos/start.sh",
+                "scripts/macos/stop.sh",
+                "scripts/macos/update.sh",
+                "scripts/macos/lib/common.sh",
+                "scripts/macos/lib/python.sh",
+                "scripts/macos/lib/node.sh"
+            )) {
+            $macEntry = $fileEntries | Where-Object { $_.FullName -eq "${prefix}$macShellPath" } | Select-Object -First 1
+            Assert-ReleaseTest `
+                -Condition ($null -ne $macEntry) `
+                -Message "$macShellPath is missing from the archive; the same zip has to start on macOS too."
+            $macEntryText = Read-ZipEntryText -Entry $macEntry
+            Assert-ReleaseTest `
+                -Condition (-not ($macEntryText -match "\r")) `
+                -Message "$macShellPath inside the archive must use LF line endings."
+        }
+
+        # Finder only runs a double-clicked .command when the executable bit is
+        # set, and for a Mac user the archive is the only thing they get -- the
+        # bit has to travel inside the zip entry. git archive writes whatever mode
+        # the tree records, so a missing chmod in the repository surfaces here
+        # rather than as "nothing happens when I double-click" on someone's Mac.
+        foreach ($macEntryPoint in @("start.command", "stop.command", "update.command")) {
+            $macEntry = $fileEntries | Where-Object { $_.FullName -eq "${prefix}$macEntryPoint" } | Select-Object -First 1
+            Assert-ReleaseTest -Condition ($null -ne $macEntry) -Message "$macEntryPoint is missing from the archive."
+            $unixMode = ($macEntry.ExternalAttributes -shr 16) -band 0x1FF
+            Assert-ReleaseTest `
+                -Condition (($unixMode -band 0x49) -eq 0x49) `
+                -Message "$macEntryPoint must carry the executable bit inside the archive (mode 0$([Convert]::ToString($unixMode, 8))); Finder refuses to run it on macOS otherwise."
+        }
     }
     finally {
         $zip.Dispose()
@@ -236,6 +276,67 @@ try {
         Assert-ReleaseTest `
             -Condition $covered `
             -Message "Build-Release.ps1 does not require '$expected', but the app refuses to start without it."
+    }
+
+    # --- the two per-platform archives the website serves ---
+    #
+    # The site's download buttons hand out -Platform windows / -Platform macos
+    # archives instead of sending people to GitHub. A pruning bug there is the
+    # worst kind: the user picked "macOS", unzipped, and found only start.cmd.
+    # So both pruned archives are really built here and checked from the inside.
+    foreach ($platform in @("windows", "macos")) {
+        & $BuildScriptPath -OutputDirectory $RuntimeDirectory -Platform $platform
+        $platformArchive = Get-ChildItem -LiteralPath $RuntimeDirectory -Filter "ResumeForge-*$platform.zip" -File |
+            Select-Object -First 1
+        Assert-ReleaseTest `
+            -Condition ($null -ne $platformArchive) `
+            -Message "The build script produced no $platform archive."
+        Assert-ReleaseTest `
+            -Condition ($platformArchive.Name -eq "ResumeForge-$version-$platform.zip") `
+            -Message "The $platform archive must be named after the version and platform (got $($platformArchive.Name))."
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $platformZip = [System.IO.Compression.ZipFile]::OpenRead($platformArchive.FullName)
+        try {
+            $platformPaths = @(
+                $platformZip.Entries |
+                    Where-Object { $_.Name -ne "" } |
+                    ForEach-Object { $_.FullName.Substring($prefix.Length) }
+            )
+            # 自己的启动器必须在：选了哪个平台，解压出来就该能双击哪个文件。
+            $ownLaunchers = if ($platform -eq "windows") {
+                @("start.cmd", "stop.cmd", "uninstall.cmd")
+            }
+            else {
+                @("start.command", "stop.command", "update.command", "scripts/macos/start.sh")
+            }
+            foreach ($launcher in $ownLaunchers) {
+                Assert-ReleaseTest `
+                    -Condition ($platformPaths -contains $launcher) `
+                    -Message "The $platform archive is missing its own launcher: $launcher."
+            }
+            # 别人的启动器必须不在：留着它等于把"该双击哪个文件"的困惑原样发给用户。
+            $otherLaunchers = if ($platform -eq "windows") {
+                @("start.command", "stop.command", "update.command", "scripts/macos/start.sh")
+            }
+            else {
+                @("start.cmd", "stop.cmd", "update.cmd", "uninstall.cmd", "scripts/Start-ResumeForge.ps1")
+            }
+            foreach ($launcher in $otherLaunchers) {
+                Assert-ReleaseTest `
+                    -Condition ($platformPaths -notcontains $launcher) `
+                    -Message "The $platform archive must not carry the other platform's launcher: $launcher."
+            }
+            # 应用本体在两个包里都必须完整：平台拆分只动启动器，绝不能顺手裁掉代码。
+            foreach ($required in @("backend/app/main.py", "backend/app/data/skills.json", "frontend/index.html")) {
+                Assert-ReleaseTest `
+                    -Condition ($platformPaths -contains $required) `
+                    -Message "The $platform archive is missing $required; platform pruning must never touch the app itself."
+            }
+        }
+        finally {
+            $platformZip.Dispose()
+        }
     }
 
     Write-Host "Release packaging tests passed."

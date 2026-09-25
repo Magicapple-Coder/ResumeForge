@@ -18,6 +18,7 @@ from .docx_exporter import build_resume_docx
 from .exporter import build_filename, export_json, export_markdown, render_html
 from .pdf_exporter import build_resume_pdf
 from .privacy import RedactionOptions, redact
+from .resume.resume_sections import resolved_section_order
 from .txt_exporter import export_txt
 from .watermark import apply_watermark
 
@@ -90,7 +91,9 @@ def _render_json(resume: ResumeContent, context: RenderContext) -> RenderedArtif
 
 def _render_markdown(resume: ResumeContent, context: RenderContext) -> RenderedArtifact:
     return RenderedArtifact(
-        content=export_markdown(resume).encode("utf-8"),
+        content=export_markdown(
+            resume, section_order=resolved_section_order(context.format_config)
+        ).encode("utf-8"),
         media_type="text/markdown; charset=utf-8",
     )
 
@@ -149,7 +152,9 @@ def _render_docx(resume: ResumeContent, context: RenderContext) -> RenderedArtif
 
 def _render_txt(resume: ResumeContent, context: RenderContext) -> RenderedArtifact:
     return RenderedArtifact(
-        content=export_txt(resume).encode("utf-8"),
+        content=export_txt(
+            resume, section_order=resolved_section_order(context.format_config)
+        ).encode("utf-8"),
         media_type="text/plain; charset=utf-8",
     )
 

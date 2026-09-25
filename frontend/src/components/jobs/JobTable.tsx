@@ -9,17 +9,9 @@ import type { Job, Page } from "../../types";
 import { formatDateTime } from "../../utils/format";
 import { RowActions, RowContextMenu, type RowActionItem } from "../common/RowActions";
 import SkillTags from "../SkillTags";
+import { jobSourceKind } from "../../utils/jobSource";
 
 type BatchAction = "status" | "delete" | null;
-
-// 投递台自动采集写入的 recognition_source 是固定值；手动录入则是一串五花八门的值（含空串）。
-// 因此「采集」用相等判断、「手动」取其余，比反过来「source === 手动添加」更稳（source 会随站点增多）。
-const RECOGNITION_SOURCE_COLLECT = "岗位采集";
-
-/** 岗位是「自动采集」还是「手动添加」的二分口径，用于职位列的来源角标。 */
-function jobSourceKind(job: Job): "collected" | "manual" {
-  return job.recognition_source === RECOGNITION_SOURCE_COLLECT ? "collected" : "manual";
-}
 
 interface Props {
   jobs: Page<Job> | undefined;
@@ -42,8 +34,15 @@ interface Props {
 
 const STATUS_COLORS: Record<string, string> = {
   开放中: "green",
+  active: "green",
+  open: "green",
   已截止: "default",
   已投递: "blue",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  active: "开放中",
+  open: "开放中",
 };
 
 export default function JobTable({
@@ -127,7 +126,9 @@ export default function JobTable({
       dataIndex: "status",
       width: 90,
       render: (value: string) => (
-        <Tag color={STATUS_COLORS[value] ?? "default"}>{value || "-"}</Tag>
+        <Tag color={STATUS_COLORS[value] ?? "default"}>
+          {STATUS_LABELS[value] ?? (value || "-")}
+        </Tag>
       ),
     },
     {

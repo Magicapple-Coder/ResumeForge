@@ -8,12 +8,19 @@
 import { App, Card, Space, Spin, Switch, Typography } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { getReminderPopupSetting, saveReminderPopupSetting } from "../../api/settings";
+import { isSoundEnabled, playDoneSound, setSoundEnabled } from "../../utils/notifySound";
 
 export default function ReminderPopupCard() {
   const { message } = App.useApp();
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // 完成提示音：存在浏览器本地（它是一个"这台机器上要不要响"的偏好，不占用户的数据表）。
+  const [sound, setSound] = useState(true);
+
+  useEffect(() => {
+    setSound(isSoundEnabled());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,8 +56,15 @@ export default function ReminderPopupCard() {
     }
   };
 
+  const toggleSound = (checked: boolean) => {
+    setSound(checked);
+    setSoundEnabled(checked);
+    // 打开时立刻响一声，用户能当场确认声音是什么样（也顺便解锁浏览器的音频权限）。
+    if (checked) playDoneSound();
+  };
+
   return (
-    <Card title="提醒弹窗" className="settings-card">
+    <Card title="提醒与提示音" className="settings-card">
       <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
         打开应用时，若还有未完成的日历提醒，是否弹出「近期提醒」列表。
       </Typography.Paragraph>
@@ -67,6 +81,23 @@ export default function ReminderPopupCard() {
           <Typography.Text type="secondary">默认开启，可随时在这里关闭。</Typography.Text>
         </Space>
       </Spin>
+
+      <Typography.Paragraph type="secondary" style={{ margin: "20px 0 12px" }}>
+        生成类任务（简历生成、岗位解读、匹配度分析等）与投递 /
+        采集批次**完成时**，是否播放一声提示音。 弹窗提醒不受这个开关影响。
+      </Typography.Paragraph>
+      <Space direction="vertical" size={4}>
+        <Switch
+          checked={sound}
+          checkedChildren="开"
+          unCheckedChildren="关"
+          aria-label="任务完成时播放提示音"
+          onChange={toggleSound}
+        />
+        <Typography.Text type="secondary">
+          默认开启。浏览器若拦截自动播放，会静默跳过。
+        </Typography.Text>
+      </Space>
     </Card>
   );
 }

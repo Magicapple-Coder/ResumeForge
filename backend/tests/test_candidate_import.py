@@ -116,6 +116,22 @@ def test_manual_candidate_is_recorded_with_the_candidate_source(db_session):
     assert job.source == "手动添加"
 
 
+def test_legacy_official_candidate_without_task_id_is_still_collected(db_session):
+    """旧官网采集候选可能没有批次 id，但 source 仍能证明它不是手动导入。"""
+    candidate = _stage(
+        db_session,
+        source="官网采集",
+        task_id=None,
+        source_url="https://official.example/jobs/legacy",
+    )
+
+    import_candidates(db_session, [candidate.id])
+
+    job = db_session.query(Job).one()
+    assert job.recognition_source == "岗位采集"
+    assert "来源：岗位采集" in job.note
+
+
 def test_import_parses_skill_keywords_from_the_jd(db_session):
     """导入时必须算技能标签——写入路径走 ``create_job_record``（内部 ``refresh_job_keywords``）。
 

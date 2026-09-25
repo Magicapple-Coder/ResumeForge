@@ -10,14 +10,22 @@ export type ProfileSectionKey =
   | "awards"
   | "summary";
 
+/**
+ * 资料大分区的默认顺序。
+ *
+ * 这是**有意的产品决策**，不是随手排列：简历阅读者（HR、面试官）最关心的是
+ * 「最近在做什么、做过什么项目」，所以把实习/工作经历与项目经历提到教育经历之前；
+ * 教育经历只保留一段可查证的信息，放在技能之后。后端 `PROFILE_SECTION_KEYS`
+ * 必须与本数组逐项一致（`PROFILE_SECTION_KEYS` 决定旧数据缺失分区时的补位顺序）。
+ */
 export const DEFAULT_SECTION_ORDER: ProfileSectionKey[] = [
   "basic_info",
-  "educations",
   "experiences",
-  "campus_experiences",
   "projects",
   "skills",
+  "educations",
   "awards",
+  "campus_experiences",
   "summary",
 ];
 
@@ -36,8 +44,13 @@ export const SECTION_LABELS: Record<ProfileSectionKey, string> = {
 
 export function normalizeSectionOrder(value: string[] | undefined): ProfileSectionKey[] {
   const supported = new Set<ProfileSectionKey>(DEFAULT_SECTION_ORDER);
-  const normalized = (value ?? []).filter((key): key is ProfileSectionKey =>
-    supported.has(key as ProfileSectionKey),
+  const normalized = (value ?? []).filter(
+    (key): key is ProfileSectionKey =>
+      key !== "basic_info" && supported.has(key as ProfileSectionKey),
   );
-  return [...normalized, ...DEFAULT_SECTION_ORDER.filter((key) => !normalized.includes(key))];
+  return [
+    "basic_info",
+    ...normalized,
+    ...DEFAULT_SECTION_ORDER.filter((key) => key !== "basic_info" && !normalized.includes(key)),
+  ];
 }

@@ -107,6 +107,13 @@ $env:PYTHONUTF8 = "1"
   npx vite build --outDir D:\rf_build_tmp --emptyOutDir
   ```
 
+- **测试里的等待预算要分两档，别用同一个很小的值。** 期望**超时**的用例需要预算真的到期，
+  所以越小越快；期望**成功**的用例就绪即刻返回，预算大小不影响耗时，它只是安全网。
+  2026-09-23 修过一处：`tests/test_boss_apply.py` 里两类共用 `timeout=0.02`，于是
+  "成功"用例的成败取决于**真实墙钟**——单跑必过、`-n auto` 下偶发失败（一次调度抖动就超过
+  20ms）。修法是给成功路径单独一档 2s 的预算（`READY_WAIT`），既不多花时间，也不会误伤。
+  判断标准很简单：**用例的成败是否取决于"等了多久"**，如果是，它的预算就不该是个位数毫秒。
+
 另外别忘了一条：**`--cov` 不能和"只跑几个文件"混用**。覆盖率门槛是 80%，子集跑出来必然只有
 二三十，于是 pytest 以失败退出——那是个假失败，不是代码坏了。子集只跑不加 `--cov` 的命令。
 
@@ -165,6 +172,17 @@ npm audit --registry=https://registry.npmjs.org
 ```
 
 新增或修改交互时优先补充 Vitest 测试，并检查键盘可访问性、响应式布局、加载态、空态、错误态和异步竞态。
+
+### macOS 启动链（改 `scripts/macos/**` 或根目录 `*.command` 时）
+
+```bash
+bash scripts/tests/test-macos-launcher.sh          # 任何平台都能跑；Windows 上会跳过进程相关用例
+bash -n start.command scripts/macos/start.sh       # 只做语法检查，几毫秒
+```
+
+这份测试**不依赖任何测试框架**（macOS 自带的 bash 是 3.2，也就没有 `declare -A`、`${var,,}`、`mapfile`；脚本本身也要按 3.2 写）。它覆盖换行/编码、可执行位、自举常量、版本窗口与进程记录匹配等纯逻辑；TMPDIR 不可写的环境可以传一个目录：`bash scripts/tests/test-macos-launcher.sh /tmp`。
+
+覆盖不到的（真机首次安装、镜像可用性、下载摘要是否与上游一致、双击行为）必须交给 CI 的三个 macOS 作业：`macos-launcher-guards`（守卫测试）、`macos-runtimes`（真下载一遍便携版运行时并校验摘要）、`macos-end-to-end`（从干净检出走完整启动链路）。**维护者没有 Mac，这三个作业目前是唯一的真机验证途径**；改了 macOS 侧的东西要在交付说明里指明期望它们给出什么结果。
 
 ### 本地运行
 
@@ -235,16 +253,21 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 
 ## 启动链路（`start.cmd` / `scripts/`）
 
-首次启动必须能在**什么都没装**的电脑上跑通，这是它的唯一职责。改这几个文件时注意：
+首次启动必须能在**什么都没装**的电脑上跑通，这是它的唯一职责；**Windows 与 macOS 都是这个承诺**。改这几个文件时注意：
 
+- **两个平台是镜像实现，不是一份代码强行跨平台。** Windows 侧在 `scripts/ResumeForge.*.ps1` + `scripts/Start-ResumeForge.ps1`；macOS 侧在 `scripts/macos/lib/{common,python,node}.sh` + `scripts/macos/start.sh`，逐文件对应。**改了一侧的行为就要问另一侧是不是也要改**——两边承诺同样的事，一边修好另一边没修，就是"同一个 bug 只在一个系统上消失"。
 - **`scripts/*.ps1` 里的非 ASCII 字符必须配 UTF-8 BOM。** 真正的规则不是"纯 ASCII"，而是**"有非 ASCII 就必须带 BOM"**：`start.cmd` 走的是 Windows PowerShell 5.1，它把**无 BOM** 的文件按 ANSI 码页解码，于是中文的 UTF-8 字节在中Windows 上被当成 GBK——注释会变成乱码，而**字符串会直接把脚本读崩**（2026-09-21 实测：把 `ResumeForge.Process.ps1` 的 BOM 去掉，PS 5.1 报 33 处语法错误）。加了 BOM 就一切正常。所以启动器的中文提示是允许的，前提是带 BOM。
   - 这条**必须在字节层面校验**：PowerShell 7 解析无 BOM 的文件完全正常，所以任何 pwsh 侧的语法检查（包括本仓库的启动器测试在 pwsh 下跑）和 CI 都看不见这个缺陷。`scripts/tests/Test-Start-ResumeForge.ps1` 现在逐个文件检查"有非 ASCII 就必须有 BOM"。
   - 注意**不要**把这条与下面那条混淆：`backend/requirements*.txt` 才是**必须纯 ASCII**（那条由同一个测试逐字节校验），因为 pip 24.x 会用 locale 编码去解码无 BOM 的 requirements 文件。
+- **`scripts/macos/**` 与根目录的 `*.command` 是 shell 脚本，规则与 `.ps1` 完全不同：必须纯粹 LF、不能带 BOM。** 一行 `\r` 就够毁掉它——内核会把 shebang 读成 `#!/bin/bash\r`，macOS 报 `bad interpreter`。这条**对在 Windows 上编辑极其容易踩**（编辑器默认 CRLF、`Write` 工具也可能写出 CRLF），而且**在 Windows 上跑任何测试都看不出来**，因为 Git Bash 与 PowerShell 都能容忍 CRLF。合规写法是纯 ASCII 或 UTF-8 无 BOM + LF；`.gitattributes` 的 `* text=auto eol=lf` 只保证**入库**的字节，工作区的那一份要靠自己守住。
+- **三个 `*.command` 必须在 git 里带可执行位**（`git update-index --chmod=+x`）。Windows 上 `core.fileMode` 常为 false，不加的话入库是 `100644`，Finder 双击会被拒绝——而 Mac 用户手上只有发布 zip，没有别的补救路径。`scripts/tests/test-macos-launcher.sh` 与 `Test-Build-Release.ps1` 各有一处断言钉着它。
+- **macOS 的自动准备不用 `winget`、不用 `sudo`。** macOS 上没有 `winget`，而 python.org 的 `.pkg` 安装器必须提权，所以那边下载的是**便携版**（Python 用 python-build-standalone 的 `install_only` 包，Node 用官方 darwin 压缩包）解压进 `runtime/tools/`。下载源**先镜像后官方**，但**每个候选都必须过仓库里钉死的 SHA-256**——摘要常量在仓库里、不来自镜像，所以镜像只能"慢或旧"，不能替换内容。改版本号时**四处常量要一起改**：`RF_PYTHON_BOOTSTRAP_VERSION` / `_TAG` / 两个 `SHA256`，以及 `RF_NODE_BOOTSTRAP_VERSION` / 两个 `SHA256`；`scripts/tests/test-macos-launcher.sh` 会把它们逐个钉住。
+- **macOS 的进程记录是扁平的 `key=value`，不是 Windows 那套 JSON。** 文件名也刻意分开（`runtime/backend.macos.pid` vs `runtime/backend.json`）：macOS 不预装 `jq`，自己解析自己写的 JSON 只能靠正则硬凑，而它出错的时刻恰好是最需要可靠的时刻。停止走**整棵进程树**（`pgrep -P` 递归），否则 `npm → node → esbuild` 只杀最上面一层、端口一直被占。PID 复用防护用 `ps -o lstart=` 的**原始字符串**做签名，不做时间换算（不受时区影响）。
 - **`backend/requirements.txt` 必须保持纯 ASCII。** pip 24.x 在文件无 BOM 时会用 locale 编码（中文 Windows 是 cp936）解码，一个中文注释就会让首次 `pip install` 直接抛 `UnicodeDecodeError`。同一条校验也在启动器测试里。
-- **接受的 Python 版本是 3.10 – 3.13**，常量在 `scripts/Start-ResumeForge.ps1`（`$MinimumPythonVersion` / `$MaximumPythonVersion`）。上限存在的原因是依赖锁定版本还没有新解释器的轮子；升级依赖后要同步改这里和 README、`docs/upgrading.md` 的说明。
+- **接受的 Python 版本是 3.10 – 3.13**，常量在 `scripts/Start-ResumeForge.ps1`（`$MinimumPythonVersion` / `$MaximumPythonVersion`）与 `scripts/macos/lib/python.sh`（`RF_PYTHON_MIN_*` / `RF_PYTHON_MAX_*`），**两处要一起改**。上限存在的原因是依赖锁定版本还没有新解释器的轮子；升级依赖后要同步改这里和 README、`docs/upgrading.md` 的说明。
 - **不要手写 `cmd /c "…"` 命令行。** 把 `.cmd` 直接交给 `Start-Process -FilePath`，它会自己套好 `cmd.exe` 的引号；手写的话 `-ArgumentList` 不加引号而 `/s /c` 会剥掉首尾引号，路径含空格就起不来。
-- **启动器里调用原生命令要看 stderr。** `$ErrorActionPreference = "Stop"` 下，任何原生命令写到 stderr 的输出都会变成终止性错误——"预期会失败"的探测（比如在空 venv 上 `import`）必须先把它降成 `Continue` 再读 `$LASTEXITCODE`。
-- 改完必须跑 `scripts/tests/Test-Start-ResumeForge.ps1`；它无法覆盖的（真机首次安装、镜像可用性）要在交付说明里写清楚验证到什么程度。
+- **启动器里调用原生命令要看 stderr。** `$ErrorActionPreference = "Stop"` 下，任何原生命令写到 stderr 的输出都会变成终止性错误——"预期会失败"的探测（比如在空 venv 上 `import`）必须先把它降成 `Continue` 再读 `$LASTEXITCODE`。macOS 侧的对应物是 `set -euo pipefail` 与命令替换：`cmd | grep` 这类管道失败会被 pipefail 放大成函数返回非零，所以取值型函数（如 `log_tail`）要显式 `return 0`。
+- 改完必须跑两边的守卫测试：Windows 跑 `scripts/tests/Test-Start-ResumeForge.ps1`，macOS 跑 `bash scripts/tests/test-macos-launcher.sh`（Windows 上会因为缺 BSD `ps`/`pgrep` 跳过进程相关用例，这是刻意的能力探测，不是失败）。**真机首次安装、镜像可用性、下载摘要这些它们覆盖不到的，要在交付说明里写清楚验证到什么程度**——本地跑不了就说跑不了，别把"没测"说成"测过了"。
 - **`uninstall.cmd` / `scripts/Uninstall-ResumeForge.ps1` 是唯一会主动删东西的入口**，改它必须跑 `scripts/tests/Test-Uninstall-ResumeForge.ps1`。三条不能退让的性质：默认只删启动器生成的东西（`backend\data` 与 `backend\.env` 要留着，`-Purge` 才删）、**永远不删源码**、只在真正的 checkout 里运行。测试全部在临时目录里复制一份脚本来跑，不会碰当前仓库。
 - **往 `backend/app/preflight.py` 的 `_REQUIRED_FILES` 加资源时，必须同步加到 `scripts/Build-Release.ps1` 的 `$RequiredFiles`。** 这是单方向守卫：`scripts/tests/Test-Build-Release.ps1` 会断言"preflight 要的每一样，打包清单都要点名"，漏一项就会让 Windows 的「启动器 + 打包」测试抛 `Build-Release.ps1 does not require 'backend/app/data/xxx'` 而变红——2026-09-21 就是因为它落后 22 项（`ats_keywords.json`、`feature_catalog.py` 与 20 个提示词）让 Windows job 连续多轮失败。注意这份清单是**发布前自检网，不是打包过滤**：`git archive` 本来就会带上全部受追踪文件，漏登记只红测试、不丢文件。
 
@@ -270,7 +293,7 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 git bundle create runtime\git-history-backup-<时间戳>.bundle --all        # 先备份全部历史
 pip install git-filter-repo
 git filter-repo --replace-message <表达式文件> --force                     # 文件内容：regex:(?m)^Co-Authored-By: .*<要删的邮箱>[ \t]*\r?\n?==>
-git remote add origin https://github.com/Magicapple-Coder/ResumeForge.git  # filter-repo 会移除 origin
+git remote add origin https://github.com/magicapple123/ResumeForge.git  # filter-repo 会移除 origin
 git push --force-with-lease origin main
 git push --force origin <受影响的标签>
 ```

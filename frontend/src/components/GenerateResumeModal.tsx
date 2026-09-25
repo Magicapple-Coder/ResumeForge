@@ -1,4 +1,5 @@
 /** AI 生成简历弹窗：配置岗位导向美化/篇幅 -> 流式生成 -> 预览结果（自动保存历史）。 */
+import type { ResumeFormatConfig } from "../types/resumeFormat";
 import { ReloadOutlined } from "@ant-design/icons";
 import {
   Alert,
@@ -15,6 +16,7 @@ import {
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { attachTaskUi, watchResumeTask } from "../utils/backgroundTasks";
 import {
   cancelResumeGenerateTask,
   fetchResumeTemplates,
@@ -218,13 +220,20 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
       });
       setTaskId(started.id);
       setTask(started);
+      // 登记到模块级登记表：关掉弹窗后仍会被追踪，完成时统一弹窗 + 响铃。
+      watchResumeTask(started, job ? `为「${job.title}」生成简历` : "生成通用简历");
     } catch (err) {
       setStage("error");
       setErrorMsg(err instanceof Error ? err.message : "启动生成失败，请重试");
     }
   };
 
-  // 轮询后台任务：进入终态前每 1.5s 拉一次状态（与 useTaskPolling 同一套轮询模型）。
+  // 轮询后台任务：进入终态前每 1.5s 拉一次状态（弹窗内的进度显示用它）。
+  //
+  // 与 `utils/backgroundTasks` 的分工：**这一份只管弹窗里的进度显示**，"关掉弹窗之后
+  // 仍然被追踪、并在完成时统一提醒"由登记表的轮询负责。两边各拉一次是有意的取舍——
+  // 共享同一份 React 状态会让"完成时把任务从列表里删掉"和"弹窗还要读终态"互相打架
+  // （实测会陷入无限更新）。两条轮询互不依赖，任一条断掉都不影响另一条。
   useEffect(() => {
     if (taskId == null) return;
     let disposed = false;
@@ -244,6 +253,12 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
     };
   }, [taskId]);
 
+  // 弹窗开着时声明"界面在看这个任务"：完成后用右上角卡片提醒，不弹居中弹窗打断用户。
+  useEffect(() => {
+    if (!open || taskId == null) return;
+    return attachTaskUi(taskId);
+  }, [open, taskId]);
+
   // 任务进入终态后的收尾：完成→取简历进预览并提醒；取消→回配置；失败→错误。
   useEffect(() => {
     if (!task) return;
@@ -258,15 +273,8 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
         setStage("error");
         return;
       }
-      notification.success({
-        message: "简历已生成",
-        description: "已自动保存到简历中心，可以继续微调或导出。",
-        actions: (
-          <Button size="small" onClick={() => navigate("/resumes")}>
-            查看简历
-          </Button>
-        ),
-      });
+      // 完成提醒（弹窗 + 提示音）由 `utils/backgroundTasks` 统一发：只有它知道用户
+      // 是"还在看弹窗"还是"已经走开了"，也只有它能保证关掉弹窗后仍然提醒。
       void loadPreview(resumeId);
     } else if (task.status === "cancelled") {
       setTaskId(null);
@@ -338,7 +346,7 @@ export default function GenerateResumeModal({ job, open, initialTitle = "", onCl
   };
 
   /** 「自动一页」已由诊断卡写回配置，这里只需按新配置重渲染一次。 */
-  const applyFittedFormat = async (formatConfig: Record<string, number | string>) => {
+  const applyFittedFormat = async (formatConfig: ResumeFormatConfig) => {
     const detail = result?.detail;
     if (!detail) return;
     const next: ResumeLayout = { ...layout, format_config: formatConfig };

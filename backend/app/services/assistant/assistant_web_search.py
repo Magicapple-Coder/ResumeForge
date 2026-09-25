@@ -59,6 +59,18 @@ _THIRD_PARTY_HOST_MARKERS = frozenset(
         "lagou.com",
         "liepin.com",
         "51job.com",
+        "zhaopin.com",
+        "recruit.net",
+        "yupao.com",
+        "gaoxiaojob.com",
+        "jobui.com",
+        "job592.com",
+        "job5156.com",
+        "jobcn.com",
+        "jobmd.cn",
+        "chinahr.com",
+        "kanzhun.com",
+        "job001.cn",
         "nowcoder.com",
         "zhihu.com",
         "csdn.net",
@@ -68,10 +80,43 @@ _THIRD_PARTY_HOST_MARKERS = frozenset(
         "baike.baidu.com",
         "sohu.com",
         "163.com",
-        "qq.com",
     }
 )
 _OFFICIAL_HOST_SUFFIXES = (".gov.cn", ".edu.cn", ".org.cn", ".ac.cn")
+_RESUMEFORGE_MARKERS = (
+    "简历通",
+    "resumeforge",
+    "求职助手",
+    "官网采集界面",
+    "简历预览",
+    "求职统计界面",
+    "求职进度界面",
+)
+_LOCAL_APP_ACTION_MARKERS = (
+    "怎么",
+    "如何",
+    "什么是",
+    "能做什么",
+    "介绍",
+    "文档",
+    "指南",
+    "关于",
+    "使用",
+    "在哪",
+    "哪里",
+    "按钮",
+    "功能",
+    "设置",
+    "更新",
+    "安装",
+    "打开",
+    "修改",
+    "删除",
+    "查询",
+    "有没有",
+    "能不能",
+    "是否",
+)
 
 
 class AssistantSearchError(Exception):
@@ -121,6 +166,21 @@ def _safe_result_url(value: str) -> str:
 
 def _normalized_query(value: str) -> str:
     return " ".join(_QUERY_SEPARATOR_RE.sub(" ", value).split())[:_MAX_QUERY_CHARS]
+
+
+def is_local_resume_forge_question(value: str) -> bool:
+    """判断问题是不是在问 ResumeForge 自身的用法。
+
+    这类问题的权威资料在本地能力地图、README 和使用指南里。即使用户打开了联网开关，
+    也不应把「简历通怎么用」送进公开搜索，否则很容易拿到无关的同名产品或通用简历文章。
+    该判断只用于跳过自动预搜/拦截模型误用搜索，不影响用户查询外部招聘信息。
+    """
+    normalized = _normalized_query(value).casefold()
+    if not normalized:
+        return False
+    has_product = any(marker.casefold() in normalized for marker in _RESUMEFORGE_MARKERS)
+    has_action = any(marker.casefold() in normalized for marker in _LOCAL_APP_ACTION_MARKERS)
+    return has_product and has_action
 
 
 def _matched_career_terms(value: str) -> list[str]:
@@ -363,6 +423,22 @@ def _deduplicate(results: list[dict[str, str]]) -> list[dict[str, str]]:
     return unique
 
 
+def is_third_party_source(url: str) -> bool:
+    """这个地址是不是**第三方平台**（招聘网站、问答/内容站），而不是用人单位自己的页面。
+
+    公开出来是因为有第二个使用者：官网采集的「按岗位需求发现公司」要把这类结果**整个剔掉**
+    ——把智联、拉勾的页面当成"某公司的官网"去采集是错的，而用户会以为那就是官网。
+    判据只留一份，两边共用；两处各写一份必然漂移，而漂移的表现是"排序看着没问题、
+    候选清单里却混进了招聘网站"。
+    """
+    host = (urlsplit(url).hostname or "").casefold()
+    # ``join.qq.com`` 是腾讯自己的招聘站点；不能因为历史上把 qq.com 当成内容站标记，
+    # 就把真实雇主官网从「按岗位找公司」里删掉。
+    if host in {"join.qq.com", "www.join.qq.com"}:
+        return False
+    return any(marker in host for marker in _THIRD_PARTY_HOST_MARKERS)
+
+
 def official_like_score(result: dict[str, str]) -> int:
     """用人单位官网/招聘页排序权重；第三方平台降权，但不会被丢掉。"""
     host = (urlsplit(result["url"]).hostname or "").casefold()
@@ -371,7 +447,7 @@ def official_like_score(result: dict[str, str]) -> int:
         score += 2
     if _has_recruitment_url_marker(result["url"]):
         score += 2
-    if any(marker in host for marker in _THIRD_PARTY_HOST_MARKERS):
+    if is_third_party_source(result["url"]):
         score -= 2
     if "招聘" in f"{result['title']} {result['snippet']}":
         score += 1

@@ -42,13 +42,15 @@ import {
   SkillEditor,
   AwardEditor,
 } from "./resume-editor/ResumeSectionEditors";
+import FieldRewritePanel from "./resume-editor/FieldRewritePanel";
 import { resolveEditorTarget } from "./resume-editor/ResumeEditorTarget";
+import { readResumeValueByPath } from "../utils/resumeFieldPath";
 export default function ResumeEditorModal({
   open,
   content,
   onClose,
   onSave,
-  title = "微调简历内容",
+  title = "手动调整简历内容",
   description,
   saveLabel = "保存并更新预览",
   referencePanel,
@@ -57,13 +59,22 @@ export default function ResumeEditorModal({
 }: Props) {
   const { message } = App.useApp();
   const [form] = Form.useForm<ResumeContent>();
+  // `FormInstance<ResumeContent>` 的 setFieldValue 只接受"字面量路径联合"，
+  // 而这里的字段名是 `resolveEditorTarget` 算出来的数组。两者本来就是同一个东西
+  // （同一份映射），这里做一次显式的类型擦除，比在每个调用点写一遍断言清楚。
+  const setFormValue = (name: (string | number)[], value: unknown) =>
+    (form.setFieldValue as unknown as (n: (string | number)[], v: unknown) => void)(name, value);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
+  // AI 改写后的内容快照：表单里只落了被改的那一栏，这里留一份完整内容给面板回显
+  // 「当前内容」。父组件的 content 在整个弹窗生命周期里是不变的（保存后才换）。
+  const [rewrittenContent, setRewrittenContent] = useState<ResumeContent | null>(null);
   const screens = Grid.useBreakpoint();
 
   useEffect(() => {
     if (!open || !content) return;
     form.setFieldsValue(content);
+    setRewrittenContent(null);
     const target = initialTarget ? resolveEditorTarget(initialTarget) : null;
     setActiveTab(target?.tab ?? "basic");
     if (!target || target.name.length === 0) return;
@@ -227,6 +238,27 @@ export default function ResumeEditorModal({
             layout="vertical"
             onFinish={(values) => void handleFinish(values as ResumeContent)}
           >
+            {/* 从预览点某一栏进来时，先把"按我的要求改这一栏"摆在最上面：
+                用户的意图就是改他刚点的那一处，不该让他先自己找到对应标签页。
+                写入的是表单值（不落库），仍要点「保存并更新预览」才算改过简历。 */}
+            {resumeId && initialTarget && content ? (
+              <FieldRewritePanel
+                resumeId={resumeId}
+                content={rewrittenContent ?? content}
+                path={initialTarget}
+                onChange={(next) => {
+                  // 只更新被改写的那一栏对应的表单值：整份 setFieldsValue 会把用户
+                  // 在这个弹窗里已经手改过、但还没保存的内容一起覆盖掉。
+                  //
+                  // 表单字段名要与编辑器一致：列表里的某一条要点在表单里是整个数组
+                  // （`projects.0.description`），所以按**解析后的字段名**从新内容里取值，
+                  // 而不是按原始路径取那一条字符串。
+                  const target = resolveEditorTarget(initialTarget);
+                  setFormValue(target.name, readResumeValueByPath(next, target.name));
+                  setRewrittenContent(next);
+                }}
+              />
+            ) : null}
             <Tabs activeKey={activeTab} items={tabItems} onChange={setActiveTab} />
           </Form>
         </div>

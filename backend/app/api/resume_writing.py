@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.claim import ClaimRecord
 from ..models.resume import ResumeRecord
+from ..schemas.resume import ResumeContent
 from ..schemas.resume_writing import (
     PhrasesOut,
     PhrasesRequest,
@@ -20,6 +21,8 @@ from ..schemas.resume_writing import (
     PolishRequest,
     ResumeDiffOut,
     ResumeDiffRequest,
+    RewriteFieldOut,
+    RewriteFieldRequest,
     StarRewriteOut,
     StarRewriteRequest,
     TranslateOut,
@@ -29,6 +32,11 @@ from ..services import trash
 from ..services.llm import create_provider
 from ..services.llm.base import LLMError
 from ..services.resume.resume_diff import build_resume_diff
+from ..services.resume.resume_field_rewrite import (
+    FieldPathError,
+    resolve_field_target,
+    rewrite_field,
+)
 from ..services.resume.resume_writing import generate_phrases, polish, rewrite_star, translate
 from ..services.settings_service import get_llm_config
 
@@ -102,6 +110,48 @@ async def polish_resume(
         logger.exception("润色发生内部错误")
         raise HTTPException(status_code=502, detail="润色失败，请稍后重试") from exc
     return PolishOut(result=result)
+
+
+@router.post("/{resume_id}/writing/rewrite-field", response_model=RewriteFieldOut)
+async def rewrite_resume_field(
+    resume_id: int, payload: RewriteFieldRequest, db: Session = Depends(get_db)
+):
+    """按用户要求重写简历里的某一栏，返回**建议**（不改动已保存的简历）。
+
+    与 `writing/polish` 的区别：那个只知道"一段文本"，这个知道"这是哪一栏、它属于谁"，
+    所以能听懂"这条要点补上数字""项目名别用缩写"这类针对具体位置的指令。
+
+    不落库是刻意的：AI 不能静默改用户已经导出过的内容。前端把结果填进表单，
+    用户看过、点保存，才算数。
+    """
+    record = _load_record(db, resume_id)
+    content = ResumeContent.model_validate(record.content or {})
+    try:
+        target = resolve_field_target(content, payload.path)
+    except FieldPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    provider = _require_provider(db)
+    db.close()
+    try:
+        result = await rewrite_field(provider, target, payload.instruction)
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"改写这一栏失败：{exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=f"改写这一栏失败：{exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - 为用户提供可理解的失败提示
+        logger.exception("字段改写发生内部错误")
+        raise HTTPException(status_code=502, detail="改写这一栏失败，请稍后重试") from exc
+    return RewriteFieldOut(
+        path=target.path,
+        label=target.label,
+        context=target.context,
+        original=target.text,
+        # 整段（lines）时 `result` 是逐条拼接版，`lines` 给逐条的原始结果；
+        # 单段（text）时 `result` 就是那句改写，`lines` 留空。
+        result="\n".join(result) if target.kind == "lines" else result[0],
+        kind=target.kind,
+        lines=result if target.kind == "lines" else [],
+    )
 
 
 @router.post("/{resume_id}/writing/translate", response_model=TranslateOut)

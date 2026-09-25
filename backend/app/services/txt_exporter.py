@@ -36,13 +36,14 @@ def strip_markdown(text: str) -> str:
     return "\n".join(lines)
 
 
-def export_txt(resume: ResumeContent) -> str:
+def export_txt(resume: ResumeContent, *, section_order: list[str] | None = None) -> str:
     """把结构化简历渲染成纯文本。
 
     直接复用 ``export_markdown`` 生成正文，再剥离标记——保证「个人总结 / 教育 / 经历 /
     校园 / 项目 / 技能 / 荣誉」的分区与顺序、以及每个字段的文案都和 Markdown 同源。
+    分区顺序由 ``section_order`` 决定（用户的版式设置），不传则用默认顺序。
     """
-    return strip_markdown(export_markdown(resume))
+    return strip_markdown(export_markdown(resume, section_order=section_order))
 
 
 __all__ = ["export_txt", "strip_markdown"]

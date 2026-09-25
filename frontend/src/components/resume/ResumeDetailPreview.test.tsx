@@ -14,7 +14,15 @@ import type { ResumeDetail, ResumeLayout } from "../../types";
 import ResumeDetailPreview from "./ResumeDetailPreview";
 
 // 预览是真的 iframe + 量高，与本用例无关，替掉以免拖慢/拖挂。
-vi.mock("../ResumePreview", () => ({ default: () => <div data-testid="preview" /> }));
+// 预览本身由 ResumePreview.test.tsx 覆盖；这里把它替成一个能"点中某一栏"的桩，
+// 用来验证**调用点**的接线：点中的那一栏应打开"只编辑这一部分"。
+vi.mock("../ResumePreview", () => ({
+  default: ({ onEditTarget }: { onEditTarget?: (path: string) => void }) => (
+    <button type="button" onClick={() => onEditTarget?.("summary")}>
+      模拟点中「个人总结」
+    </button>
+  ),
+}));
 vi.mock("./ResumeLayoutDiagnosisCard", () => ({ default: () => null }));
 vi.mock("../ResumeLayoutControls", () => ({ default: () => null }));
 vi.mock("../ExportButtons", () => ({ default: () => null }));
@@ -99,11 +107,11 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("ResumeDetailPreview 的「微调内容」", () => {
-  it("打开编辑弹窗后能拿到「写作增强」页签", async () => {
+describe("ResumeDetailPreview 的「手动调整」", () => {
+  it("打开整份编辑器后能拿到「写作增强」页签", async () => {
     renderPreview();
 
-    fireEvent.click(await screen.findByRole("button", { name: /微调内容/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /手动调整/ }));
 
     // 页签出现 = 调用点确实把简历 id 传给了编辑弹窗；没传的话这里会一直找不到。
     expect(await screen.findByText("写作增强")).toBeInTheDocument();
@@ -111,6 +119,41 @@ describe("ResumeDetailPreview 的「微调内容」", () => {
 });
 
 describe("ResumeDetailPreview 底部按钮排满整行", () => {
+  it("「查看大图」打开 1:1 预览弹窗，并把当前页数带过去", async () => {
+    renderPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /查看大图/ }));
+
+    // 弹窗里复用同一个预览组件：页数必须与外面一致，否则"大图"看到的又是另一种分页。
+    // 弹窗打开、并且说明里带上了当前页数（页数一致是这一块的重点）。
+    expect(await screen.findByText("查看简历大图")).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`与当前 ${LAYOUT.page_limit} 页的设置一致`)),
+    ).toBeInTheDocument();
+    // 弹窗里复用同一个预览组件（渲染细节由 ResumePreview 自己的测试覆盖，这里只钉"用的是它"）。
+    expect(document.querySelector(".resume-zoom-body")).not.toBeNull();
+  });
+
+  it("预览里点中某一栏只打开「只编辑这一部分」，不是整份编辑器", async () => {
+    renderPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /模拟点中/ }));
+
+    // 打开的是"只改这一栏"的窗口：带保存这一栏的按钮与那一栏的当前内容。
+    expect(await screen.findByRole("button", { name: /保存这一栏/ })).toBeInTheDocument();
+    expect(screen.getByText("编辑：个人总结")).toBeInTheDocument();
+    // 整份编辑器（有「写作增强」页签）没有被打开。
+    expect(screen.queryByText("写作增强")).not.toBeInTheDocument();
+  });
+
+  it("「手动调整」才打开整份编辑器", async () => {
+    renderPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /手动调整/ }));
+
+    expect(await screen.findByText("写作增强")).toBeInTheDocument();
+  });
+
   it("底部操作条使用 grid 布局类，且所有动作按钮都渲染出来", () => {
     renderPreview();
 
@@ -120,7 +163,8 @@ describe("ResumeDetailPreview 底部按钮排满整行", () => {
     expect(footer!.className).toContain("resume-detail-footer");
     // 八项动作按钮都在（ExportButtons 在测试里被替成 null，不影响这一层）。
     for (const name of [
-      "微调内容",
+      "手动调整",
+      "查看大图",
       "生成岗位优化建议",
       "查看对应岗位",
       "咨询求职助手",

@@ -15,6 +15,7 @@
  * 的 [0.88, 1.16] 之内，因此无需放宽后端字段范围。
  */
 import type { ResumeFontScale, ResumeFontScaleOption, ResumeLayout } from "../types";
+import type { ResumeFormatConfig } from "../types/resumeFormat";
 
 /** `format_config` 里字号系数的键，与后端 `FORMAT_FIELDS` 一致。 */
 export const FONT_SCALE_ADJUST_KEY = "font_scale_adjust";
@@ -128,8 +129,8 @@ export function layoutForFontPx(layout: ResumeLayout, px: number, tiers: FontTie
 export function withFontAdjust(
   formatConfig: ResumeLayout["format_config"],
   coefficient: number,
-): Record<string, number | string> {
-  const next: Record<string, number | string> = { ...(formatConfig ?? {}) };
+): ResumeFormatConfig {
+  const next: ResumeFormatConfig = { ...(formatConfig ?? {}) };
   if (Math.abs(coefficient - 1) < 1e-6) delete next[FONT_SCALE_ADJUST_KEY];
   else next[FONT_SCALE_ADJUST_KEY] = coefficient;
   return next;

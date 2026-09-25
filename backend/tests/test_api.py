@@ -46,7 +46,7 @@ def test_profile_roundtrip(client):
     saved = response.json()
     assert saved["name"] == "张三" and len(saved["educations"]) == 1
     assert saved["campus_experiences"][0]["organization"] == "学生会"
-    assert saved["section_order"][:2] == ["projects", "basic_info"]
+    assert saved["section_order"][:2] == ["basic_info", "projects"]
 
     response = client.get("/api/profile")
     assert response.json()["educations"][0]["school"] == "天津工业大学"

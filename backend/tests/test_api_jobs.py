@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.models.job import Job
+
 
 SAMPLE_JOB_TEXT = """AI应用客户端开发工程师 - 剪映CapCut
 深圳、广州
@@ -225,26 +227,40 @@ def test_job_list_search_and_pagination(client):
     assert response.json()["total"] == 2 and len(response.json()["items"]) == 1
 
 
-def test_job_list_source_kind_filter(client):
+def test_job_list_source_kind_filter(client, db_session):
     """来源筛选只按「自动采集 / 手动添加」二分，而不是去猜 source 站点名。
 
-    采集写入的 recognition_source 是固定值「岗位采集」，手动录入则是一串五花八门的
-    值（含空串），所以用「等于岗位采集」判定采集、其余都算手动，才是稳定口径。
+    投递台与官网采集的历史数据分别写过「岗位采集」和「官网采集」，两者都必须归到自动
+    采集；旧官网数据即使只把「官网采集」写进 source，也不能漏掉。
     """
     client.post(
         "/api/jobs",
         json={"title": "采集岗", "company": "X公司", "recognition_source": "岗位采集"},
     )
+    client.post(
+        "/api/jobs",
+        json={"title": "官网采集岗", "company": "Z公司", "recognition_source": "官网采集"},
+    )
     client.post("/api/jobs", json={"title": "手动岗", "company": "Y公司"})
+    db_session.add(
+        Job(
+            title="旧官网岗",
+            company="W公司",
+            source="官网采集",
+            recognition_source="备选岗位导入",
+        )
+    )
+    db_session.commit()
 
     collected = client.get("/api/jobs", params={"source_kind": "collected"}).json()
-    assert collected["total"] == 1 and collected["items"][0]["title"] == "采集岗"
+    assert collected["total"] == 3
+    assert {item["title"] for item in collected["items"]} == {"采集岗", "官网采集岗", "旧官网岗"}
 
     manual = client.get("/api/jobs", params={"source_kind": "manual"}).json()
     assert manual["total"] == 1 and manual["items"][0]["title"] == "手动岗"
 
     # 不传该参数时仍是全量。
-    assert client.get("/api/jobs").json()["total"] == 2
+    assert client.get("/api/jobs").json()["total"] == 4
 
 
 def test_search_across_jobs(client):

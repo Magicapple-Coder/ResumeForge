@@ -13,6 +13,7 @@ import {
   EyeOutlined,
   PlusOutlined,
   RobotOutlined,
+  ImportOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import { App, Button, Card, Collapse, Dropdown, Empty, Space, Table, Tag, Typography } from "antd";
@@ -30,6 +31,7 @@ import FileDropZone from "../common/FileDropZone";
 import { RowActions } from "../common/RowActions";
 import BuiltinStyleGallery from "./BuiltinStyleGallery";
 import FormatTemplateEditorModal from "./FormatTemplateEditorModal";
+import TemplateImportModal from "./TemplateImportModal";
 import StyleTemplateEditorModal from "./StyleTemplateEditorModal";
 import TemplatePreviewModal from "./TemplatePreviewModal";
 
@@ -68,6 +70,7 @@ export default function TemplateWorkbench({ onChanged }: Props) {
     template: ResumeTemplateDetail | null;
   }>({ open: false, template: null });
   const [previewTemplate, setPreviewTemplate] = useState<ResumeTemplateDetail | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -320,6 +323,11 @@ export default function TemplateWorkbench({ onChanged }: Props) {
         style={{ marginTop: 16 }}
         extra={
           <Space wrap>
+            {/* 「导入目标模板」：手里有一份想照着做的简历（图片/PDF/Word）时，
+                让模型读出它的版式参数，省掉逐项手调。产出的是一份格式模板。 */}
+            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+              导入目标模板
+            </Button>
             <Button icon={<RobotOutlined />} onClick={() => askAssistant("帮我新建一个格式模板：")}>
               找求职助手制作
             </Button>
@@ -379,6 +387,11 @@ export default function TemplateWorkbench({ onChanged }: Props) {
         template={previewTemplate}
         formatPresets={catalog?.format_presets ?? []}
         onClose={() => setPreviewTemplate(null)}
+      />
+      <TemplateImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void load()}
       />
     </div>
   );

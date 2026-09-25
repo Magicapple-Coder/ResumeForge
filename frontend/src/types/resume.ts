@@ -112,7 +112,7 @@ export interface ResumeFormatPreset {
   name: string;
   label: string;
   description: string;
-  config: Record<string, string | number>;
+  config: ResumeFormatConfig;
   custom?: boolean;
   id?: number | null;
 }
@@ -123,6 +123,9 @@ export interface ResumeTemplateCatalog {
   /** 格式模板的可调参数清单与内置预设。 */
   format_fields: ResumeFormatField[];
   format_presets: ResumeFormatPreset[];
+  /** 正文分区清单（「调整板块顺序」用）。键名、标签与默认顺序都由后端下发。 */
+  section_options: { key: string; label: string }[];
+  default_section_order: string[];
   /** 三个版式参数的默认值由后端下发，前端不写死——改默认值只改一处。 */
   defaults: {
     template: string;
@@ -184,8 +187,11 @@ export interface ResumeBrief {
   created_at: string;
 }
 
-/** 版式覆盖：键取自 `ResumeFormatField.key`，值都是数值（颜色也是十六进制字符串）。 */
-export type ResumeFormatConfig = Record<string, number | string>;
+/** 版式覆盖：键取自 `ResumeFormatField.key`，值都是数值（颜色也是十六进制字符串）。
+ *  例外是 `section_order`：它是一串分区键，不是 CSS 数值（见 resumeSectionOrder.ts）。 */
+import type { ResumeFormatConfig } from "./resumeFormat";
+
+export type { ResumeFormatConfig };
 
 /** 「自动一页」用的实测高度，单位随意、只要两者同单位（前端传的是 CSS 像素）。 */
 export interface ResumeLayoutMeasure {

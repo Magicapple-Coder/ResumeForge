@@ -24,10 +24,12 @@ export default function ProfilePage() {
   const [generalTitle, setGeneralTitle] = useState("");
   const [generateOpen, setGenerateOpen] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
-  // 查看态默认折叠每个分区，只留标题；点标题展开、页头按钮一键全部展开/收起。
-  // 编辑态需要看全字段，因此折叠只在非编辑态生效（ProfileSectionStack 里按 `!editing` 取用）。
+  // 查看态默认**全展开**：这一页是"我的资料"，用户进来就是要看/改内容的，
+  // 一屏折叠标题栏既看不到内容、又要多点好几下（用户反馈"应该默认展开"）。
+  // 想收起来的话，页头「全部收起」一键搞定。折叠只在非编辑态生效
+  // （ProfileSectionStack 里按 `!editing` 取用）。
   const [collapsedSections, setCollapsedSections] = useState<Set<ProfileSectionKey>>(
-    () => new Set(DEFAULT_SECTION_ORDER),
+    () => new Set(),
   );
   const allExpanded = collapsedSections.size === 0;
 

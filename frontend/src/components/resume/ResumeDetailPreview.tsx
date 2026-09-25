@@ -4,16 +4,18 @@
  * 此前同一套预览有两份实现（`ResumeDetailModal` 的完整预览、`GenerateResumeModal` 的
  * preview 阶段各写一遍），按钮、诊断卡与导出项都各自维护，改一处漏一处。现在把它们
  * 收进这一个组件：头部元信息 Tags + 版式控件（compact）+ 版面诊断卡 + 简历预览 + 底部
- * 完整操作（微调 / 岗位建议 / 查看岗位 / 咨询助手 / 质量检测 / 导出选项 / 一键脱敏 /
+ * 完整操作（手动调整 / 岗位建议 / 查看岗位 / 咨询助手 / 质量检测 / 导出选项 / 一键脱敏 /
  * 离线分享）+ 导出按钮，以及这些操作各自挂载的子弹窗。
  *
  * 只依赖子组件与 `api/resumes`，**不** import `ResumeDetailModal` / `GenerateResumeModal`，
  * 避免循环依赖（设计 §9 ⑨）。
  */
+import type { ResumeFormatConfig } from "../../types/resumeFormat";
 import {
   BulbOutlined,
   EditOutlined,
   ExportOutlined,
+  ZoomInOutlined,
   EyeInvisibleOutlined,
   FolderOpenOutlined,
   MessageOutlined,
@@ -29,6 +31,9 @@ import type { ResumeContent, ResumeDetail, ResumeLayout } from "../../types";
 import type { LayoutMeasure } from "../../utils/resumeLayoutMeasure";
 import ExportButtons from "../ExportButtons";
 import ExportOptionsModal from "../ExportOptionsModal";
+import { describeResumeFieldPath } from "../../utils/resumeFieldPath";
+import ResumeFieldQuickEditModal from "./ResumeFieldQuickEditModal";
+import ResumeZoomModal from "./ResumeZoomModal";
 import RedactionModal from "../RedactionModal";
 import ResumeEditorModal from "../ResumeEditorModal";
 import ResumeLayoutControls from "../ResumeLayoutControls";
@@ -60,7 +65,7 @@ interface Props {
   onMeasure: (measure: LayoutMeasure | null) => void;
   onApplyLayout: (next: ResumeLayout) => void;
   /** 「自动一页」试出方案并保存后的重渲染（只重渲染，不再写回版式）。 */
-  onApplyFittedFormat: (formatConfig: Record<string, number | string>) => void;
+  onApplyFittedFormat: (formatConfig: ResumeFormatConfig) => void;
   onSaveEditedResume: (content: ResumeContent) => Promise<void>;
   /** 是否已经生成过岗位优化建议：决定按钮文案是「生成」还是「查看」。 */
   suggestionsGenerated: boolean;
@@ -95,6 +100,9 @@ export default function ResumeDetailPreview({
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [exportOptionsOpen, setExportOptionsOpen] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  // 「只编辑选中的这一部分」：预览里点中哪一栏就只改哪一栏（与「手动调整」分开）。
+  const [quickEditPath, setQuickEditPath] = useState<string | null>(null);
   const [redactionOpen, setRedactionOpen] = useState(false);
   const [sharePackageOpen, setSharePackageOpen] = useState(false);
   // 内部再包一层引用：父组件可能传 null（尚未量到），子组件需要一份稳定的 ref 传入 ResumePreview。
@@ -159,10 +167,12 @@ export default function ResumeDetailPreview({
         warnings={detail.warnings}
         onLayoutStatus={onLayoutStatus}
         onMeasure={onMeasure}
-        onEditTarget={(path) => {
-          setEditorTarget(path);
-          setEditorOpen(true);
-        }}
+        // 鼠标划过纸面时，工具栏要说出"现在指向的是哪一栏"——这要靠简历内容才起得准
+        // （没有内容只能说出「项目经历的第 2 条要点」，说不出是哪个项目）。
+        describePath={(path) => describeResumeFieldPath(path, detail.content)}
+        // 预览里点中的那一栏 → 只编辑这一栏（快速编辑），不打开整份编辑器。
+        // 通读、跨栏改、写作增强都留给「手动调整」。
+        onEditTarget={(path) => setQuickEditPath(path)}
       />
       {/* 固定在弹窗底部：内容长（版面诊断 + 预览）时不必一路翻到最后才够得着这些按钮。
           按钮区是 CSS Grid：每个按钮独占一格、block 拉满整格，自动铺满整行不留右侧空当；
@@ -176,7 +186,10 @@ export default function ResumeDetailPreview({
             setEditorOpen(true);
           }}
         >
-          微调内容
+          手动调整
+        </Button>
+        <Button block icon={<ZoomInOutlined />} onClick={() => setZoomOpen(true)}>
+          查看大图
         </Button>
         <Button
           block
@@ -248,7 +261,34 @@ export default function ResumeDetailPreview({
       <ExportOptionsModal
         recordId={detail.id}
         open={exportOptionsOpen}
+        // 把预览用的页数传进去：否则导出弹窗发的是"不指定"，由后端取记录里存的旧值——
+        // 用户在预览里把页数改成 2、还没保存就导出，就会得到"预览 2 页、导出 1 页"。
+        initialPageLimit={layout.page_limit}
         onClose={() => setExportOptionsOpen(false)}
+      />
+      <ResumeFieldQuickEditModal
+        open={quickEditPath !== null}
+        resumeId={detail.id}
+        content={detail.content}
+        path={quickEditPath}
+        onClose={() => setQuickEditPath(null)}
+        onSaved={onSaveEditedResume}
+      />
+      <ResumeZoomModal
+        open={zoomOpen}
+        html={html}
+        warnings={detail.warnings}
+        pages={layout.page_limit}
+        describePath={(path) => describeResumeFieldPath(path, detail.content)}
+        onClose={() => setZoomOpen(false)}
+        onEditTarget={(path) => {
+          setZoomOpen(false);
+          setQuickEditPath(path);
+        }}
+        onExport={() => {
+          setZoomOpen(false);
+          setExportOptionsOpen(true);
+        }}
       />
       <RedactionModal
         recordId={detail.id}

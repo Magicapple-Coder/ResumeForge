@@ -15,6 +15,8 @@ import { downloadBlob } from "../utils/download";
 interface Props {
   recordId: number;
   open: boolean;
+  /** 预览当前使用的页数上限；不传则让后端按记录里存的版式决定。 */
+  initialPageLimit?: number;
   onClose: () => void;
 }
 
@@ -30,7 +32,7 @@ const PAGE_LIMIT_OPTIONS = [
   { value: 3, label: "3 页" },
 ];
 
-export default function ExportOptionsModal({ recordId, open, onClose }: Props) {
+export default function ExportOptionsModal({ recordId, open, initialPageLimit, onClose }: Props) {
   const { message } = App.useApp();
   const [formats, setFormats] = useState<ExportFormat[]>(["pdf"]);
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
@@ -39,7 +41,10 @@ export default function ExportOptionsModal({ recordId, open, onClose }: Props) {
   const [redactOptions, setRedactOptions] = useState<RedactionOptions>(DEFAULT_REDACTION_OPTIONS);
   const [marginMm, setMarginMm] = useState<number | null>(null);
   const [fontScale, setFontScale] = useState<ResumeFontScale | null>(null);
-  const [pageLimit, setPageLimit] = useState<number | null>(null);
+  // 初值取"预览当前用的页数"，而不是 null（null 会被后端解释成"按记录里存的那份版式"）。
+  // 用户在预览里改过页数、还没保存就导出时，null 会导出一份与眼前所见不同页数的文件——
+  // 这正是"预览 2 页、导出 1 页"的来源。
+  const [pageLimit, setPageLimit] = useState<number | null>(initialPageLimit ?? null);
   const [includePhoto, setIncludePhoto] = useState(true);
   const [exporting, setExporting] = useState(false);
 

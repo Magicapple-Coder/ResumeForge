@@ -85,6 +85,7 @@ from ..services.resume.resume_templates import (
     validated_format_config,
     template_options_with_custom,
 )
+from ..services.resume.resume_sections import DEFAULT_SECTION_ORDER, section_label
 from ..services.settings_service import get_llm_config
 from ..services.watermark import WatermarkError
 
@@ -109,6 +110,12 @@ def read_resume_templates(db: Session = Depends(get_db)):
         "templates": template_options_with_custom(custom_template_options(db)),
         "font_scales": font_scale_options(),
         "format_fields": format_field_options(),
+        # 正文分区清单（给「调整板块顺序」用）。键名、标签与顺序定义都在
+        # services/resume/resume_sections.py，四个渲染器读的是同一份。
+        "section_options": [
+            {"key": key, "label": section_label(key)} for key in DEFAULT_SECTION_ORDER
+        ],
+        "default_section_order": list(DEFAULT_SECTION_ORDER),
         "format_presets": [
             {
                 "name": item["name"],

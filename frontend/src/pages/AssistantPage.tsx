@@ -51,7 +51,6 @@ export default function AssistantPage() {
   const [resumeId, setResumeId] = useState<number | undefined>(() =>
     positiveId(searchParams.get("resume_id")),
   );
-  const [includeProfile, setIncludeProfile] = useState(false);
   const [webSearch, setWebSearch] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(readStoredEffort);
   const [groupTarget, setGroupTarget] = useState<AssistantConversationBrief | null>(null);
@@ -69,6 +68,7 @@ export default function AssistantPage() {
   const newConversationAppliedRef = useRef(false);
   const conversationsState = useAssistantConversations({ message, startNew });
   const {
+    startDraft,
     activeId,
     activeIdRef,
     detail,
@@ -186,7 +186,6 @@ export default function AssistantPage() {
     clearQuote,
     jobId,
     resumeId,
-    includeProfile,
     webSearch,
     reasoningEffort,
   });
@@ -239,13 +238,17 @@ export default function AssistantPage() {
     selectConversation(requestedConversationId);
   }, [conversations, conversationsLoading, message, requestedConversationId, selectConversation]);
 
-  // ?new=1：进入页面即新建一个空会话（含 ?ask=/?resume_id= 预填仍照常生效，互不冲突）。
+  // ?new=1：进入一个**草稿对话**——不落库，只在界面上进入"可以开始写"的状态。
+  //
+  // 这里以前是直接 `createConversation()`，于是"点一下问助手、什么都没写就退出"也会在
+  // 列表里留下一条空对话。真正的记录改由发送时懒创建（`send()` 里
+  // `activeIdRef.current ?? await createConversation()`），所以只要用户不发送，就没有记录。
   useEffect(() => {
     if (!startNew || conversationsLoading || conversations === undefined) return;
     if (newConversationAppliedRef.current) return;
     newConversationAppliedRef.current = true;
-    void createConversation();
-  }, [startNew, conversationsLoading, conversations, createConversation]);
+    startDraft();
+  }, [startNew, conversationsLoading, conversations, startDraft]);
 
   // 首次进入且一条会话都没有：自动创建带欢迎消息的引导对话。
   useEffect(() => {
@@ -260,12 +263,11 @@ export default function AssistantPage() {
     // 列表还没回来时 `conversations` 是 undefined，"空"和"没加载"必须分开——
     // 请求失败也走这条分支的话，会因为一次网络抖动就多建一条引导对话。
     if (conversations === undefined) return;
-    if (conversations.length > 0) {
-      // 已经有会话，说明引导这一步早就过去了；记下来，免得用户以后删光会话时又冒出来。
-      markAssistantWelcomeShown();
-      return;
-    }
-    void ensureWelcomeConversation();
+    // 无论是"第一次来"还是"已经用过"，进入这一页都只给一个**草稿**：
+    // 空对话的引导提示由 AssistantEmptyState 就地渲染，不需要为它建一条数据库记录
+    // （用户要的是"没发送就不产生记录"）。标记仍然记下，语义不变：引导文案只需要出现一次。
+    markAssistantWelcomeShown();
+    if (conversations.length === 0) startDraft();
   }, [
     conversations,
     conversationsError,
@@ -280,9 +282,10 @@ export default function AssistantPage() {
   const hasActiveDetail = detail?.id === activeId;
   // "还没有会话"和"会话还在加载"在详情为空时长得一样，但只有后者该显示骨架屏。分不清的话
   // 空态会先画出来、被骨架屏顶掉、再画回来（实测每次进入都闪一下）。
-  const hasNoConversations = !conversationsLoading && (conversations?.length ?? 0) === 0;
+  // "草稿"（activeId 为 null）不是"正在加载"：这时候该直接显示空态与输入框，
+  // 而不是骨架屏——用户点进来就是要马上开始写。
   const awaitingConversation =
-    !hasNoConversations && (detail === null || (detailLoading && !hasActiveDetail));
+    activeId !== null && (detail === null || (detailLoading && !hasActiveDetail));
   const jobOptions = (contextOptions?.jobs ?? []).map((job) => ({
     value: job.id,
     label: `${job.company ? `${job.company} · ` : ""}${job.title}`,
@@ -442,7 +445,6 @@ export default function AssistantPage() {
           attachmentReads={attachmentReads}
           jobId={jobId}
           resumeId={resumeId}
-          includeProfile={includeProfile}
           webSearch={webSearch}
           reasoningEffort={reasoningEffort}
           skills={skills}
@@ -453,7 +455,6 @@ export default function AssistantPage() {
           onContentChange={setContent}
           onJobChange={setJobId}
           onResumeChange={setResumeId}
-          onIncludeProfileChange={setIncludeProfile}
           onWebSearchChange={setWebSearch}
           onReasoningEffortChange={setReasoningEffort}
           onToggleSkill={(skill, enabled) => void handleToggleSkill(skill, enabled)}

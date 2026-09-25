@@ -1,4 +1,4 @@
-﻿<#
+<#
 ResumeForge updater.
 
 Updates the program files only. User data lives in data\ (database, datasets,
@@ -14,7 +14,11 @@ Run it from the project root with:  update.cmd
 [CmdletBinding()]
 param(
     [switch]$SkipDependencies,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [string]$ArchivePath = "",
+    [int[]]$WaitForPids = @(),
+    [int[]]$StopPids = @(),
+    [switch]$Restart
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +78,40 @@ function Test-Excluded {
     return $ExcludedNames -contains $Name
 }
 
+function Wait-ForPidsExit {
+    param(
+        [int[]]$ProcessIds,
+        [int]$TimeoutSeconds = 90
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $running = @($ProcessIds | Where-Object {
+                $_ -gt 0 -and (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+            })
+        if ($running.Count -eq 0) {
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "Timed out waiting for the running application to close: $($ProcessIds -join ', ')"
+}
+
+function Stop-FrontendPid {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $process) { return }
+    $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue).CommandLine
+    if ($commandLine -notmatch "npm\.cmd.*\brun\s+dev") {
+        Write-Warning "Skipped stopping PID $ProcessId because it is not the recorded ResumeForge frontend."
+        return
+    }
+    & taskkill.exe /PID $ProcessId /T /F | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not stop the ResumeForge frontend (PID $ProcessId)."
+    }
+}
+
 function Copy-ProgramFiles {
     param(
         [string]$Source,
@@ -97,33 +135,65 @@ if ($DryRun) {
     Write-Host "Dry run: no file will be changed." -ForegroundColor Yellow
 }
 
-Write-Step "Checking repository"
-$gitDirectory = Join-Path $ProjectRoot ".git"
-$useGit = (Test-Path $gitDirectory) -and (Get-Command git -ErrorAction SilentlyContinue)
+$extracted = $null
+if ($ArchivePath) {
+    $resolvedArchive = Resolve-Path -LiteralPath $ArchivePath -ErrorAction Stop
+    if ($DryRun) {
+        Write-Host "Would use the downloaded archive $resolvedArchive." -ForegroundColor Yellow
+    }
+    else {
+        Write-Step "Preparing the downloaded update archive"
+        $staging = Join-Path $ProjectRoot ("runtime\update-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+        New-Item -ItemType Directory -Force -Path $staging | Out-Null
+        Expand-Archive -LiteralPath $resolvedArchive -DestinationPath $staging -Force
+        $extracted = Get-ChildItem -LiteralPath $staging -Directory | Select-Object -First 1
+        if (-not $extracted) {
+            throw "The downloaded update archive did not contain a folder."
+        }
+    }
+}
+else {
+    Write-Step "Checking repository"
+    $gitDirectory = Join-Path $ProjectRoot ".git"
+    $useGit = (Test-Path $gitDirectory) -and (Get-Command git -ErrorAction SilentlyContinue)
 
-if ($useGit) {
-    Write-Step "Pulling the latest code (git pull --ff-only)"
-    Invoke-External -FilePath "git" -Arguments @("-C", $ProjectRoot, "pull", "--ff-only")
-} elseif ($DryRun) {
-    # 预览时既没下载也没解压，$staging 根本不存在；这里必须整个跳过，
-    # 否则下面的 Get-ChildItem 会撞上"路径不存在"并把脚本终止掉
-    # （$ErrorActionPreference = Stop 下它是终止性错误）。
-    Write-Host "Would download $ArchiveUrl and copy program files over $ProjectRoot." -ForegroundColor Yellow
-    Write-Host "    data, .env, runtime, .venv and node_modules would be kept." -ForegroundColor DarkGray
-} else {
-    Write-Step "Downloading the latest archive"
-    $staging = Join-Path $ProjectRoot ("runtime\update-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
-    $archive = Join-Path $staging "resumeforge.zip"
-    New-Item -ItemType Directory -Force -Path $staging | Out-Null
-    Invoke-WebRequest -Uri $ArchiveUrl -OutFile $archive -UseBasicParsing
-    Expand-Archive -LiteralPath $archive -DestinationPath $staging -Force
-    $extracted = Get-ChildItem -LiteralPath $staging -Directory | Select-Object -First 1
-    if (-not $extracted) {
-        throw "The downloaded archive did not contain a folder. Download it manually from https://github.com/$Repository/releases"
+    if ($useGit) {
+        Write-Step "Pulling the latest code (git pull --ff-only)"
+        Invoke-External -FilePath "git" -Arguments @("-C", $ProjectRoot, "pull", "--ff-only")
+    } elseif ($DryRun) {
+        # In a dry run no archive is downloaded or extracted.
+        Write-Host "Would download $ArchiveUrl and copy program files over $ProjectRoot." -ForegroundColor Yellow
+        Write-Host "    data, .env, runtime, .venv and node_modules would be kept." -ForegroundColor DarkGray
+    } else {
+        Write-Step "Downloading the latest archive"
+        $staging = Join-Path $ProjectRoot ("runtime\update-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+        $archive = Join-Path $staging "resumeforge.zip"
+        New-Item -ItemType Directory -Force -Path $staging | Out-Null
+        Invoke-WebRequest -Uri $ArchiveUrl -OutFile $archive -UseBasicParsing
+        Expand-Archive -LiteralPath $archive -DestinationPath $staging -Force
+        $extracted = Get-ChildItem -LiteralPath $staging -Directory | Select-Object -First 1
+        if (-not $extracted) {
+            throw "The downloaded archive did not contain a folder. Download it manually from https://github.com/$Repository/releases"
+        }
+        Write-Step "Copying program files (data, .env and runtime are kept)"
+        Copy-ProgramFiles -Source $extracted.FullName -Destination $ProjectRoot
+        Write-Host "    Source kept at: $staging" -ForegroundColor DarkGray
+    }
+}
+
+if ($ArchivePath -and -not $DryRun) {
+    if ($WaitForPids.Count -gt 0) {
+        Write-Step "Waiting for the running application to close"
+        Wait-ForPidsExit -ProcessIds $WaitForPids
+    }
+    foreach ($processId in $StopPids) {
+        Stop-FrontendPid -ProcessId $processId
+    }
+    if ($StopPids.Count -gt 0) {
+        Start-Sleep -Milliseconds 800
     }
     Write-Step "Copying program files (data, .env and runtime are kept)"
     Copy-ProgramFiles -Source $extracted.FullName -Destination $ProjectRoot
-    Write-Host "    Source kept at: $staging" -ForegroundColor DarkGray
 }
 
 if ($SkipDependencies) {
@@ -156,4 +226,12 @@ if ($DryRun) {
 } else {
     Write-Host "Update finished." -ForegroundColor Green
     Write-Host "Start the app again with start.cmd. Your data in data\ was not touched." -ForegroundColor Green
+    if ($Restart) {
+        Write-Step "Restarting ResumeForge"
+        $launcher = Join-Path $ProjectRoot "start.cmd"
+        if (-not (Test-Path -LiteralPath $launcher)) {
+            throw "The update completed, but start.cmd was not found, so the app was not restarted."
+        }
+        Start-Process -FilePath $launcher -WorkingDirectory $ProjectRoot -WindowStyle Hidden
+    }
 }

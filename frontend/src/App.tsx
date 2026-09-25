@@ -5,6 +5,8 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   FunnelPlotOutlined,
+  GithubOutlined,
+  GlobalOutlined,
   HomeOutlined,
   InboxOutlined,
   MessageOutlined,
@@ -20,9 +22,12 @@ import {
 import { Button, Layout, Menu, Skeleton, Tooltip, Typography } from "antd";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import AppHeaderContext from "./components/AppHeaderContext";
+import BackgroundTasksIndicator from "./components/BackgroundTasksIndicator";
 import ExitAppButton from "./components/common/ExitAppButton";
 import TaskCompletionNotifier from "./components/TaskCompletionNotifier";
-import { APP_NAME, APP_NAME_EN, GITHUB_REPO } from "./config";
+import UpdateCheckButton from "./components/UpdateCheckButton";
+import { APP_NAME, GITHUB_REPO } from "./config";
 import { consumeFirstVisitGuide } from "./utils/userGuide";
 // 侧栏品牌图标。走 import 而不是写死 "/resumeforge-icon.png"——Vite 会按 `base`
 // 重写成正确前缀（在线体验产物部署在 Pages 子路径下，写死绝对路径会 404）。
@@ -39,6 +44,7 @@ const ResumesPage = lazy(() => import("./pages/ResumesPage"));
 const ApplyPage = lazy(() => import("./pages/ApplyPage"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage"));
 const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
+const OfficialPage = lazy(() => import("./pages/OfficialPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
 const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
@@ -63,6 +69,7 @@ export const MENU_ITEMS = [
   // 找岗位
   { key: "/", icon: <HomeOutlined />, label: "首页" },
   { key: "/jobs", icon: <SearchOutlined />, label: "岗位广场" },
+  { key: "/official", icon: <GlobalOutlined />, label: "官网采集" },
   { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
   // 做简历
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
@@ -143,17 +150,22 @@ function MainLayout() {
             onClick={({ key }) => navigate(key)}
           />
           <div className="app-sider-footer">
-            <Tooltip title="使用指南" placement="right">
-              <Button
-                className="app-guide-button"
-                type="text"
-                icon={<QuestionCircleOutlined />}
-                onClick={() => setGuideOpen(true)}
-                aria-label="使用指南"
-              >
-                <span className="app-guide-label">使用指南</span>
-              </Button>
-            </Tooltip>
+            <div className="app-sider-footer-row">
+              <Tooltip title="使用指南" placement="right">
+                <Button
+                  className="app-guide-button"
+                  type="text"
+                  icon={<QuestionCircleOutlined />}
+                  onClick={() => setGuideOpen(true)}
+                  aria-label="使用指南"
+                >
+                  <span className="app-guide-label">使用指南</span>
+                </Button>
+              </Tooltip>
+              {/* 开源仓库入口在页头右上角（见下面的 Header）。页脚这一行是
+                  「使用指南 + 检查更新」：都是"偶尔想确认一下"的低频动作，凑在左下角。 */}
+              <UpdateCheckButton />
+            </div>
           </div>
         </Sider>
         <Layout className="app-main">
@@ -162,15 +174,27 @@ function MainLayout() {
               AI 定制化简历生成平台
             </Typography.Text>
             <div className="app-header-actions">
+              {/* 左侧是"我当前在哪个数据集、用的哪张照片"，右侧是全局动作（源码 / 退出）。
+                  两者之间用一根细分隔线隔开，避免四个元素挤成一条。 */}
+              <AppHeaderContext />
+              {/* 有任务在跑时才出现：平时页头不该多一个空按钮。 */}
+              <BackgroundTasksIndicator />
+              <span className="app-header-divider" aria-hidden="true" />
+              {/* GitHub 入口在页头右上角：与「退出」并排。
+                  它是"关于本项目"这类低频、跨页面的入口，放右上角既符合习惯，
+                  也不必让用户先找到侧栏底部。 */}
               {GITHUB_REPO && (
-                <Typography.Link
-                  className="app-header-repo"
-                  href={GITHUB_REPO}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {APP_NAME_EN} · 开源项目
-                </Typography.Link>
+                <Tooltip title="在 GitHub 上查看源码 / 反馈问题">
+                  <Button
+                    className="app-repo-button"
+                    type="text"
+                    icon={<GithubOutlined />}
+                    href={GITHUB_REPO}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`在 GitHub 上查看 ${APP_NAME} 源码`}
+                  />
+                </Tooltip>
               )}
               <ExitAppButton />
             </div>
@@ -197,6 +221,7 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/official" element={<OfficialPage />} />
         <Route path="/resumes" element={<ResumesPage />} />
         <Route path="/apply" element={<ApplyPage />} />
         <Route path="/tracker" element={<TrackerPage />} />

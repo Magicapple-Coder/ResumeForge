@@ -6,7 +6,33 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATE_CATALOG } from "../test/resumeFixtures";
 import type { ResumeContent, ResumeDetail, ResumeGenerateTask } from "../types";
+import { resetBackgroundTasks } from "../utils/backgroundTasks";
+import { registerNotifyHost } from "../utils/taskNotify";
 import GenerateResumeModal from "./GenerateResumeModal";
+
+/** 记录"完成提醒"的假宿主：真实呈现由 AntD 负责，组件测试只关心有没有提醒、什么形式。 */
+const notices: { title: string; modal?: boolean; confirmLabel?: string }[] = [];
+
+const fakeNotifyHost = {
+  notification: {
+    success: (config: { message: unknown }) =>
+      notices.push({ title: String(config.message), modal: false }),
+    warning: (config: { message: unknown }) =>
+      notices.push({ title: String(config.message), modal: false }),
+    error: (config: { message: unknown }) =>
+      notices.push({ title: String(config.message), modal: false }),
+    info: (config: { message: unknown }) =>
+      notices.push({ title: String(config.message), modal: false }),
+  },
+  modal: {
+    info: (config: { message: unknown; okText?: unknown }) =>
+      notices.push({
+        title: String(config.message),
+        modal: true,
+        confirmLabel: config.okText ? String(config.okText) : undefined,
+      }),
+  },
+};
 
 const apiMocks = vi.hoisted(() => ({
   startResumeGeneration: vi.fn(),
@@ -95,6 +121,10 @@ const RESUME_DETAIL: ResumeDetail = {
 };
 
 beforeEach(() => {
+  notices.length = 0;
+  // 登记表是模块级单例：不清的话，上一个用例留下的任务会被继续轮询。
+  resetBackgroundTasks();
+  registerNotifyHost(fakeNotifyHost as never);
   apiMocks.startResumeGeneration.mockReset();
   apiMocks.getResumeGenerateTask.mockReset();
   apiMocks.cancelResumeGenerateTask.mockReset();
@@ -112,6 +142,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // 登记表是模块级单例，且它自己带一个 setInterval：不清空的话定时器会一直挂着，
+  // 整个测试进程结束不了（实测卡了十几分钟）。
+  resetBackgroundTasks();
   cleanup();
   document.body.innerHTML = "";
 });
@@ -277,8 +310,11 @@ describe("GenerateResumeModal 后台生成任务", () => {
     // 完成后取回简历记录并渲染预览
     await waitFor(() => expect(apiMocks.getResume).toHaveBeenCalledWith(7));
     expect(apiMocks.renderResume).toHaveBeenCalled();
-    // 完成提醒（通知）出现，且带"查看简历"入口
-    expect(await screen.findByText("简历已生成")).toBeInTheDocument();
+    // 完成提醒由 utils/backgroundTasks 统一发。弹窗开着时只用右上角卡片（不弹居中弹窗
+    // 打断用户），所以 modal 应为 false——"用户已经走开"才升级成居中弹窗（见 store 的测试）。
+    await waitFor(() => expect(notices.length).toBeGreaterThan(0));
+    expect(notices[0].title).toBe("简历已生成");
+    expect(notices[0].modal).toBe(false);
   });
 
   it("treats a completed task without resume_id as an error instead of hanging", async () => {

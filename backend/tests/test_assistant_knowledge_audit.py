@@ -44,10 +44,15 @@ README_MD = REPO_ROOT / "README.md"
 README_FEATURE_KEYS: dict[str, tuple[str, ...]] = {
     "岗位管理": ("job_manage",),
     "备选岗位": ("candidate_jobs",),
+    "官网采集": (
+        "official_collect",
+        "official_reconcile",
+        "official_extract",
+    ),
     "拖拽导入": ("drag_drop",),
     "模拟面试": ("interview",),
     "个性化题库": ("question_bank", "interview_review"),
-    "工作台": ("skills", "style_format_template"),
+    "工作台": ("skills", "style_format_template", "template_import"),
     "个人资料库": ("profile",),
     "简历照片": ("profile_photo",),
     "事实台账": ("claims",),
@@ -129,6 +134,7 @@ DOMAIN_READ_TOOLS = {
     "复盘历史": ["list_reviews"],
     "知识库": ["list_knowledge", "get_knowledge"],
     "求职统计": ["get_analytics_overview"],
+    "求职进度": ["list_application_tracks", "get_application_track"],
     "分享包": ["list_share_packages"],
 }
 
