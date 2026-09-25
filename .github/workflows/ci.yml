@@ -145,13 +145,13 @@ jobs:
             # shellcheck disable=SC2086
             download_verified "$scratch/python-$foreign_arch.tar.gz" \
               "$(rf_python_bootstrap_sha256 "$foreign_arch")" \
-              "便携版 Python（$foreign_arch）" "$RF_PYTHON_BOOTSTRAP_APPROX_MB" \
+              "便携版 Python（${foreign_arch}）" "$RF_PYTHON_BOOTSTRAP_APPROX_MB" \
               $(rf_build_python_bootstrap_urls "$foreign_arch")
             echo "校验 $foreign_arch 的便携版 Node.js..."
             # shellcheck disable=SC2086
             download_verified "$scratch/node-$foreign_arch.tar.gz" \
               "$(rf_node_bootstrap_sha256 "$foreign_arch")" \
-              "便携版 Node.js（$foreign_arch）" "$RF_NODE_BOOTSTRAP_APPROX_MB" \
+              "便携版 Node.js（${foreign_arch}）" "$RF_NODE_BOOTSTRAP_APPROX_MB" \
               $(rf_build_node_bootstrap_urls "$foreign_arch")
           done
           rm -rf "$scratch"
@@ -182,6 +182,9 @@ jobs:
         # 它比文档更可靠：文档只能描述，这里会真的跑。
         run: |
           set -euo pipefail
+          # 让 uvicorn 打全日志：这个作业的失败通常是"服务没起来"，而默认的 warning
+          # 级别只会在 stderr 里留下一份空白，没有任何可定位的线索。
+          export RF_UVICORN_LOG_LEVEL=info
           bash scripts/macos/start.sh --no-browser --backend-port 8123 --frontend-port 5199
           curl -fsS http://127.0.0.1:8123/api/health
           echo
@@ -200,6 +203,15 @@ jobs:
               tail -n 60 "$log"
             fi
           done
+          echo "===== 端口与进程 ====="
+          # 光有日志还不够："进程还活着但端口没人监听"和"进程早就死了"是两种不同的故障，
+          # 前者多半卡在启动流程里，后者要看上面的报错。
+          lsof -nP -iTCP:8123 -sTCP:LISTEN || echo "8123 没有监听者"
+          lsof -nP -iTCP:5199 -sTCP:LISTEN || echo "5199 没有监听者"
+          pgrep -fl "uvicorn|vite" || echo "没有 uvicorn / vite 进程"
+          echo "===== 健康探针 ====="
+          curl -v --max-time 5 http://127.0.0.1:8123/api/health || echo "8123 健康检查失败"
+
 
   frontend:
     name: Frontend (Node 20)

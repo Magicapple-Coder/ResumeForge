@@ -28,9 +28,11 @@ scripts/macos/lib/common.sh scripts/macos/lib/python.sh scripts/macos/lib/node.s
 RF_EXECUTABLE_SOURCES="start.command stop.command update.command
 scripts/macos/start.sh scripts/macos/stop.sh scripts/macos/update.sh"
 
-# 变量定界检查要多扫一份：守卫脚本**自己**也曾踩过同一个坑（它的失败信息里就有）。
+# 变量定界检查要多扫两份：守卫脚本**自己**踩过同一个坑（它的失败信息里就有），
+# GitHub Actions 的 workflow 里也踩过（同一个坑在 yml 的 run: 段里同样会触发）。
 RF_QUOTING_SOURCES="$RF_SHELL_SOURCES
-scripts/tests/test-macos-launcher.sh"
+scripts/tests/test-macos-launcher.sh
+.github/workflows/ci.yml"
 
 # 可选参数 1：临时目录的父目录。默认用 TMPDIR（macOS 上指向每个用户的私有目录），
 # 只在 TMPDIR 不可写的环境里才需要显式指定。

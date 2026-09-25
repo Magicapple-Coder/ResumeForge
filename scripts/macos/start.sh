@@ -243,8 +243,12 @@ rf_start_backend() {
     # 而不是一层随时会消失的 shell 包装。
     (
         cd "$RF_BACKEND_DIR"
+        # 默认把 uvicorn 压到 warning：正常启动时不必让用户看一屏框架日志。
+        # 出问题时可以用 RF_UVICORN_LOG_LEVEL=info 打开——CI 的 end-to-end 作业就是这么做的，
+        # 否则"后端没起来"这种失败只会留下一份什么都没有的 stderr，无从定位。
         exec "$RF_VENV_PYTHON" -m uvicorn app.main:app \
-            --host 127.0.0.1 --port "$RF_BACKEND_PORT" --log-level warning
+            --host 127.0.0.1 --port "$RF_BACKEND_PORT" \
+            --log-level "${RF_UVICORN_LOG_LEVEL:-warning}"
     ) >>"$RF_BACKEND_STDOUT" 2>>"$RF_BACKEND_STDERR" &
     rf_started_backend_pid=$!
     save_process_record "$rf_started_backend_pid" "$RF_BACKEND_RECORD"
