@@ -30,11 +30,7 @@ from ..models.official import (
 )
 from ..schemas.official import (
     CollectRequest,
-    OfficialCandidateOut,
     OfficialExtractionOut,
-    OfficialDiscoverQuery,
-    OfficialDiscoveryHistoryOut,
-    OfficialDiscoveryOut,
     OfficialProbeOut,
     OfficialRunDetailOut,
     OfficialRunOut,
@@ -43,10 +39,8 @@ from ..schemas.official import (
     OfficialSiteUpdate,
     OfficialTrendOut,
 )
-from ..services.settings_service import get_search_config
-from ..services.sites.official import history, service
+from ..services.sites.official import service
 from ..services.sites.official.base import CONFIDENCE_LABELS, FeedHttp
-from ..services.sites.official.discovery import discover_companies
 from ..services.sites.official.probe import PROBE_STATE_LABELS
 from ..services.sites.official.registry import get_feed_registry
 
@@ -192,75 +186,6 @@ def list_sites(
     enabled_only: bool = Query(default=False), db: Session = Depends(get_db)
 ) -> list[OfficialSiteOut]:
     return [_site_out(db, site) for site in service.list_sites(db, enabled_only=enabled_only)]
-
-
-@router.post("/discover", response_model=OfficialDiscoveryOut)
-async def discover(payload: OfficialDiscoverQuery, db: Session = Depends(get_db)) -> OfficialDiscoveryOut:
-    """按岗位需求搜出一份**候选公司线索**，供用户勾选后再逐个新增。
-
-    它和新增源分成两步是有意的：发现只发搜索请求、不碰候选站点，用户看到清单后可以改公司名、
-    剔掉不想要的，再让每个真正进入探测。合成一步会让用户为搜索的每一条结果都付一次探测成本，
-    而他可能一条都不想要。
-
-    搜索设置走 ``settings_service.get_search_config(db)``——与「联网搜索设置」页共用同一份
-    配置，用户在那儿关掉的搜索源，这里也不会偷偷用。
-    """
-    result = await discover_companies(
-        payload.keywords, payload.city, config=get_search_config(db)
-    )
-    candidates = [
-        OfficialCandidateOut(
-            company=candidate.company,
-            url=candidate.url,
-            host=candidate.host,
-            evidence=candidate.evidence,
-            is_careers_page=candidate.is_careers_page,
-            target_field=candidate.target_field,
-        )
-        for candidate in result.candidates
-    ]
-    record = history.save_discovery_search(
-        db,
-        keywords=payload.keywords,
-        city=payload.city,
-        queries=result.queries,
-        detail=result.detail,
-        candidates=[candidate.model_dump() for candidate in candidates],
-    )
-    return OfficialDiscoveryOut(
-        history_id=record.id,
-        candidates=candidates,
-        queries=result.queries,
-        detail=result.detail,
-    )
-
-
-@router.get("/discover/history", response_model=list[OfficialDiscoveryHistoryOut])
-def list_discovery_history(
-    limit: int = Query(default=history.DEFAULT_HISTORY_LIMIT, ge=1, le=100),
-    db: Session = Depends(get_db),
-) -> list[OfficialDiscoveryHistoryOut]:
-    """列出最近的岗位找公司记录，并返回当时保存的候选快照。"""
-    output: list[OfficialDiscoveryHistoryOut] = []
-    for record in history.list_discovery_searches(db, limit=limit):
-        candidates = [
-            OfficialCandidateOut.model_validate(candidate)
-            for candidate in (record.candidates or [])
-            if isinstance(candidate, dict)
-        ]
-        output.append(
-            OfficialDiscoveryHistoryOut(
-                id=record.id,
-                keywords=record.keywords,
-                city=record.city,
-                candidates=candidates,
-                queries=[str(query) for query in (record.queries or [])],
-                detail=record.detail,
-                candidate_count=record.candidate_count,
-                created_at=record.created_at,
-            )
-        )
-    return output
 
 
 @router.post("/sites", response_model=OfficialProbeOut, status_code=201)

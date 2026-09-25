@@ -1,7 +1,5 @@
 /** 官网岗位采集接口。 */
 import type {
-  OfficialDiscovery,
-  OfficialDiscoveryHistory,
   OfficialProbeResult,
   OfficialRun,
   OfficialRunDetail,
@@ -11,25 +9,6 @@ import type {
 import { buildQuery, request } from "./client";
 
 const BASE = "/official";
-
-/**
- * 按岗位需求搜出一份**候选公司线索**，供用户勾选后再逐个新增。
- *
- * 它与新增源分成两步：这里只发搜索请求，不碰候选站点。用户可能一条都不想要，不该为搜索的
- * 每条结果都付一次探测成本。
- *
- * 空关键词不报错——后端返回一句可读的说明，界面照常显示。
- */
-export function discoverOfficialCompanies(payload: { keywords: string; city?: string }) {
-  return request<OfficialDiscovery>(`${BASE}/discover`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function listOfficialDiscoveryHistory(limit = 50) {
-  return request<OfficialDiscoveryHistory[]>(`${BASE}/discover/history${buildQuery({ limit })}`);
-}
 
 export function listOfficialSites(options: { enabledOnly?: boolean } = {}) {
   return request<OfficialSite[]>(

@@ -197,54 +197,6 @@ export interface OfficialSitePayload {
 }
 
 /**
- * 一条候选公司线索。
- *
- * `company` 是**建议名**（后端从搜索标题或域名猜的），界面必须允许用户改——猜错不该由用户
- * 承担（删掉重加）。
- */
-export interface OfficialCandidate {
-  company: string;
-  url: string;
-  host: string;
-  /** 为什么认为这是这家公司的招聘页（来源标题），给用户判断用。 */
-  evidence: string;
-  /** true = 这个地址本身就是招聘页。 */
-  is_careers_page: boolean;
-  /**
-   * 提交时要填的字段名（`careers_url` 或 `homepage_url`），**由后端定好**。
-   *
-   * 前端不按地址自己再判一次：两边判据不一致的表现是"清单里认成招聘页、加进来却变成首页"，
-   * 而且只有用户会撞上。
-   */
-  target_field: string;
-}
-
-/**
- * 一次发现的结果。
- *
- * **给的是一份线索，不是一份名单。** `detail` 里带着这句说明，界面必须原样显示：用户把线索
- * 当完整名单，就会漏掉一大批公司而不自知——那正是这个功能最该避免的错误。
- */
-export interface OfficialDiscovery {
-  history_id: number | null;
-  candidates: OfficialCandidate[];
-  /** 实际发出去的查询词。要显示——用户才能判断我们是怎么找的、要不要换个词再找。 */
-  queries: string[];
-  detail: string;
-}
-
-/** 一次历史「按岗位找公司」搜索及其候选快照。 */
-export interface OfficialDiscoveryHistory {
-  id: number;
-  keywords: string;
-  city: string;
-  candidates: OfficialCandidate[];
-  queries: string[];
-  detail: string;
-  candidate_count: number;
-  created_at: string;
-}
-
 /** 采集结论 → 展示用的语义色。**只影响颜色，不影响措辞**（措辞全部来自后端）。 */
 export const VERDICT_COLORS: Record<string, string> = {
   complete: "success",

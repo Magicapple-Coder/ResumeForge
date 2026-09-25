@@ -10,6 +10,16 @@
 
 ### Changed
 
+### Removed
+
+- **「按岗位找公司」彻底移除**（业务变动，不再需要）：后端 `discovery.py` / `history.py` 与
+  `POST /api/official/discover`、`GET /api/official/discover/history` 两个接口，前端的发现弹窗、
+  接口封装与类型，以及与它们配套的一组测试——全部删除。官网采集现在**只有「添加公司」这一条入口**。
+  数据库里 `official_discovery_search` 这张历史表**保留但不读写**：迁移链是历史，删表会影响
+  「旧备份仍可导入」这条保证（备份导入会核对表集合）；等确认永久不用后，可以单独加一个迁移把它删掉。
+- **删掉一个没人用的 schema**：`schemas/backup.py` 里的 `BackupApplyRequest` 全仓库零引用，
+  也不在 `schemas` 的导出里。
+
 ## 0.12.0 - 2026-09-24
 
 ### Changed

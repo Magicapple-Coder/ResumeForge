@@ -27,7 +27,7 @@
 | ---- | ---- | ---- | ---- | ---- | ---- |
 | 首页 | `pages/HomePage.tsx` | `analytics.ts` `reminders.ts` | `/api/stats` `/api/analytics` `/api/reminders` | `analytics.py` `reminder_service.py` | 只读派生 |
 | 岗位广场 | `pages/JobsPage.tsx` | `jobs.ts` | `/api/jobs` | `job/job_service.py` `jd/jd_parser*.py` `job/job_analysis.py` `text_extraction.py` | `job.py` |
-| 官网采集 | `pages/OfficialPage.tsx` | `official.ts` | `/api/official` | `services/sites/official/*`（probe 探测 / feeds 适配器 / generic 通用抽取与配方 / reconcile 对账 / collector 编排 / discovery 公司发现） | `official.py` |
+| 官网采集 | `pages/OfficialPage.tsx` | `official.ts` | `/api/official` | `services/sites/official/*`（probe 探测 / feeds 适配器 / generic 通用抽取与配方 / reconcile 对账 / collector 编排） | `official.py` |
 | 收藏夹 | `pages/FavoritesPage.tsx` | `jobs.ts` `resumes.ts` | `/api/jobs` `/api/resumes` | 复用 `job/job_service.py` / 简历服务 | `job.py` `resume.py` |
 | 简历中心 | `pages/ResumesPage.tsx` | `resumes.ts` `resumeTemplates.ts` `resumeWriting.ts` `resumeRisk.ts` | `/api/resumes` `/api/resume-templates` | `resume/resume_generator.py` `resume/resume_content.py` `resume/resume_grounding.py` `resume/resume_layout.py` `pdf_exporter.py` `docx_exporter.py` `export_pipeline.py` | `resume.py` `resume_template.py` |
 | 投递台 | `pages/ApplyPage.tsx` | `apply.ts` `candidateJob.ts` | `/api/apply` `/api/collect` `/api/candidate-jobs` | `services/apply/*` `services/sites/*` `services/browser/*` | `apply.py` `material.py`(CandidateJob) |

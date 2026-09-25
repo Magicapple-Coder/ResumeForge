@@ -67,7 +67,6 @@ backend/app/
 │   ├── sites/          # 站点适配器层（写路径）：base + registry + boss（单站点实现）+ boss_network
 │   │   └── official/   # 官网采集（读路径）：base 契约 / http 取回 / robots 闸门 / blocking 阻断识别
 │   │                   #   / feeds 各招聘系统适配器 / probe 站源探测 / reconcile 完整性对账 / collector 编排
-│   │                   #   / discovery 按岗位需求找候选公司（产出线索，供用户勾选）
 │   │                   #   / generic 通用路径：dom 元素事件流 / jsonld 结构化数据 / recipe 结构签名配方
 │   │                   #     / induce 归纳与重放校验 / llm_extract 模型兜底 / memory 站点抽取记忆
 │   ├── llm/            # 大模型抽象（base + openai_compat + structured_output）

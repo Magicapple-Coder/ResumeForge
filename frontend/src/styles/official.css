@@ -1,12 +1,9 @@
 /* 官网采集：选中候选后保持清爽的蓝色提示，不使用 Ant Design 默认的灰色底。 */
-.official-discovery-table .ant-table-tbody > tr.ant-table-row-selected > td,
-.official-discovery-table .ant-table-tbody > tr.ant-table-row-selected:hover > td,
 .official-selection-table .ant-table-tbody > tr.ant-table-row-selected > td,
 .official-selection-table .ant-table-tbody > tr.ant-table-row-selected:hover > td {
   background: #eaf1f8 !important;
 }
 
-.official-discovery-table .ant-table-tbody > tr.ant-table-row-selected:hover,
 .official-selection-table .ant-table-tbody > tr.ant-table-row-selected:hover {
   background: #eaf1f8;
 }
