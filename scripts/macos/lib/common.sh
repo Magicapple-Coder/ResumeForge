@@ -177,6 +177,36 @@ is_resumeforge_backend_healthy() {
     esac
 }
 
+# 启动失败时打印"同刻"的服务状态。
+#
+# 为什么必须在这一刻打：脚本失败后会把自己起的进程停掉，事后（比如 CI 的收尾步骤）
+# 再去看端口，只能看到"确实没有监听者"——那既可能是"从没起来"，也可能是"被停掉了"，
+# 两种情况分不开。这里趁进程还在，把端口监听者、PID 存活与探针详情一并留下。
+rf_dump_service_state() {
+    service_label=$1
+    port=$2
+    pid=$3
+    url=$4
+
+    printf '%s\n' "---- ${service_label}启动失败现场 ----" >&2
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        printf '%s\n' "进程仍然存活（PID ${pid}）：不是「启动即退出」，而是没能进入可服务状态。" >&2
+    else
+        printf '%s\n' "进程已经退出（PID ${pid:-未知}）。" >&2
+    fi
+    if command_exists lsof; then
+        listeners=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)
+        if [ -n "$listeners" ]; then
+            printf '%s\n' "端口 ${port} 的监听者：" "$listeners" >&2
+        else
+            printf '%s\n' "端口 ${port} 没有任何监听者。" >&2
+        fi
+    fi
+    printf '%s\n' "探针 ${url}/api/health ：" >&2
+    curl -v --max-time 3 "$url/api/health" >&2 2>&1 || printf '%s\n' "（探针失败）" >&2
+    printf '%s\n' "---- 现场结束 ----" >&2
+}
+
 # wait_until_healthy URL TIMEOUT_SECONDS [PID]
 # PID 存在时，进程已死就立即返回失败——一个已经退出的子进程永远不会变健康。
 # 报错应该指向真实原因（脚本写错、依赖缺失），而不是被拖到超时之后。

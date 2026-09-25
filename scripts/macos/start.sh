@@ -246,7 +246,10 @@ rf_start_backend() {
         # 默认把 uvicorn 压到 warning：正常启动时不必让用户看一屏框架日志。
         # 出问题时可以用 RF_UVICORN_LOG_LEVEL=info 打开——CI 的 end-to-end 作业就是这么做的，
         # 否则"后端没起来"这种失败只会留下一份什么都没有的 stderr，无从定位。
-        exec "$RF_VENV_PYTHON" -m uvicorn app.main:app \
+        # PYTHONUNBUFFERED：日志重定向到文件时 Python 默认是**块缓冲**，出问题时
+        # runtime/backend.stderr.log 可能一行都没有（CI 上就因此把"服务其实起来了"
+        # 误判成"启动失败"）。无缓冲之后，日志与故障同刻落盘。
+        PYTHONUNBUFFERED=1 exec "$RF_VENV_PYTHON" -m uvicorn app.main:app \
             --host 127.0.0.1 --port "$RF_BACKEND_PORT" \
             --log-level "${RF_UVICORN_LOG_LEVEL:-warning}"
     ) >>"$RF_BACKEND_STDOUT" 2>>"$RF_BACKEND_STDERR" &
@@ -262,6 +265,7 @@ rf_start_backend() {
         die "$(format_service_start_failure "后端" "在变得健康之前就退出了" "$RF_BACKEND_STDERR")" \
             "上面是后端的真实报错，通常能直接看出原因（缺依赖、端口被拦、数据库文件损坏等）。"
     fi
+    rf_dump_service_state "后端" "$RF_BACKEND_PORT" "$rf_started_backend_pid" "$RF_BACKEND_URL" >&2
     die "$(format_service_start_failure "后端" "在 ${RF_BACKEND_START_TIMEOUT_SECONDS} 秒内没有启动成功" "$RF_BACKEND_STDERR")" \
         "怎么办：先看上面的日志；如果日志是空的，可能是端口被防火墙拦了，换一个端口试试：" \
         "  start.command --backend-port 8010"
@@ -347,6 +351,7 @@ rf_start_frontend() {
         die "$(format_service_start_failure "前端" "在变得健康之前就退出了" "$RF_FRONTEND_STDERR")" \
             "上面是前端的真实报错，通常能直接看出原因（依赖装坏了、端口被拦等）。"
     fi
+    rf_dump_service_state "前端" "$RF_FRONTEND_PORT" "$rf_started_frontend_pid" "$RF_FRONTEND_URL" >&2
     die "$(format_service_start_failure "前端" "在 ${RF_FRONTEND_START_TIMEOUT_SECONDS} 秒内没有启动成功" "$RF_FRONTEND_STDERR")" \
         "怎么办：先看上面的日志；如果日志是空的，可能是端口被防火墙拦了，换一个端口试试：" \
         "  start.command --frontend-port 5180"
