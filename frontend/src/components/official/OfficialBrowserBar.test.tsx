@@ -111,6 +111,12 @@ describe("OfficialBrowserBar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /启动浏览器/ }));
 
-    expect(await screen.findByText(/找不到 Chrome/)).toBeInTheDocument();
+    // AntD 的全局提示是异步挂载的：冷环境（CI 的 ubuntu runner）下默认 1 秒的等待
+    // 不够，实测每次都在这一步超时，而本机（热、内存里已有 AntD）一直通过。
+    // 这条断言要守的是"启动失败必须如实报出来"，不是"必须在 1 秒内报出来"，
+    // 所以给足 5 秒——不是把断言改松，是把它从"环境快慢"里解耦出来。
+    expect(
+      await screen.findByText(/找不到 Chrome/, undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
   });
 });
