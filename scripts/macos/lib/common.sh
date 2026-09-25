@@ -166,6 +166,20 @@ tcp_port_in_use() {
     [ -n "$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null)" ]
 }
 
+# 服务地址一律**现用现派生**。
+#
+# 不要提前算好存进变量：端口可以被命令行覆盖（--backend-port 8123），而任何在赋值
+# 时刻算好的 URL 都会停在默认端口上。CI 上就是这么栽的——服务好好地监听在 8123，
+# 探针却一直敲 8005，于是"90 秒内没有启动成功"。这类错位在只有默认端口的环境里
+# 永远看不出来，所以这里用函数从结构上杜绝。
+rf_backend_url() {
+    printf 'http://127.0.0.1:%s\n' "$RF_BACKEND_PORT"
+}
+
+rf_frontend_url() {
+    printf 'http://127.0.0.1:%s\n' "$RF_FRONTEND_PORT"
+}
+
 # 只做健康探针，不做重定向判断：两个服务都从同一个 /api/health 取答案
 # （前端经由 Vite 代理转发，代理不通时这个探针同样会失败）。
 is_resumeforge_backend_healthy() {
@@ -183,10 +197,11 @@ is_resumeforge_backend_healthy() {
 # 再去看端口，只能看到"确实没有监听者"——那既可能是"从没起来"，也可能是"被停掉了"，
 # 两种情况分不开。这里趁进程还在，把端口监听者、PID 存活与探针详情一并留下。
 rf_dump_service_state() {
-    service_label=$1
-    port=$2
-    pid=$3
-    url=$4
+    local service_label=$1
+    local port=$2
+    local pid=$3
+    local url=$4
+    local listeners
 
     printf '%s\n' "---- ${service_label}启动失败现场 ----" >&2
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then

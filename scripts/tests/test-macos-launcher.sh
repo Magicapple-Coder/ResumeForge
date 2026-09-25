@@ -191,6 +191,26 @@ rf_expect_equal "$(printf '%s\n' "$node_urls" | grep -c 'node-v24.19.0-darwin-ar
 rf_expect_equal "$(printf '%s\n' "$node_urls" | grep -c '^https://')" "$node_url_count" \
     "便携版 Node.js 的每个候选都用 https"
 
+printf '\n== 服务地址跟随端口（不能提前固化）==\n'
+# 现场教训：CI 上传 --backend-port 8123，uvicorn 确实监听 8123，但探针一直敲 8005
+# ——因为 URL 是在参数解析之前拼好存进变量的。这里直接验证"改了端口，地址就变"。
+# 端口变量定义在 start.sh 里（不在被 source 的 common.sh），守卫里要先补上默认值。
+RF_BACKEND_PORT=${RF_BACKEND_PORT:-8005}
+RF_FRONTEND_PORT=${RF_FRONTEND_PORT:-5173}
+rf_saved_backend_port=$RF_BACKEND_PORT
+rf_saved_frontend_port=$RF_FRONTEND_PORT
+RF_BACKEND_PORT=18123
+RF_FRONTEND_PORT=15173
+rf_expect_equal "$(rf_backend_url)" "http://127.0.0.1:18123" "换端口后后端地址跟着变"
+rf_expect_equal "$(rf_frontend_url)" "http://127.0.0.1:15173" "换端口后前端地址跟着变"
+RF_BACKEND_PORT=$rf_saved_backend_port
+RF_FRONTEND_PORT=$rf_saved_frontend_port
+# 反向断言：start.sh 里不能再出现"赋值成字面 URL"的写法（那正是这次故障的形状）。
+rf_expect_equal "$(grep -c 'RF_BACKEND_URL=' "$RF_TEST_ROOT/scripts/macos/start.sh")" "0" \
+    "start.sh 没有提前固化后端地址"
+rf_expect_equal "$(grep -c 'RF_FRONTEND_URL=' "$RF_TEST_ROOT/scripts/macos/start.sh")" "0" \
+    "start.sh 没有提前固化前端地址"
+
 printf '\n== 架构识别 ==\n'
 # 用同名函数遮蔽 uname，避免依赖真实的处理器架构。
 uname() { echo "arm64"; }

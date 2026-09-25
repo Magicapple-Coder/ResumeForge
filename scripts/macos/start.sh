@@ -106,8 +106,6 @@ rf_parse_arguments() {
 # shellcheck source=lib/node.sh
 . "$RF_SCRIPT_DIR/lib/node.sh"
 
-RF_BACKEND_URL="http://127.0.0.1:$RF_BACKEND_PORT"
-RF_FRONTEND_URL="http://127.0.0.1:$RF_FRONTEND_PORT"
 # 记录文件名刻意与 Windows 的 runtime/*.json 区分：同名不同格式只会互相干扰。
 RF_BACKEND_RECORD="$RF_RUNTIME_DIR/backend.macos.pid"
 RF_FRONTEND_RECORD="$RF_RUNTIME_DIR/frontend.macos.pid"
@@ -216,8 +214,8 @@ rf_ensure_backend_dependencies() {
 }
 
 rf_start_backend() {
-    if is_resumeforge_backend_healthy "$RF_BACKEND_URL"; then
-        log_info "后端已经在运行：$RF_BACKEND_URL"
+    if is_resumeforge_backend_healthy "$(rf_backend_url)"; then
+        log_info "后端已经在运行：$(rf_backend_url)"
         return 0
     fi
 
@@ -256,8 +254,8 @@ rf_start_backend() {
     rf_started_backend_pid=$!
     save_process_record "$rf_started_backend_pid" "$RF_BACKEND_RECORD"
 
-    if wait_until_healthy "$RF_BACKEND_URL" "$RF_BACKEND_START_TIMEOUT_SECONDS" "$rf_started_backend_pid"; then
-        log_info "后端已启动：$RF_BACKEND_URL"
+    if wait_until_healthy "$(rf_backend_url)" "$RF_BACKEND_START_TIMEOUT_SECONDS" "$rf_started_backend_pid"; then
+        log_info "后端已启动：$(rf_backend_url)"
         return 0
     fi
 
@@ -265,7 +263,7 @@ rf_start_backend() {
         die "$(format_service_start_failure "后端" "在变得健康之前就退出了" "$RF_BACKEND_STDERR")" \
             "上面是后端的真实报错，通常能直接看出原因（缺依赖、端口被拦、数据库文件损坏等）。"
     fi
-    rf_dump_service_state "后端" "$RF_BACKEND_PORT" "$rf_started_backend_pid" "$RF_BACKEND_URL" >&2
+    rf_dump_service_state "后端" "$RF_BACKEND_PORT" "$rf_started_backend_pid" "$(rf_backend_url)" >&2
     die "$(format_service_start_failure "后端" "在 ${RF_BACKEND_START_TIMEOUT_SECONDS} 秒内没有启动成功" "$RF_BACKEND_STDERR")" \
         "怎么办：先看上面的日志；如果日志是空的，可能是端口被防火墙拦了，换一个端口试试：" \
         "  start.command --backend-port 8010"
@@ -310,8 +308,8 @@ rf_ensure_frontend_dependencies() {
 }
 
 rf_start_frontend() {
-    if is_resumeforge_backend_healthy "$RF_FRONTEND_URL"; then
-        log_info "前端已经在运行：$RF_FRONTEND_URL"
+    if is_resumeforge_backend_healthy "$(rf_frontend_url)"; then
+        log_info "前端已经在运行：$(rf_frontend_url)"
         return 0
     fi
 
@@ -335,15 +333,15 @@ rf_start_frontend() {
     # 不去改用户仓库里受跟踪的或本地的 .env。
     (
         cd "$RF_FRONTEND_DIR"
-        export VITE_BACKEND_URL="$RF_BACKEND_URL"
+        export VITE_BACKEND_URL="$(rf_backend_url)"
         exec "$RF_NPM_PATH" run dev -- \
             --host 127.0.0.1 --port "$RF_FRONTEND_PORT" --strictPort
     ) >>"$RF_FRONTEND_STDOUT" 2>>"$RF_FRONTEND_STDERR" &
     rf_started_frontend_pid=$!
     save_process_record "$rf_started_frontend_pid" "$RF_FRONTEND_RECORD"
 
-    if wait_until_healthy "$RF_FRONTEND_URL" "$RF_FRONTEND_START_TIMEOUT_SECONDS" "$rf_started_frontend_pid"; then
-        log_info "前端已启动：$RF_FRONTEND_URL"
+    if wait_until_healthy "$(rf_frontend_url)" "$RF_FRONTEND_START_TIMEOUT_SECONDS" "$rf_started_frontend_pid"; then
+        log_info "前端已启动：$(rf_frontend_url)"
         return 0
     fi
 
@@ -351,7 +349,7 @@ rf_start_frontend() {
         die "$(format_service_start_failure "前端" "在变得健康之前就退出了" "$RF_FRONTEND_STDERR")" \
             "上面是前端的真实报错，通常能直接看出原因（依赖装坏了、端口被拦等）。"
     fi
-    rf_dump_service_state "前端" "$RF_FRONTEND_PORT" "$rf_started_frontend_pid" "$RF_FRONTEND_URL" >&2
+    rf_dump_service_state "前端" "$RF_FRONTEND_PORT" "$rf_started_frontend_pid" "$(rf_frontend_url)" >&2
     die "$(format_service_start_failure "前端" "在 ${RF_FRONTEND_START_TIMEOUT_SECONDS} 秒内没有启动成功" "$RF_FRONTEND_STDERR")" \
         "怎么办：先看上面的日志；如果日志是空的，可能是端口被防火墙拦了，换一个端口试试：" \
         "  start.command --frontend-port 5180"
@@ -381,14 +379,14 @@ rf_main() {
 
     if [ "$RF_OPEN_BROWSER" -eq 1 ]; then
         # 打不开浏览器不该让刚启动好的服务被收掉，所以失败只提示。
-        if ! open "$RF_FRONTEND_URL" >/dev/null 2>&1; then
-            log_warn "没能自动打开浏览器，请手动访问 $RF_FRONTEND_URL"
+        if ! open "$(rf_frontend_url)" >/dev/null 2>&1; then
+            log_warn "没能自动打开浏览器，请手动访问 $(rf_frontend_url)"
         fi
     fi
 
     printf '\n'
     log_ok "简历通已就绪。要关闭服务，双击 stop.command（或在终端里执行 bash scripts/macos/stop.sh）。"
-    printf '打开地址：%s\n' "$RF_FRONTEND_URL"
+    printf '打开地址：%s\n' "$(rf_frontend_url)"
 }
 
 # 只有直接执行时才跑主流程。这样 start.sh 也能被 source 进测试脚本
