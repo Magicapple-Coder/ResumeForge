@@ -383,7 +383,7 @@ cd ../frontend
 npm test && npm run lint && npm run typecheck && npm run build
 ```
 
-当前规模：后端 **194 个测试文件 / 2,881 个用例**（覆盖率门槛 80%，实测 94%），前端 **106 个测试文件 / 710 个用例**。GitHub Actions 在 Linux、Windows 与 macOS 上重复执行关键检查——macOS 那几个作业是刻意加的，因为维护者手上没有 Mac，那是唯一能真正跑一遍 macOS 启动链的地方。
+当前规模：后端 **195 个测试文件 / 2,841 个用例**（覆盖率门槛 80%，实测 94%），前端 **106 个测试文件 / 710 个用例**。GitHub Actions 在 Linux、Windows 与 macOS 上重复执行关键检查——macOS 那几个作业是刻意加的，因为维护者手上没有 Mac，那是唯一能真正跑一遍 macOS 启动链的地方。
 
 </details>
 

@@ -6,6 +6,9 @@
 
 ### Added
 
+- 新增 `docs/maintenance.md` 维护手册：项目结构、六步开发循环、验证矩阵、守卫红线与
+  已知环境坑的速查；规则的权威来源仍是 `AGENTS.md`。
+
 ### Fixed
 
 ### Changed
