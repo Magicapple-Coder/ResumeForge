@@ -320,7 +320,11 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 - **不要手工逐个文件改版本号。** 在仓库根目录执行 `python scripts/bump_version.py`：它按自上一个 `v*` 标签以来的提交类型判定幅度，并同步全部位置。加 `--dry-run` 只预览不改文件；自动判定不满意时用 `--bump major|minor|patch` 覆盖。
 - 幅度规则：标题带 `!`（如 `feat!:`）或正文含 `BREAKING CHANGE` → major；`feat` → minor；`fix` → patch；`docs`/`chore`/`test`/`refactor`/`style`/`ci` 不推动版本号。**提交前缀写错会让发版幅度算错**，请继续遵循 Conventional Commits。
 - 版本号有 5 处必须一致：`backend/app/config.py` 的 `app_version`、`frontend/package.json` 的 `version`、`frontend/package-lock.json` 的根包版本、`README.md` 顶部的"当前版本"、`CHANGELOG.md` 的最新条目。`backend/tests/test_version_consistency.py` 会在 CI 上校验前四处。
-- 本仓库**从未使用过 `BREAKING CHANGE` 标记**，所以自动判定实际上只能产出 minor/patch。改动涉及破坏性变更（如删除已发布功能、不可逆的数据库迁移）时，必须显式传 `--bump major`；脚本检测到新增 migration 会提醒复核，但不会替你判断。
+- 本仓库**从未使用过 `BREAKING CHANGE` 标记**，所以自动判定实际上只能产出 minor/patch。改动涉及破坏性变更（如删除已发布功能、不可逆的数据库迁移）时**必须显式传 `--bump` 覆盖**——但传哪一个取决于是否已经 1.0：
+
+  **当前还在 0.x，破坏性变更传 `--bump minor`。** 这是 semver 对 0.x 的惯例：0.x 阶段本来就不承诺兼容，破坏性变更只让 minor 前进（0.12.0 → 0.13.0），major 位留给"这个项目已经稳定"这个宣告本身。2026-09-26 发 0.13.0 时（删掉「官网采集」与「按岗位找公司」两个已发布功能）就是这么定的，维护者明确选择不借一次删功能冲进 1.0。等正式发布 1.0 之后，破坏性变更才改用 `--bump major`。
+
+  脚本检测到新增 migration 会提醒复核，但不会替你判断——**`remove:` 不是脚本认的前缀，删功能的提交它一律算"不推动版本号"**，所以这类发版别信自动判定，直接看本节。
 - 脚本**只改文件，不 commit、不打 tag**——发布由用户发起（见"工作流程"第 6 条）。跑完按它打印的命令手动提交与打标签。
 
 ## 提交署名（硬性要求）

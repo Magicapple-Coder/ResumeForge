@@ -22,7 +22,7 @@
 <a href="https://magicapple123.github.io/ResumeForge-official/">🏠 官网</a>
 </h3>
 
-当前版本：`0.12.0` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [完整使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
+当前版本：`0.13.0` · [Release 页面](https://github.com/magicapple123/ResumeForge/releases) · [完整使用指南](docs/user-guide.md) · [架构设计](docs/architecture.md)
 
 <p>
 <a href="#-交流与反馈"><b>💬 来群里聊：QQ <code>922830167</code></b></a>
