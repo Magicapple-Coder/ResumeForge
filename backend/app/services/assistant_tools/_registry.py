@@ -29,6 +29,7 @@ from .job_tools import (
     _tool_update_job,
     _tool_update_profile,
 )
+from .apply_tools import _tool_list_apply_queue
 from .data_tools import (
     _format_tool_properties,
     _tool_create_candidate_job,
@@ -69,11 +70,6 @@ from .report_tools import (
     _tool_list_share_packages,
     _tool_update_knowledge,
     _tool_update_resume_layout,
-)
-from .official_tools import (
-    _tool_get_official_run,
-    _tool_list_apply_queue,
-    _tool_list_official_sites,
 )
 from .search_tools import _tool_web_search
 from .tracker_tools import (
@@ -885,40 +881,6 @@ _TOOLS: tuple[Tool, ...] = (
             "required": [],
         },
         handler=_tool_list_reminders,
-    ),
-    Tool(
-        name="list_official_sites",
-        description=(
-            "列出「官网采集」里已经添加的公司，以及每家公司**最近一次采集**的结论"
-            "（三态：已确认为全量 / 已确认不全 / 无法确认）与账目。"
-            "用户问「我给哪些公司配了采集」「上次那家抓到多少」「有没有抓全」时用它。"
-            "它只读；发起采集必须由用户在页面上点击。"
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "keyword": {"type": "string", "description": "可选，公司名关键词"},
-                "limit": {"type": "integer", "description": "可选，最多返回多少条，默认 20"},
-            },
-            "required": [],
-        },
-        handler=_tool_list_official_sites,
-    ),
-    Tool(
-        name="get_official_run",
-        description=(
-            "查看某一次官网采集的**完整报告**：账目（翻了几页、取回多少、写入多少、缺多少正文）、"
-            "三态结论与它对账时的依据原文。想知道「为什么这次结论是无法确认」时用它"
-            "（run_id 从 list_official_sites 的结果里取）。"
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "run_id": {"type": "integer", "description": "采集记录 id"},
-            },
-            "required": ["run_id"],
-        },
-        handler=_tool_get_official_run,
     ),
     Tool(
         name="list_apply_queue",

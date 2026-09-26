@@ -117,9 +117,9 @@ def browser_status(db: Session = Depends(get_db)):
 def browser_start(open_entry: bool = True, db: Session = Depends(get_db)):
     """启动专用浏览器。
 
-    ``open_entry=false`` 时**不打开任何站点页面**（停在空白页）。官网采集用它借浏览器
-    当渲染引擎，默认打开站点入口页会让"只想采某公司官网"的用户莫名其妙跳出一个招聘网站；
-    投递台保持默认，它要那个页面来登录。
+    ``open_entry=false`` 时**不打开任何站点页面**（停在空白页）。投递台保持默认——它要那个
+    页面来让用户登录；把浏览器当渲染引擎借用的调用方则传 ``false``，否则用户会莫名其妙
+    跳出一个他这次没打算访问的招聘网站。
     """
     try:
         return apply_service.start_browser(db, open_entry=open_entry)

@@ -65,9 +65,8 @@ export function getBrowserStatus(): Promise<BrowserStatus> {
 /**
  * 启动专用浏览器。
  *
- * `openEntry` 决定这次启动要不要打开站点入口页，两种调用方的需要正好相反：
- * 投递台要（默认，用户得在那个页面上登录），官网采集不要——它只是借这个浏览器
- * 当渲染引擎，采集哪一页由采集自己导航。
+ * `openEntry` 决定这次启动要不要打开站点入口页：投递台要（默认，用户得在那个页面上登录）；
+ * 只是把浏览器当渲染引擎借用的调用方传 `false`，由调用方自己导航到要渲染的页面。
  */
 export function startBrowser(openEntry = true): Promise<BrowserStatus> {
   return request(`/apply/browser/start${buildQuery({ open_entry: openEntry })}`, {

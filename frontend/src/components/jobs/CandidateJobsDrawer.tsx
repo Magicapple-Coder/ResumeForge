@@ -89,7 +89,7 @@ interface Props {
   onImport: (candidate: CandidateJobDetail) => void;
   /** 导入成功的标记：父组件拿到新岗位 id 后传进来，抽屉据此刷新并标记。 */
   importedCandidateId?: number | null;
-  /** 从采集记录进入时，只显示选中的一条或多条官网采集批次。 */
+  /** 从采集记录进入时，只显示选中的一条或多条采集批次。 */
   collectTaskIds?: number[];
 }
 

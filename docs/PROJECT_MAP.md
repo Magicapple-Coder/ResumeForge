@@ -27,7 +27,6 @@
 | ---- | ---- | ---- | ---- | ---- | ---- |
 | 首页 | `pages/HomePage.tsx` | `analytics.ts` `reminders.ts` | `/api/stats` `/api/analytics` `/api/reminders` | `analytics.py` `reminder_service.py` | 只读派生 |
 | 岗位广场 | `pages/JobsPage.tsx` | `jobs.ts` | `/api/jobs` | `job/job_service.py` `jd/jd_parser*.py` `job/job_analysis.py` `text_extraction.py` | `job.py` |
-| 官网采集 | `pages/OfficialPage.tsx` | `official.ts` | `/api/official` | `services/sites/official/*`（probe 探测 / feeds 适配器 / generic 通用抽取与配方 / reconcile 对账 / collector 编排） | `official.py` |
 | 收藏夹 | `pages/FavoritesPage.tsx` | `jobs.ts` `resumes.ts` | `/api/jobs` `/api/resumes` | 复用 `job/job_service.py` / 简历服务 | `job.py` `resume.py` |
 | 简历中心 | `pages/ResumesPage.tsx` | `resumes.ts` `resumeTemplates.ts` `resumeWriting.ts` `resumeRisk.ts` | `/api/resumes` `/api/resume-templates` | `resume/resume_generator.py` `resume/resume_content.py` `resume/resume_grounding.py` `resume/resume_layout.py` `pdf_exporter.py` `docx_exporter.py` `export_pipeline.py` | `resume.py` `resume_template.py` |
 | 投递台 | `pages/ApplyPage.tsx` | `apply.ts` `candidateJob.ts` | `/api/apply` `/api/collect` `/api/candidate-jobs` | `services/apply/*` `services/sites/*` `services/browser/*` | `apply.py` `material.py`(CandidateJob) |
@@ -69,7 +68,6 @@
 | `services/apply/` | 投递编排 | 任务运行器、采集、投递执行、表单引擎 |
 | `services/browser/` | 浏览器桥接 | CDP 客户端、投递专用浏览器、页面就绪等待 |
 | `services/sites/` | 站点适配器 | base 契约 + registry 分发 + 单站点实现 |
-| `services/sites/official/` | 官网采集 | 读路径契约 + robots 闸门 + 阻断识别 + 完整性对账（与上面那条是**并列**关系，不是子集） |
 | `services/assistant_tools/` | 助手工具 | 工具注册表与 handler，按域拆 `job_tools`/`data_tools` 等 |
 | `services/job_parser/` `services/profile_parser/` | 文本规则解析 | 粘贴招聘信息/资料的本地规则 |
 | `middleware/` | 请求中间件 | 请求 ID + 请求体大小限制 |
@@ -105,7 +103,6 @@
 | 改简历生成效果 | `prompts/*.md` + `resume/resume_generator.py` | `resume/resume_content.py` / `resume/resume_grounding.py` |
 | 加一个新 LLM 服务商 | `services/llm/` | `config.ts` 的 `LLM_PRESETS` |
 | 加一个招聘站点适配器（投递） | `services/sites/` 实现 `base.py` 契约 + `registry.py` 注册 | 前端不用改 |
-| 加一个招聘系统适配器（官网采集） | `services/sites/official/feeds/` 实现 `JobFeed` 契约 + `official/registry.py` 注册 | 前端不用改；命中判据必须是"端点存在**且**返回 ≥1 条岗位" |
 | 改助手的"能力" | `services/feature_catalog.py` | 同步 `assistant_tools/_registry.py` 的 `_TOOLS` |
 | 改应用内使用指南 | `components/userGuideSteps.ts` | `docs/user-guide.md` 一起改 |
 

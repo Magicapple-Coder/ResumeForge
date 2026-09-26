@@ -292,9 +292,7 @@ const TOOL_LABELS: Record<string, string> = {
   // 提醒 / 内推 / 面经 / 题库 / 复盘 / 知识库 / 统计 / 分享包（知识审计补齐）
   list_reminders: "查询提醒",
   list_referrals: "查询内推",
-  // 官网采集与投递台（覆盖审计补齐：这两块此前助手完全不知道）
-  list_official_sites: "查询官网采集源",
-  get_official_run: "查看采集报告",
+  // 投递台（覆盖审计补齐：这块此前助手完全不知道）
   list_apply_queue: "查询投递队列",
   list_interview_experiences: "查询面经",
   list_question_banks: "查询题库历史",

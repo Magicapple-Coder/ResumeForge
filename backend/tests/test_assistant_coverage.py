@@ -47,11 +47,15 @@ COVERAGE: dict[str, tuple[str, ...] | str] = {
         "update_candidate_job",
         "import_candidate_job",
     ),
-    # ===== 官网采集 =====
-    "official_site": ("list_official_sites",),
-    "official_collect_run": ("list_official_sites", "get_official_run"),
-    "official_discovery_search": "不暴露：探测过程中的中间记录（试过哪些地址、哪些被判为落地页），"
-    "只在采集报告里作为依据出现，不作为独立数据供助手查阅。",
+    # ===== 官网采集（功能已移除，表为历史数据保留）=====
+    #
+    # 这三张表**还在库里、也还在模型里**：删掉模型会让 ``application_tables()`` 少三张表，
+    # 于是含这些表的旧备份会在导入时被判成"来自更新版本"而**拒收**（见 ``data_backup`` 的
+    # 表集合校验）。所以表留着，但功能与助手工具都已移除，助手不再读它们。
+    "official_site": "不暴露：官网采集功能已移除，这张表只为历史数据保留，助手不再读取。",
+    "official_collect_run": "不暴露：官网采集功能已移除，这张表只为历史数据保留，助手不再读取。",
+    "official_discovery_search": "不暴露：旧版「按岗位找公司」的历史表，该功能与官网采集都已移除，"
+    "表只为历史数据保留，助手不再读取。",
     # ===== 简历 =====
     "resume_record": ("list_resumes", "get_resume", "update_resume_layout"),
     "resume_template": ("create_format_template", "update_format_template"),
@@ -141,8 +145,6 @@ def test_core_user_facing_domains_are_readable():
         "resume_record",
         "application_track",
         "candidate_job",
-        "official_site",
-        "official_collect_run",
         "claim_record",
         "knowledge_entry",
         "material",

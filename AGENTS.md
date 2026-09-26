@@ -271,15 +271,27 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 - **`uninstall.cmd` / `scripts/Uninstall-ResumeForge.ps1` 是唯一会主动删东西的入口**，改它必须跑 `scripts/tests/Test-Uninstall-ResumeForge.ps1`。三条不能退让的性质：默认只删启动器生成的东西（`backend\data` 与 `backend\.env` 要留着，`-Purge` 才删）、**永远不删源码**、只在真正的 checkout 里运行。测试全部在临时目录里复制一份脚本来跑，不会碰当前仓库。
 - **往 `backend/app/preflight.py` 的 `_REQUIRED_FILES` 加资源时，必须同步加到 `scripts/Build-Release.ps1` 的 `$RequiredFiles`。** 这是单方向守卫：`scripts/tests/Test-Build-Release.ps1` 会断言"preflight 要的每一样，打包清单都要点名"，漏一项就会让 Windows 的「启动器 + 打包」测试抛 `Build-Release.ps1 does not require 'backend/app/data/xxx'` 而变红——2026-09-21 就是因为它落后 22 项（`ats_keywords.json`、`feature_catalog.py` 与 20 个提示词）让 Windows job 连续多轮失败。注意这份清单是**发布前自检网，不是打包过滤**：`git archive` 本来就会带上全部受追踪文件，漏登记只红测试、不丢文件。
 
-## 待办：下次加迁移时，顺手带上 `official_discovery_search`
+## 待办：下次加迁移时，顺手删掉官网采集留下的三张空表
 
-**背景**：2026-09-25 移除了「按岗位找公司」（discovery）功能（提交 `6691a9e`）——后端服务、
-接口、schema、前端组件与测试都已删除。但**数据库表 `official_discovery_search` 和模型类
-`OfficialDiscoverySearch` 故意保留了**，因为它不写不读、且是空的。
+**背景**：2026-09-25 移除了「按岗位找公司」（提交 `6691a9e`）、2026-09-26 移除了整个
+「官网采集」功能——后端服务层（`services/sites/official/`，36 个文件）、接口、schema、
+助手工具、前端页面与组件、以及它们的测试都已删除。但**三张表与 `models/official.py` 里的
+模型类故意保留了**：
 
-**为什么现在不删**：删表要加一个迁移，而每加一次迁移**数据库的版本号就前进一次且不可逆**
-（旧版本代码打开升级过的库会因 Alembic 找不到该 revision 而打不开）。为一张空表单独付这个
-代价不划算。
+| 表 | 来历 |
+| --- | --- |
+| `official_site` | 官网采集的「公司源」（0022 建） |
+| `official_collect_run` | 每次采集的账目与对账结论（0022 建） |
+| `official_discovery_search` | 旧「按岗位找公司」的历史表（0024 建） |
+
+**为什么当时不删**：删表要加一个迁移，而每加一次迁移**数据库的版本号就前进一次且不可逆**
+（旧版本代码打开升级过的库会因 Alembic 找不到该 revision 而打不开）。为空表单独付这个代价
+不划算。
+
+**为什么模型类也必须一起留着**（这一条是硬约束，别只删一半）：`data_backup` 会**拒收**
+含"当前版本不认识的数据表"的备份，而"当前版本认识哪些表"是从 `Base.metadata` 推导的
+（`database_migrations.application_tables()`）。只删模型不删表 → 用户已有备份全部被拒收。
+所以**表与模型必须同生同死**：要删就一起删，要么就都留着。
 
 **触发条件**：**下一次新建迁移（`backend/migrations/versions/00XX_*.py`）时，把它并进那一次
 迁移一起做**。不要为它单独发一个迁移。
@@ -287,13 +299,16 @@ README 是这个仓库的门面，也是对用户可见功能的**权威清单**
 做的时候改这些地方：
 
 1. 迁移里 `upgrade()`：**表存在才 drop**——迁移链会跑在"只有部分业务表"的历史库上，直接
-   `drop_table` 会炸。`downgrade()` 必须能把表建回来（本项目要求迁移可降级）。
-2. 删 `backend/app/models/official.py` 的 `OfficialDiscoverySearch`。
-3. 删 `backend/app/models/__init__.py` 里它的两处登记（列表与 `__all__`）。
+   `drop_table` 会炸。`downgrade()` 必须能把三张表建回来（本项目要求迁移可降级）。
+2. 删 `backend/app/models/official.py`（整个文件）与 `backend/app/models/__init__.py` 里的登记。
+3. 删 `tests/test_migration_0022.py`、`test_migration_0023.py`、`test_migration_0024.py`
+   （它们测的是这三张表的建立与降级，表没了就没有对象可测）。
 4. 改 4 处钉着 head revision 字面量的测试：`tests/test_database.py`、
    `tests/test_backup_apply_tables.py`、`tests/test_apply_migration_qa.py`、
    `tests/test_assistant_search.py`。
-5. 新增 `tests/test_migration_00XX.py`：断言表被删、downgrade 能重建、旧库（无此表）升级不报错。
+5. 调 `tests/test_assistant_coverage.py` 的 `COVERAGE`：那三张表现在写的是「不暴露：功能已
+   移除」，表真删掉之后要按"表不存在"处理（这张表清单是按 `Base.metadata` 双向校验的）。
+6. 新增 `tests/test_migration_00XX.py`：断言表被删、downgrade 能重建、旧库（无这些表）升级不报错。
 
 **一个已经核实过、不用再顾虑的点**：删表**不会影响旧备份导入**。导入流程是先把备份里的库
 升到当前 head（`data_backup._upgrade_candidate`），**之后**才校验表集合，所以旧备份进来会被

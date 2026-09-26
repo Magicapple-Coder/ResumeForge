@@ -6,7 +6,6 @@ import {
   FileTextOutlined,
   FunnelPlotOutlined,
   GithubOutlined,
-  GlobalOutlined,
   HomeOutlined,
   InboxOutlined,
   MessageOutlined,
@@ -44,7 +43,6 @@ const ResumesPage = lazy(() => import("./pages/ResumesPage"));
 const ApplyPage = lazy(() => import("./pages/ApplyPage"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage"));
 const FavoritesPage = lazy(() => import("./pages/FavoritesPage"));
-const OfficialPage = lazy(() => import("./pages/OfficialPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
 const MaterialsPage = lazy(() => import("./pages/MaterialsPage"));
 const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
@@ -69,7 +67,6 @@ export const MENU_ITEMS = [
   // 找岗位
   { key: "/", icon: <HomeOutlined />, label: "首页" },
   { key: "/jobs", icon: <SearchOutlined />, label: "岗位广场" },
-  { key: "/official", icon: <GlobalOutlined />, label: "官网采集" },
   { key: "/favorites", icon: <StarOutlined />, label: "收藏夹" },
   // 做简历
   { key: "/resumes", icon: <FileTextOutlined />, label: "简历中心" },
@@ -221,7 +218,6 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/jobs" element={<JobsPage />} />
-        <Route path="/official" element={<OfficialPage />} />
         <Route path="/resumes" element={<ResumesPage />} />
         <Route path="/apply" element={<ApplyPage />} />
         <Route path="/tracker" element={<TrackerPage />} />

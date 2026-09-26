@@ -11,7 +11,7 @@ ResumeForge/
 │   ├── app/api/                36 个 API 模块（235 个接口）
 │   ├── app/services/           约 200 个服务模块，按域分目录
 │   │                           （resume / profile / job / jd / assistant / interview /
-│   │                            apply / sites/official / browser …）
+│   │                            apply / browser …）
 │   ├── app/models/             21 个模型模块（41 张表）
 │   ├── app/schemas/            Pydantic 请求/响应模型
 │   ├── app/prompts/            33 个提示词
@@ -116,7 +116,8 @@ ResumeForge/
 3. 约束：`upgrade`/`downgrade` 都要可用；**表/列不存在时跳过而不是报错**（迁移链会跑在
    "只有部分业务表"的历史库上）；加表/加列类迁移要保证"旧备份仍可导入"（表集合前后一致）。
 4. 新增 `tests/test_migration_00XX.py` 钉住行为。
-5. **待办**：删 `official_discovery_search` 表并进下一次迁移（清单见 AGENTS.md「待办」节）。
+5. **待办**：官网采集移除后留下的三张空表（`official_site` / `official_collect_run` /
+   `official_discovery_search`）等下次加迁移时一并删掉（清单见 AGENTS.md「待办」节）。
 
 ### 4.2 macOS 启动链
 

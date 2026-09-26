@@ -123,24 +123,6 @@ def no_real_search_network(monkeypatch):
 
     monkeypatch.setattr("app.services.sites.boss_filters.default_fetcher", no_filter_network)
 
-    def no_official_network():
-        # 官网采集的传输层工厂。**默认封掉的理由与上面那条完全相同**，而且这条是踩过的：
-        # 后台采集任务自己构造传输对象，接口层替换不到它——忘了注入的用例会**真的去请求
-        # 外部招聘站点**，在能联网的开发机上"碰巧通过"、在 CI 上挂到超时，表现为"采集一直
-        # 停在采集中"，排查时很难想到是测试真的在联网。
-        raise OSError("测试环境不访问真实站点：官网采集的传输层没有被替换")
-
-    monkeypatch.setattr(
-        "app.services.sites.official.service.default_http_factory", no_official_network
-    )
-
-    # 运行器单例跨用例存活会让"上一个用例的任务"影响下一个，每个用例换一个干净的。
-    from app.services.sites.official import runner as official_runner
-
-    monkeypatch.setattr(
-        "app.services.sites.official.runner._RUNNER", official_runner.OfficialRunner()
-    )
-
 
 @pytest.fixture(autouse=True)
 def clean_db():

@@ -7,6 +7,25 @@ _SECTION_NUMBER_PREFIX = r"(?:(?:第\s*)?(?:\d{1,3}|[一二三四五六七八九
 # 实际章节名中剥离，既能覆盖复制文本，又不会放宽普通岗位标题的识别条件。
 _SECTION_HEADING_PREFIX = r"(?:#{1,6}\s*)?(?:[【［\[]\s*)?"
 _SECTION_HEADING_SUFFIX = r"\s*(?:[】］\]])?"
+# 中文的"职责类 / 要求类"章节名是个**开放集合**：只靠枚举复合词永远会漏，而漏掉一个词的
+# 表现不是"少识别一节标题"，是**那一整节正文被丢掉**——正文是技能标签、匹配分析、简历定制、
+# 面试准备的共同输入，丢了它这条链路全部空转。
+#
+# 实测漏掉的那个词是「工作要求」：它与已收录的「职责要求」只差一个字序，而小米招聘的
+# 详情页用的正是它（2026-09 在真实页面上量到：职位描述 0 字符、任职要求 0 字符——
+# 页面上两节都写得清清楚楚）。
+#
+# 所以在枚举之外补一层**语素**判据：以"职责/内容/描述/说明/概述/范围"结尾、前缀不超过
+# 4 个汉字的短词算职责类标题；"要求/资格/条件/标准/需求"同理算要求类。
+#
+# **前缀限长是必须的**：不限的话「……的主要工作职责」这类整句也会被当成章节标题。
+# 这一条同样被 ``_INLINE_SECTION_RE`` 用着，而那边还有"前面必须是句读或行首"的闸门兜着，
+# 所以"符合以下条件：……"不会被切开（"条件"前面是"下"）。
+_DESCRIPTION_TAILS = r"(?:职责|内容|描述|说明|概述|范围)"
+_REQUIREMENTS_TAILS = r"(?:要求|资格|条件|标准|需求)"
+_DESCRIPTION_MORPHS = rf"(?:[一-龥]{{0,4}}{_DESCRIPTION_TAILS})"
+_REQUIREMENTS_MORPHS = rf"(?:[一-龥]{{0,4}}{_REQUIREMENTS_TAILS})"
+
 _DESCRIPTION_HEADINGS = (
     r"(?:职位描述|岗位描述|工作描述|岗位职责|职位职责|工作职责|职责描述|工作内容|岗位内容|"
     r"主要职责|岗位职责说明|职位职责说明|工作职责与内容|工作内容及职责|职位概述|岗位概述|"
@@ -15,7 +34,7 @@ _DESCRIPTION_HEADINGS = (
     r"key\s+responsibilities|your\s+responsibilities|job\s+description|"
     r"job\s+responsibilities|description|duties|about\s+the\s+role|"
     r"role\s+overview|position\s+overview|responsibilities|"
-    r"what\s+you\s+do|key\s+duties|responsibilities\s*(?:&|and)\s*duties)"
+    rf"what\s+you\s+do|key\s+duties|responsibilities\s*(?:&|and)\s*duties|{_DESCRIPTION_MORPHS})"
 )
 _REQUIREMENTS_HEADINGS = (
     r"(?:职位要求|岗位要求|任职要求|任职资格|岗位资格|职位资格|任职条件|岗位条件|招聘要求|能力要求|"
@@ -26,7 +45,7 @@ _REQUIREMENTS_HEADINGS = (
     r"job\s+requirements|job\s+qualifications|what\s+you\s+bring|"
     r"what\s+you\s+need|your\s+qualifications|requirements|qualifications|"
     r"preferred\s+qualifications|must\s+have|"
-    r"who\s+you\s+are|preferred\s+skills|qualifications\s*(?:&|and)\s+skills)"
+    rf"who\s+you\s+are|preferred\s+skills|qualifications\s*(?:&|and)\s+skills|{_REQUIREMENTS_MORPHS})"
 )
 _SECTION_SEPARATOR = r"(?:\s*[:：]\s*|\s+|$)"
 

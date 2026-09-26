@@ -44,11 +44,6 @@ README_MD = REPO_ROOT / "README.md"
 README_FEATURE_KEYS: dict[str, tuple[str, ...]] = {
     "岗位管理": ("job_manage",),
     "备选岗位": ("candidate_jobs",),
-    "官网采集": (
-        "official_collect",
-        "official_reconcile",
-        "official_extract",
-    ),
     "拖拽导入": ("drag_drop",),
     "模拟面试": ("interview",),
     "个性化题库": ("question_bank", "interview_review"),

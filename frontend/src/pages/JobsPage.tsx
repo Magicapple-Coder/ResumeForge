@@ -515,7 +515,7 @@ export default function JobsPage() {
         // 采集来的候选没有 raw_text，内容在结构化字段里——只给原文那一路会让表单整个空着。
         presetJob={importCandidate ? candidateToJobPayload(importCandidate) : undefined}
         // 来源要**继承候选自己的来路**：写死「备选岗位导入」会让采集回来的岗位在列表里
-        // 挂上「手动」角标（用户明明是从官网采集 / 投递台导入的）。
+        // 挂上「手动」角标（用户明明是从投递台采集回来的）。
         presetSource={importCandidate ? candidateImportSource(importCandidate) : undefined}
         onClose={() => {
           setFormOpen(false);

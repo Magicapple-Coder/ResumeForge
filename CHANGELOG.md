@@ -15,9 +15,29 @@
 
 ### Removed
 
+- **「官网采集」整个功能移除**（业务变动，不再需要）：后端服务层
+  `services/sites/official/`（36 个文件：探测、适配器、通用抽取与配方、编排、对账、robots 闸门）、
+  `GET/POST /api/official/*` 全部接口、`schemas/official.py`、助手侧的
+  `assistant_tools/official_tools.py` 与两个工具、前端的页面/接口/类型/组件/样式、
+  `scripts/` 下两个诊断脚本、以及它们的 27 个测试文件——全部删除，合计约 2.5 万行。
+  README 功能表、`feature_catalog.py`、使用指南与 `docs/official-collect-plan.md` 同步清理。
+
+  **两样东西刻意保留，都不是"忘了删"**：
+
+  - **三张表与 `models/official.py` 的模型类**。它们必须同生同死：`data_backup` 会拒收含
+    "当前版本不认识的数据表"的备份，而"认识哪些表"是从模型推导的——只删模型不删表，会让用户
+    已有的备份**全部被拒收**。删表要加迁移、而迁移不可逆，所以两者都留到下一次本来就要加迁移时
+    一并处理（清单见 AGENTS.md「待办」节）。三张表现在不写不读，只是历史数据。
+  - **`官网采集` 这个来源标识**（`schemas/job.py` 与前端 `jobSource.ts`）。旧数据里写着它，
+    删掉会让那些记录显示不出来——**不再产生新的，但仍认得旧的**。
+
+  助手侧的 `_tool_list_apply_queue` 从被删文件里**搬了出来**（新建 `assistant_tools/apply_tools.py`）：
+  它属于投递台，跟着那个文件一起删会顺手把投递台的一个助手能力干掉。投递台、备选岗位、
+  浏览器与搜索等共享模块一行未动。
+
 - **「按岗位找公司」彻底移除**（业务变动，不再需要）：后端 `discovery.py` / `history.py` 与
   `POST /api/official/discover`、`GET /api/official/discover/history` 两个接口，前端的发现弹窗、
-  接口封装与类型，以及与它们配套的一组测试——全部删除。官网采集现在**只有「添加公司」这一条入口**。
+  接口封装与类型，以及与它们配套的一组测试——全部删除。
   数据库里 `official_discovery_search` 这张历史表**保留但不读写**。删表本身不影响旧备份导入（导入流程会先把备份里的库升到当前 head，再校验表集合），但每加一次迁移，库的版本号就前进一次且不可逆——所以不在这一次为一张空表单独发迁移，**等下一次本来就要加迁移时并进去一起做**（清单见 AGENTS.md）。
 - **删掉一个没人用的 schema**：`schemas/backup.py` 里的 `BackupApplyRequest` 全仓库零引用，
   也不在 `schemas` 的导出里。

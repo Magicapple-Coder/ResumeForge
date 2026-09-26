@@ -24,7 +24,6 @@ from .api import (
     jobs,
     knowledge,
     materials,
-    official,
     profile,
     referrals,
     reminders,
@@ -50,8 +49,6 @@ from .database_migrations import is_unversioned_legacy_database, run_database_mi
 from .middleware import RequestContextMiddleware, RequestIdFilter, get_request_id
 from .services.apply import apply_service
 from .services.data_backup import cleanup_temp_directories
-from .services.sites.official import service as official_service
-from .services.sites.official.runner import get_official_runner
 
 
 logging.basicConfig(
@@ -85,20 +82,14 @@ async def lifespan(_app: FastAPI):
     startup_logger.info("启动自检：清理临时目录")
     cleanup_temp_directories(bind)
     # 应用重启后，把仍停留在"进行中"的投递/采集任务标记为失败，避免出现幽灵进度。
-    startup_logger.info("启动自检：清理中断的投递/采集任务")
+    startup_logger.info("启动自检：清理中断的投递任务")
     with database.SessionLocal() as session:
         try:
             apply_service.fail_orphaned_tasks(session)
-            official_service.fail_orphaned_runs(session)
         except Exception:  # noqa: BLE001 - 清理失败不应阻断启动
-            startup_logger.warning("清理中断的投递/采集任务失败", exc_info=True)
+            startup_logger.warning("清理中断的投递任务失败", exc_info=True)
     startup_logger.info("启动自检完成，开始接收请求")
-    try:
-        yield
-    finally:
-        # 关闭时先请采集任务自己收尾（它们在下一个检查点停下），超时再取消。**不能直接
-        # 随进程消失**：那样运行记录会停在"采集中"，用户下次打开看到的是幽灵进度。
-        await get_official_runner().shutdown()
+    yield
 
 
 async def unhandled_exception(_request: Request, exc: Exception):
@@ -167,7 +158,6 @@ def create_app() -> FastAPI:
         analytics.router,
         apply.router,
         apply.collect_router,
-        official.router,
         tracker.router,
         settings_api.router,
         datasets.router,

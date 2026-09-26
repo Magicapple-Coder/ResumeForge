@@ -33,4 +33,3 @@ export * from "./trash";
 export * from "./export";
 export * from "./sharePackage";
 export * from "./templateMarket";
-export * from "./official";
